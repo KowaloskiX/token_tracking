@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asystent AI</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Satoshi', 'Arial', sans-serif;
+      background-color: #F5EFE4;
+      color: #696255;
+      line-height: 1.6;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #F5EFE4;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .email-header {
+      padding: 24px;
+      text-align: center;
+      border-bottom: 1px solid #E6DFC9;
+    }
+    .email-content {
+      padding: 32px 24px;
+      background-color: white;
+    }
+    .email-footer {
+      padding: 20px 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #696255;
+      border-top: 1px solid #E6DFC9;
+    }
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #4E3B31;
+      color: white !important;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 500;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+    /* Additional styles to override link colors in various states */
+    .button:link, .button:visited, .button:hover, .button:active {
+      color: white !important;
+      text-decoration: none;
+    }
+    .button-container {
+      text-align: center;
+    }
+    h1 {
+      color: #4E3B31;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header">
+      <a href="https://www.asystent.ai" target="_blank" rel="noopener noreferrer">
+        <img src="https://www.asystent.ai/images/asystent_ai_logo_brown_long.png" alt="Asystent AI" width="180" height="auto">
+      </a>
+    </div>
+    
+    <div class="email-content">
+      <h1>{{ title }}</h1>
+      <p>{{ message|safe }}</p>
+      
+      {% if action_url %}
+      <div class="button-container">
+        <a href="{{ action_url }}" class="button" style="color: white !important; text-decoration: none;">{{ action_text }}</a>
+      </div>
+      {% endif %}
+      
+      <p>Z poważaniem,<br>
+      Zespół Asystent AI</p>
+    </div>
+    
+    <div class="email-footer">
+      <p>© {{ current_year }} Asystent AI. Wszelkie prawa zastrzeżone.</p>
+    </div>
+  </div>
+</body>
+</html>

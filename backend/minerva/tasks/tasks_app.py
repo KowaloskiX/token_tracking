@@ -1,0 +1,107 @@
+import asyncio
+import logging
+import os
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from minerva.config.logging_config import setup_logging
+from minerva.tasks.scraping_runner import main as scraping_main
+from minerva.tasks.analysis_runner import main as analysis_main
+from minerva.tasks.monitoring_runner import main as monitoring_main
+from datetime import datetime
+import pytz
+from dotenv import load_dotenv
+import nltk
+from pathlib import Path
+
+load_dotenv()
+
+setup_logging()
+logger = logging.getLogger("minerva.tasks.scheduler")
+
+# Set a writable NLTK data directory
+NLTK_DATA_DIR = Path("/home/vscode/nltk_data")  # Adjust based on your environment
+if not NLTK_DATA_DIR.exists():
+    NLTK_DATA_DIR.mkdir(parents=True, exist_ok=True)
+nltk.data.path.append(str(NLTK_DATA_DIR))
+
+# Download NLTK punkt_tab resource
+def download_nltk_data():
+    try:
+        # Check if punkt_tab is already downloaded
+        if not nltk.data.find('tokenizers/punkt_tab'):
+            logger.info("Downloading NLTK punkt_tab resource...")
+            nltk.download('punkt_tab', download_dir=str(NLTK_DATA_DIR), raise_on_error=True)
+            logger.info("Successfully downloaded NLTK punkt_tab resource")
+        else:
+            logger.info("NLTK punkt_tab resource already present")
+    except Exception as e:
+        logger.error(f"Failed to download NLTK punkt_tab resource: {str(e)}", exc_info=True)
+        raise RuntimeError(f"Cannot proceed without NLTK punkt_tab: {str(e)}")
+
+# Run the download at startup
+download_nltk_data()
+
+def configure_scheduler(loop):
+    logger.info("Configuring APScheduler...")
+    scheduler = AsyncIOScheduler(event_loop=loop)
+
+    def run_coroutine(coro):
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            return future.result()
+        except Exception as e:
+            logger.error(f"Error running coroutine: {str(e)}", exc_info=True)
+            raise
+
+    def get_today():
+        return datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d")
+
+    # Use WORKER_INDEX, TOTAL_*_WORKERS, and WORKER_TYPE from environment
+    worker_index = int(os.getenv("WORKER_INDEX", 0))
+    total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 3))
+    total_analysis_workers = int(os.getenv("TOTAL_ANALYSIS_WORKERS", 6))
+    worker_type = os.getenv("WORKER_TYPE", "scraping")  # Default to scraping if not set
+
+    # Schedule jobs based on worker type
+    if worker_type == "scraping":
+        scheduler.add_job(
+            lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
+            trigger=CronTrigger(hour=19, minute=10, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name=f"scraping_worker_{worker_index}",
+            replace_existing=True
+        )
+    elif worker_type == "analysis":
+        scheduler.add_job(
+            lambda: run_coroutine(analysis_main(worker_index, total_analysis_workers, get_today())),
+            trigger=CronTrigger(hour=21, minute=45, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name=f"analysis_worker_{worker_index}",
+            replace_existing=True
+        )
+    elif worker_type == "monitoring" and worker_index == 0:
+        scheduler.add_job(
+            lambda: run_coroutine(monitoring_main(0, 1, None)),
+            trigger=CronTrigger(hour=18, minute=0, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name="monitoring_worker_0",
+            replace_existing=True
+        )
+
+    for job in scheduler.get_jobs():
+        logger.info(f"Scheduled job: {job.name} with trigger {job.trigger}")
+    return scheduler
+
+async def main():
+    logger.info(f"Starting tasks_app.py with WORKER_INDEX={os.getenv('WORKER_INDEX', 0)}, WORKER_TYPE={os.getenv('WORKER_TYPE', 'scraping')}...")
+    loop = asyncio.get_event_loop()
+    scheduler = configure_scheduler(loop)
+    scheduler.start()
+    logger.info("APScheduler started successfully")
+
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Shutting down APScheduler...")
+        scheduler.shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(main())

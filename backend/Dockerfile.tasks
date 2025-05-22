@@ -1,0 +1,44 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY . /app
+
+RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    libnss3 \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libatspi2.0-0 \
+    wget \
+    xvfb \
+    poppler-utils \
+    tesseract-ocr \
+    antiword \
+    odt2txt \
+    unrar \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN pip install poetry && poetry config virtualenvs.create false
+RUN poetry install --only main
+RUN playwright install
+
+# Download NLTK resources
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger')"
+
+# Create logs directory with proper permissions at /app/logs
+RUN mkdir -p /app/logs && chmod -R 777 /app/logs
+
+CMD ["python", "-m", "minerva.tasks.tasks_app"]

@@ -1,0 +1,344 @@
+version: '3.8'
+
+services:
+  # API Service (Deployed on Droplet #1)
+  api:
+    image: ${REGISTRY}/${API_IMAGE_NAME}:${GITHUB_SHA}
+    command: uvicorn minerva.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_MONTHLY_PRICE_ID=${STRIPE_MONTHLY_PRICE_ID}
+      - STRIPE_ANNUAL_PRICE_ID=${STRIPE_ANNUAL_PRICE_ID}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+    networks:
+      - tasks_network
+    restart: always
+
+  # Log initialization for task workers (Deployed on Droplet #2)
+  log-init:
+    image: busybox
+    volumes:
+      - ./logs:/app/logs
+    command: sh -c "mkdir -p /app/logs && chmod -R 777 /app/logs"
+    restart: "no"
+
+  # Scraping Workers (Deployed on Droplet #2)
+  scraping-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  scraping-worker-1:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=1
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  scraping-worker-2:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=1
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  # Analysis Workers (Deployed on Droplet #2)
+  analysis-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-1:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=1
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-2:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=2
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-3:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=3
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-4:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=4
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-5:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=5
+      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+      - WORKER_TYPE=analysis
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  # Monitoring Worker (Deployed on Droplet #2)
+  monitoring-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_MONITORING_WORKERS=${TOTAL_MONITORING_WORKERS}
+      - WORKER_TYPE=monitoring
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  # Tender Analysis Scheduler Workers (Deployed on Droplet #2)
+  # tender-analysis-worker-0:
+  #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+  #   depends_on:
+  #     - log-init
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   environment:
+  #     - MONGODB_URI=${MONGODB_URI}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - PINECONE_API_KEY=${PINECONE_API_KEY}
+  #     - RESEND_API_KEY=${RESEND_API_KEY}
+  #     - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  #     - AWS_REGION=${AWS_REGION}
+  #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - TZ=Europe/Warsaw
+  #     - WORKER_INDEX=0
+  #     - WORKER_TYPE=tender_analysis_scheduler
+  #     - USER_ID=67c6cb742fee91862e135247
+  #     - ANALYSIS_ID=680eb345e1189b4f5ce9dd32
+  #   command: python -m minerva.tasks.tender_analysis_scheduler
+  #   networks:
+  #     - tasks_network
+  #   restart: always
+
+
+networks:
+  tasks_network:
+    driver: bridge

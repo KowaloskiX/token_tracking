@@ -1,0 +1,7 @@
+.env
+.env.local
+**/__pycache__/
+.DS_Store
+minerva/logs/
+*.local.rest
+temp_downloads
