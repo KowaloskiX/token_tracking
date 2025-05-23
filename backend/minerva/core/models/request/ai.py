@@ -77,13 +77,9 @@ class SearchResult(BaseModel):
     score: float
     source: str
 
-# Updated LLMSearchResponse with usage tracking
+# LLMSearchResponse
 class LLMSearchResponse(BaseModel):
     llm_response: str
     vector_search_results: List[SearchResult]  # Empty unless tools provide results
     llm_provider: str
     llm_model: str
-    usage: Optional[Dict[str, int]] = None  # Added for cost tracking
-    
-    class Config:
-        arbitrary_types_allowed = True

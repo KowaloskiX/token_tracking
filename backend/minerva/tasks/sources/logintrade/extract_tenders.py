@@ -289,6 +289,11 @@ class LoginTradeExtractor:
                 logging.info(f"[LoginTradeTenderExtractor] Start date = {start_dt}")
             except ValueError:
                 logging.error(f"[LoginTradeTenderExtractor] Invalid date format for 'start_date': {start_date_str}")
+        else:
+            # If no start_date provided, automatically set to one day before current date
+            # to account for publishing delays
+            start_dt = datetime.now() - timedelta(days=1)
+            logging.info(f"[LoginTradeTenderExtractor] No start_date provided, using one day before current date: {start_dt}")
 
         async with async_playwright() as p:
             # Launch the browser
@@ -394,11 +399,14 @@ class LoginTradeExtractor:
                             org_name = detail_info.get("org_name") or org_text
                             location = detail_info.get("location", "")
                             # We'll store the listing's publication date as "initiation_date"
-                            # or we can also store it in the tender object "publication_date" if needed.
-
+                            # Add one day to the publication date to account for LoginTrade's publishing delay
+                            # so the rest of the logic works as if they were published on the execute day
                             init_date_str = ""
                             if publication_dt:
-                                init_date_str = publication_dt.strftime("%Y-%m-%d")
+                                # Add one day to account for publishing delay
+                                adjusted_publication_dt = publication_dt + timedelta(days=1)
+                                init_date_str = adjusted_publication_dt.strftime("%Y-%m-%d")
+                                logging.debug(f"[LoginTradeTenderExtractor] Adjusted initiation date from {publication_dt.strftime('%Y-%m-%d')} to {init_date_str}")
 
                             # Convert submission_dt to standard format for the model
                             submission_deadline_str = ""
