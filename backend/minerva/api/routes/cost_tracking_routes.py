@@ -2,11 +2,14 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from minerva.core.middleware.auth.jwt import get_current_user
+from minerva.core.models.request.ai import LLMSearchRequest
 from minerva.core.models.user import User
 from minerva.core.models.cost_tracking import TenderAnalysisCost, UserCostSummary
 from minerva.core.services.cost_tracking_service import CostTrackingService
 from bson import ObjectId
 import logging
+
+from minerva.core.services.llm_cost_wrapper import LLMCostWrapper
 
 router = APIRouter()
 logger = logging.getLogger("minerva.cost_tracking")
@@ -236,3 +239,58 @@ async def _user_has_org_access(current_user: User, target_user_id: ObjectId) -> 
     target_user = await db.users.find_one({"_id": target_user_id})
     return (target_user and 
             target_user.get("org_id") == current_user.org_id)
+
+@router.post("/test-cost-tracking")
+async def test_cost_tracking(current_user: User = Depends(get_current_user)):
+    """Test endpoint to verify cost tracking is working"""
+    try:
+        from bson import ObjectId
+        
+        # Create a test cost record with a valid ObjectId
+        test_analysis_id = str(ObjectId())  # Generate a valid ObjectId for testing
+        cost_record_id = await CostTrackingService.create_analysis_cost_record(
+            user_id=str(current_user.id),
+            tender_analysis_id=test_analysis_id,
+            tender_id="test_tender",
+            analysis_session_id="test_session"
+        )
+        
+        # Make a simple LLM call with cost tracking
+        request = LLMSearchRequest(
+            query="What is 2+2?",
+            llm={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "temperature": 0,
+                "max_tokens": 50,
+                "system_message": "You are a helpful assistant.",
+                "stream": False
+            }
+        )
+        
+        response = await LLMCostWrapper.ask_llm_with_cost_tracking(
+            request=request,
+            cost_record_id=cost_record_id,
+            operation_type="test_operation",
+            operation_id="test_call"
+        )
+        
+        # Complete the cost record
+        await CostTrackingService.complete_analysis_cost_record(cost_record_id, "completed")
+        
+        # Get the cost details
+        cost_details = await CostTrackingService.get_detailed_analysis_cost(cost_record_id)
+        
+        return {
+            "message": "Cost tracking test completed",
+            "response": response.llm_response,
+            "cost_record_id": cost_record_id,
+            "test_analysis_id": test_analysis_id,
+            "total_cost": cost_details.total_cost_usd if cost_details else 0,
+            "total_tokens": cost_details.total_tokens if cost_details else 0,
+            "usage_info": getattr(response, 'usage', None)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cost tracking test: {str(e)}")
+        return {"error": str(e)}

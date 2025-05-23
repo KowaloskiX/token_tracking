@@ -124,9 +124,8 @@ class CostTrackingService:
             metadata=metadata
         )
         
-        # Update the cost record
         update_operations = {
-            f"${operation_type}_costs": operation_cost.dict(),
+            "$push": {f"{operation_type}_costs": operation_cost.dict()},
             "$inc": {
                 "total_input_tokens": input_tokens,
                 "total_output_tokens": output_tokens,
@@ -137,7 +136,7 @@ class CostTrackingService:
         
         await db.tender_analysis_costs.update_one(
             {"_id": ObjectId(cost_record_id)},
-            {"$push": update_operations}
+            update_operations
         )
         
         # Also update user's total tokens (existing functionality)

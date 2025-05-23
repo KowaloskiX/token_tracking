@@ -21,11 +21,11 @@ class LLMCostWrapper:
         try:
             response = await ask_llm_logic(request)
             
-            # Extract token usage if available
+            # Extract token usage from LLMSearchResponse
             if hasattr(response, 'usage') and response.usage:
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
-                output_tokens = getattr(response.usage, 'completion_tokens', 0)
-                model_name = request.llm.get('model', 'unknown')
+                input_tokens = response.usage.get('prompt_tokens', 0)
+                output_tokens = response.usage.get('completion_tokens', 0)
+                model_name = request.llm.model
                 
                 await CostTrackingService.track_operation_cost(
                     cost_record_id=cost_record_id,
@@ -36,6 +36,8 @@ class LLMCostWrapper:
                     operation_id=operation_id,
                     metadata=metadata
                 )
+                
+                logger.info(f"Tracked cost for {operation_type}: {input_tokens} input + {output_tokens} output tokens")
             else:
                 logger.warning(f"No usage information available for {operation_type}")
             
@@ -58,11 +60,11 @@ class LLMCostWrapper:
         try:
             response = await llm_rag_search_logic(request, tender_pinecone_id)
             
-            # Extract token usage if available
+            # Extract token usage from LLMSearchResponse
             if hasattr(response, 'usage') and response.usage:
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
-                output_tokens = getattr(response.usage, 'completion_tokens', 0)
-                model_name = request.llm.get('model', 'unknown')
+                input_tokens = response.usage.get('prompt_tokens', 0)
+                output_tokens = response.usage.get('completion_tokens', 0)
+                model_name = request.llm.model
                 
                 await CostTrackingService.track_operation_cost(
                     cost_record_id=cost_record_id,
@@ -73,6 +75,8 @@ class LLMCostWrapper:
                     operation_id=operation_id,
                     metadata=metadata or {}
                 )
+                
+                logger.info(f"Tracked cost for {operation_type}: {input_tokens} input + {output_tokens} output tokens")
             else:
                 logger.warning(f"No usage information available for {operation_type}")
             

@@ -1,5 +1,7 @@
 import re
 from uuid import uuid4
+from bson import ObjectId
+from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
 from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.models.file import FilePineconeConfig
@@ -353,11 +355,22 @@ class RAGManager:
     async def ai_filter_tenders(
         tender_analysis: TenderAnalysis,
         tender_matches: List[dict],
-        cost_record_id: str,
         current_user: Optional[User] = None
     ) -> TenderProfileMatches:
         # Memory log before AI tender filtering
         log_mem("ai_filter_tenders:start")
+        
+        # Create a temporary cost record for this AI filtering operation
+        if current_user:
+            temp_cost_record_id = await CostTrackingService.create_analysis_cost_record(
+                user_id=str(current_user.id),
+                tender_analysis_id=str(ObjectId()),
+                tender_id="ai_filtering_temp",
+                analysis_session_id=str(uuid4())
+            )
+        else:
+            temp_cost_record_id = None
+        
         system_message = (
             "You are a well-balanced system that identifies public tenders that best match the company profile and offer. "
             "Only returning relevant tenders."
@@ -387,7 +400,6 @@ class RAGManager:
                 "provider": "openai",
                 "model": "o4-mini",
                 "temperature": 0,
-                # "max_tokens": 16000,
                 "system_message": system_message,
                 "stream": False,
                 "response_format": {
@@ -407,7 +419,7 @@ class RAGManager:
                                             "name": {"type": "string"},
                                             "organization": {"type": "string"},
                                         },
-                                        "required": ["id", "name", "organization"],  # Added 'id' to required
+                                        "required": ["id", "name", "organization"],
                                         "additionalProperties": False
                                     }
                                 }
@@ -421,18 +433,24 @@ class RAGManager:
         )
 
         try:
-            response = await LLMCostWrapper.ask_llm_with_cost_tracking(
-            request=request_data,
-            cost_record_id=cost_record_id,
-            operation_type="ai_filtering",
-            operation_id="initial_filter",
-            metadata={
-                    "total_tenders": len(tender_matches),
-                    "company": tender_analysis.company_description[:100] + "..." if len(tender_analysis.company_description) > 100 else tender_analysis.company_description
-                }
-            )
+            if temp_cost_record_id:
+                response = await LLMCostWrapper.ask_llm_with_cost_tracking(
+                    request=request_data,
+                    cost_record_id=temp_cost_record_id,
+                    operation_type="ai_filtering",
+                    operation_id="initial_filter",
+                    metadata={
+                        "total_tenders": len(tender_matches),
+                        "company": tender_analysis.company_description[:100] + "..." if len(tender_analysis.company_description) > 100 else tender_analysis.company_description
+                    }
+                )
+                # Complete the temporary cost record
+                await CostTrackingService.complete_analysis_cost_record(temp_cost_record_id, "completed")
+            else:
+                # Fallback to direct LLM call without cost tracking
+                response = await ask_llm_logic(request_data)
+                
             parsed_output = json.loads(response.llm_response)
-            # logger.info(f"OpenAI response: {parsed_output}")  # Log raw response for debugging
 
             # Post-process to ensure 'id' is present (fallback if OpenAI omits it)
             tender_lookup = {match["id"]: match for match in tender_matches}
@@ -443,17 +461,17 @@ class RAGManager:
                     if match["id"] == "unknown":
                         logger.warning(f"Could not find ID for tender: {match['name']}")
 
+            # Update user token usage if current_user is provided
             if current_user and hasattr(response, "usage") and response.usage:
-                await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+                await update_user_token_usage(str(current_user.id), response.usage.get('total_tokens', 0))
 
             # Memory log after AI tender filtering
             log_mem("ai_filter_tenders:end")
             return TenderProfileMatches(**parsed_output)
         
         except Exception as e:
-            logger.error(f"Error filtering tenders with AI using ask_llm_logic: {str(e)}", exc_info=True)
+            logger.error(f"Error filtering tenders with AI: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to filter tenders: {str(e)}")
-
 
     async def analyze_subcriteria(self, subcriteria: str, tender_pinecone_id: str) -> Dict[str, Any]:
         """
