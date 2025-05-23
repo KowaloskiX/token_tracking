@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from uuid import uuid4
+from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -192,6 +194,7 @@ async def run_all_analyses_for_user_endpoint(
 
 @router.post("/test-tender-analysis", response_model=Dict[str, Any])
 async def run_tender_search(request: TenderSearchRequest, current_user: User = Depends(get_current_user)):
+    analysis_session_id = str(uuid4())
     try:
         analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(request.analysis_id)})
         if not analysis_doc:
@@ -230,6 +233,13 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_analysis.criteria = updated_criteria
         
         criteria_definitions = tender_analysis.criteria
+        
+        cost_record_id = await CostTrackingService.create_analysis_cost_record(
+            user_id=str(current_user.id),
+            tender_analysis_id=request.analysis_id,
+            tender_id="batch_analysis",  # For batch operations
+            analysis_session_id=analysis_session_id
+        )
 
         result = await analyze_relevant_tenders_with_our_rag(
             analysis_id=request.analysis_id,
@@ -243,6 +253,9 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             rag_index_name="files-rag-23-04-2025",
             criteria_definitions=criteria_definitions
         )
+
+        await CostTrackingService.complete_analysis_cost_record(cost_record_id, "completed")
+        cost_summary = await CostTrackingService.get_detailed_analysis_cost(cost_record_id)
         
         # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
@@ -250,7 +263,16 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
         return {
             "status": "Tender analysis completed",
             "result": result,
+            "cost_summary": {
+                "total_cost_usd": cost_summary.total_cost_usd if cost_summary else 0,
+                "total_tokens": cost_summary.total_tokens if cost_summary else 0,
+                "cost_record_id": cost_record_id
+            }
         }
+    except Exception as e:
+        if 'cost_record_id' in locals():
+            await CostTrackingService.complete_analysis_cost_record(cost_record_id, "failed")
+        raise
     except HTTPException as e:
         raise e
     except Exception as e:

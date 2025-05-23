@@ -12,6 +12,7 @@ from minerva.core.services.vectorstore.file_content_extract.base import Extracto
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
+from minerva.core.services.llm_cost_wrapper import LLMCostWrapper
 from openai import AssistantEventHandler
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -352,7 +353,8 @@ class RAGManager:
     async def ai_filter_tenders(
         tender_analysis: TenderAnalysis,
         tender_matches: List[dict],
-        current_user: Optional[User] = None  # Made optional to align with previous fix
+        cost_record_id: str,
+        current_user: Optional[User] = None
     ) -> TenderProfileMatches:
         # Memory log before AI tender filtering
         log_mem("ai_filter_tenders:start")
@@ -419,7 +421,16 @@ class RAGManager:
         )
 
         try:
-            response = await ask_llm_logic(request_data)
+            response = await LLMCostWrapper.ask_llm_with_cost_tracking(
+            request=request_data,
+            cost_record_id=cost_record_id,
+            operation_type="ai_filtering",
+            operation_id="initial_filter",
+            metadata={
+                    "total_tenders": len(tender_matches),
+                    "company": tender_analysis.company_description[:100] + "..." if len(tender_analysis.company_description) > 100 else tender_analysis.company_description
+                }
+            )
             parsed_output = json.loads(response.llm_response)
             # logger.info(f"OpenAI response: {parsed_output}")  # Log raw response for debugging
 
@@ -535,8 +546,13 @@ class RAGManager:
                 "error": str(e)
             }
 
-    async def analyze_tender_criteria_and_location(self, current_user: User, criteria: List[AnalysisCriteria], include_vector_results: bool = False) -> Dict[str, Any]:
-        # Memory log at start
+    async def analyze_tender_criteria_and_location(
+        self, 
+        current_user: User, 
+        criteria: List[AnalysisCriteria], 
+        cost_record_id: str,
+        include_vector_results: bool = False
+    ) -> Dict[str, Any]:        # Memory log at start
         log_mem(f"{self.tender_pinecone_id} analyze_tender_criteria_and_location:start")
         """
         Analyze multiple criteria + location concurrently, using a semaphore to limit concurrency.
@@ -742,7 +758,7 @@ class RAGManager:
                         es_context += f"\n{idx}. From {result['source']}:\n{result['text']}\n"
                     es_context += "\n</ELASTICSEARCH_RESULTS>\n"
                     prompt += es_context
-
+                
                 # Rest of your function remains the same
                 response_format = {
                     "type": "json_schema",
@@ -793,7 +809,18 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+                response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+                    request=request_data,
+                    cost_record_id=cost_record_id,
+                    operation_type="criteria_analysis",
+                    tender_pinecone_id=self.tender_pinecone_id,
+                    operation_id=criterion.name,
+                    metadata={
+                        "criterion_name": criterion.name,
+                        "criterion_weight": criterion.weight,
+                        "has_instruction": bool(getattr(criterion, 'instruction', None))
+                    }
+                )
                 parsed_output = json.loads(response.llm_response)
 
                 # Add ES results to the output if available
@@ -867,7 +894,14 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+                response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+                    request=request_data,
+                    cost_record_id=cost_record_id,
+                    operation_type="criteria_analysis",
+                    tender_pinecone_id=self.tender_pinecone_id,
+                    operation_id="location_analysis",
+                    metadata={"analysis_type": "location"}
+                )
                 parsed_output = json.loads(response.llm_response)
 
                 if include_vector_results and hasattr(response, 'vector_search_results'):
@@ -926,20 +960,20 @@ class RAGManager:
         return result
 
 
-    async def generate_tender_description(self) -> str:
+    async def generate_tender_description(self, cost_record_id: str) -> str:
+        """Enhanced version with cost tracking"""
         # Memory log before generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description:start")
-        # Create thread and add initial message
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:start")
+        
         prompt = (
-                    "Please summarize exactly what this tender is about in Polish (public tender is zamówienie publiczne in polish).."
-                    "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
-                    "If you detect that there is no enough data to create summary or it doesn't make sense resopond with 'Brak danych'."
-                    "Respond with just the complete summary. (do not include the confidence level indicator)"
-                )
+            "Please summarize exactly what this tender is about in Polish (public tender is zamówienie publiczne in polish).."
+            "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
+            "If you detect that there is no enough data to create summary or it doesn't make sense resopond with 'Brak danych'."
+            "Respond with just the complete summary. (do not include the confidence level indicator)"
+        )
 
         request_data = LLMRAGRequest(
             query=prompt,
-            # rag_query="Podaj wszystkie produkty/usługi i opis tego co jest przedmiotem zamówienia.",
             rag_query="Podaj opis tego co jest przedmiotem zamówienia.",
             vector_store={
                 "index_name": self.index_name,
@@ -955,13 +989,21 @@ class RAGManager:
                 "stream": False,
             }
         )
-        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+        
+        from minerva.core.services.llm_cost_wrapper import LLMCostWrapper
+        response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+            request=request_data,
+            cost_record_id=cost_record_id,
+            operation_type="description_generation",
+            tender_pinecone_id=self.tender_pinecone_id,
+            metadata={"prompt_type": "tender_description"}
+        )
 
         # Remove any '【...】' placeholders using regex
         description = re.sub(r'【.*?】', '', response.llm_response)
 
         # Memory log after generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description:end")
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:end")
 
         # Clean up and return
         return description.strip()

@@ -22,6 +22,7 @@ async def perform_criteria_analysis(
     rag_index_name: str,
     embedding_model: str,
     criteria: List[AnalysisCriteria],
+    cost_record_id: str,
     criteria_definitions: Optional[List[AnalysisCriteria]] = None,
     extraction_id: Optional[str] = None,
     analysis_id: Optional[str] = None,
@@ -54,6 +55,7 @@ async def perform_criteria_analysis(
         criteria_and_location_result = await rag_manager.analyze_tender_criteria_and_location(
             current_user=current_user,
             criteria=criteria,
+            cost_record_id=cost_record_id,
             include_vector_results=include_vector_results
         )
         
