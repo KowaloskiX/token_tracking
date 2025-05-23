@@ -291,19 +291,16 @@ async def _process_tender_pipeline(
                 return None
 
             # --- Description generation with cost tracking ---
-            description_text = ""
             desc_res = await generate_tender_description(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 rag_index_name=rag_index_name,
                 embedding_model=embedding_model,
-                cost_record_id=cost_record_id,  # NEW parameter
+                cost_record_id=cost_record_id,
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
             )
-            
-            if desc_res.get("status") == "success":
-                description_text = desc_res.get("tender_description", "")
+            description_text = desc_res.get("tender_description", "") if desc_res.get("status") == "success" else ""
 
             # --- Build final TenderAnalysisResult object (existing logic) ---
             tender_result_obj = create_tender_analysis_result_v2(
@@ -319,9 +316,7 @@ async def _process_tender_pipeline(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
             )
             
-            # Mark cost record as completed
-            if cost_record_id:
-                await CostTrackingService.complete_analysis_cost_record(cost_record_id, "completed")
+            await CostTrackingService.complete_analysis_cost_record(cost_record_id, "completed")
             
             return tender_result_obj
             

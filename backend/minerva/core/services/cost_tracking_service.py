@@ -11,34 +11,60 @@ logger = logging.getLogger("minerva.cost_tracking")
 
 class CostTrackingService:
     """Service for tracking and calculating LLM costs"""
-    
-    # Model pricing (as of 2024 - update these regularly)
-    MODEL_PRICING = {
+
+    # ---------------------------------------------------------------------
+    # MODEL PRICING TABLE (last updated 2025‑05‑23)
+    # ---------------------------------------------------------------------
+    #   • Numbers come from the official OpenAI pricing page as of May 23 2025.
+    #   • For models where OpenAI offers a «cached‑input» discount we list only
+    #     the standard *input* and *output* token rates because cached tokens
+    #     are already excluded before this service is called.
+    #   • All prices are USD per **million** tokens.
+    # ---------------------------------------------------------------------
+    MODEL_PRICING: Dict[str, LLMModelPricing] = {
         "gpt-4o": LLMModelPricing(
             model_name="gpt-4o",
-            input_cost_per_million=2.50,
-            output_cost_per_million=10.00
+            input_cost_per_million=5.00,
+            output_cost_per_million=20.00
         ),
         "gpt-4o-mini": LLMModelPricing(
             model_name="gpt-4o-mini",
-            input_cost_per_million=0.15,
-            output_cost_per_million=0.60
+            input_cost_per_million=0.60,
+            output_cost_per_million=2.40
         ),
-        "gpt-4.1": LLMModelPricing(  # Assuming this is a typo for gpt-4-turbo
+
+        "gpt-4.1": LLMModelPricing(
             model_name="gpt-4.1",
+            input_cost_per_million=2.00,
+            output_cost_per_million=8.00
+        ),
+        "gpt-4.1-mini": LLMModelPricing(
+            model_name="gpt-4.1-mini",
+            input_cost_per_million=0.40,
+            output_cost_per_million=1.60
+        ),
+        "gpt-4.1-nano": LLMModelPricing(
+            model_name="gpt-4.1-nano",
+            input_cost_per_million=0.10,
+            output_cost_per_million=0.40
+        ),
+
+        "o3": LLMModelPricing(
+            model_name="o3",
             input_cost_per_million=10.00,
-            output_cost_per_million=30.00
+            output_cost_per_million=40.00
         ),
-        "o4-mini": LLMModelPricing(  # Assuming this is o1-mini
+        "o4-mini": LLMModelPricing(
             model_name="o4-mini",
-            input_cost_per_million=3.00,
-            output_cost_per_million=12.00
+            input_cost_per_million=1.10,
+            output_cost_per_million=4.40
         ),
+
         "text-embedding-3-large": LLMModelPricing(
             model_name="text-embedding-3-large",
             input_cost_per_million=0.13,
-            output_cost_per_million=0.0  # Embeddings don't have output tokens
-        )
+            output_cost_per_million=0.0
+        ),
     }
     
     @classmethod
