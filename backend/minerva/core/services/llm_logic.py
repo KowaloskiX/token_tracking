@@ -3,7 +3,7 @@ from fastapi import HTTPException
 import json
 from minerva.core.models.request.ai import LLMSearchRequest, LLMSearchResponse, SearchResult
 from minerva.core.services.llm_providers.anthropic import AnthropicLLM
-from minerva.core.services.llm_providers.openai import OpenAILLM
+from minerva.core.services.llm_providers.openai import OpenAILLM, LLMResponse
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
 
@@ -121,14 +121,26 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
         response = await llm.generate_response(messages)
 
         if not request.llm.stream:
-            # Non-streaming response: return a complete response object
-            llm_response = response if isinstance(response, str) else ""
-            return LLMSearchResponse(
-                llm_response=llm_response,
+            # Handle LLMResponse wrapper for usage tracking
+            if isinstance(response, LLMResponse):
+                llm_response_text = response.content
+                usage_info = response.usage
+            else:
+                llm_response_text = response if isinstance(response, str) else ""
+                usage_info = None
+                
+            search_response = LLMSearchResponse(
+                llm_response=llm_response_text,
                 vector_search_results=vector_search_results,
                 llm_provider=request.llm.provider,
                 llm_model=request.llm.model
             )
+            
+            # Add usage information for cost tracking
+            if usage_info:
+                search_response.usage = usage_info
+                
+            return search_response
         else:
             # Streaming response: return an async generator
             async def stream_response():
@@ -174,16 +186,32 @@ async def ask_llm_logic(request: LLMSearchRequest):
         response = await llm.generate_response(message_list)
 
         if not request.llm.stream:
-            llm_response = response if isinstance(response, str) else ""
-            # If the response is a function call, adjust the output string accordingly
-            if isinstance(response, dict) and response.get("type") == "function_call":
-                llm_response = f"Function call: {response['name']} with arguments {response['arguments']}"
-            return LLMSearchResponse(
-                llm_response=llm_response,
+            # Handle LLMResponse wrapper for usage tracking
+            if isinstance(response, LLMResponse):
+                if response.response_type == "function_call":
+                    llm_response_text = response.content  # Already JSON string for function calls
+                else:
+                    llm_response_text = response.content
+                usage_info = response.usage
+            else:
+                llm_response_text = response if isinstance(response, str) else ""
+                usage_info = None
+                # Handle dict response (function call) for backward compatibility
+                if isinstance(response, dict) and response.get("type") == "function_call":
+                    llm_response_text = f"Function call: {response['name']} with arguments {response['arguments']}"
+                    
+            search_response = LLMSearchResponse(
+                llm_response=llm_response_text,
                 vector_search_results=vector_search_results,
                 llm_provider=request.llm.provider,
                 llm_model=request.llm.model
             )
+            
+            # Add usage information for cost tracking
+            if usage_info:
+                search_response.usage = usage_info
+                
+            return search_response
         else:
             async def stream_response():
                 async for chunk in response:

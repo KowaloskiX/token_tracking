@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from uuid import uuid4
+from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -192,6 +194,7 @@ async def run_all_analyses_for_user_endpoint(
 
 @router.post("/test-tender-analysis", response_model=Dict[str, Any])
 async def run_tender_search(request: TenderSearchRequest, current_user: User = Depends(get_current_user)):
+    analysis_session_id = str(uuid4())
     try:
         analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(request.analysis_id)})
         if not analysis_doc:
@@ -199,7 +202,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
 
         # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-05-22"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-05-21"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -230,7 +233,9 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_analysis.criteria = updated_criteria
         
         criteria_definitions = tender_analysis.criteria
-
+        
+        # Don't create a cost record here - let the analysis service handle it per tender
+        
         result = await analyze_relevant_tenders_with_our_rag(
             analysis_id=request.analysis_id,
             current_user=current_user,
@@ -243,6 +248,10 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             rag_index_name="files-rag-23-04-2025",
             criteria_definitions=criteria_definitions
         )
+
+        # Aggregate cost data from all tender cost records with the same analysis_session_id
+        # Note: you'll need to pass analysis_session_id to the analysis service to make this work
+        cost_summary = await get_analysis_session_cost_summary(analysis_session_id)
         
         # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
@@ -250,13 +259,49 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
         return {
             "status": "Tender analysis completed",
             "result": result,
+            "cost_summary": {
+                "total_cost_usd": cost_summary.get("total_cost_usd", 0),
+                "total_tokens": cost_summary.get("total_tokens", 0),
+                "analysis_session_id": analysis_session_id
+            }
         }
-    except HTTPException as e:
-        raise e
     except Exception as e:
         logger.error(f"Error running tender search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running tender search: {str(e)}")
-
+    
+async def get_analysis_session_cost_summary(analysis_session_id: str) -> Dict[str, Any]:
+    """Get aggregated cost summary for an analysis session"""
+    pipeline = [
+        {
+            "$match": {
+                "analysis_session_id": analysis_session_id,
+                "status": "completed"
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "total_cost_usd": {"$sum": "$total_cost_usd"},
+                "total_tokens": {"$sum": "$total_tokens"},
+                "total_records": {"$sum": 1}
+            }
+        }
+    ]
+    
+    result = await db.tender_analysis_costs.aggregate(pipeline).to_list(1)
+    
+    if result:
+        return {
+            "total_cost_usd": result[0]["total_cost_usd"],
+            "total_tokens": result[0]["total_tokens"],
+            "total_records": result[0]["total_records"]
+        }
+    else:
+        return {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_records": 0
+        }
 
 @router.post("/run_all_tender_analyses", response_model=Dict[str, Any])
 async def run_all_analyses():
