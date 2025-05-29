@@ -151,263 +151,54 @@ function splitCitationToFragments(citation: string): string[] {
 // Helper to create a loose regex that tolerates punctuation / hyphens between words
 const buildLooseRegex = (text: string) => buildGapRegex(text);
 
-// Helper to robustly highlight a citation trying multiple fuzzy strategies
+const normalizeCitationText = (text: string): string => {
+  return text
+    // Normalize different types of quotes
+    .replace(/["""'']/g, '"')
+    // Normalize different types of dashes and hyphens
+    .replace(/[‐‑‒–—―]/g, "-")
+    // Normalize whitespace
+    .replace(/\s+/g, ' ')
+    // Remove common PDF artifacts
+    .replace(/\u00A0/g, ' ') // non-breaking space
+    .replace(/\uFEFF/g, '') // byte order mark
+    .trim()
+    .toLowerCase();
+};
+
 async function highlightCitationFragments(
   citation: string,
   markInstance: any,
   excludeSelectors: string[]
 ): Promise<HTMLElement[]> {
+  
+  if (!citation?.trim()) return [];
 
-  // 1. Normalize citation and text content
-  const normalize = (str: string | null | undefined): string =>
-    (str || "").replace(/\s+/g, ' ').replace(/[‐‑‒–—―]/g, "-").trim().toLowerCase();
-
-  const citationNorm = normalize(citation);
-  // Prepare a "compressed" version of the citation without whitespace or hyphens
-  const citationComparable = citationNorm.replace(/[\s\-–—]+/g, "");
-
-  // Helper that removes whitespace & hyphens for robust substring comparison
-  const toComparable = (str: string | null | undefined) =>
-    normalize(str).replace(/[\s\-–—]+/g, "");
-  if (!citationNorm) return [];
-
-  console.log(`\n[highlightCitationFragments] Citation: "${citation}" (Normalized: "${citationNorm}")`);
-
-  // --- Strategy 1: Anchor and Expand FULL citation --- (7 words anchor)
-  const anchorWords = citationNorm.split(/\\s+/).slice(0, 7).join(" ");
-  if (anchorWords.length < 5) {
-      console.log(`[anchor-expand] Anchor too short, skipping.`);
-  } else {
-    const anchorRegexPattern = anchorWords
-      .replace(/[.*+?^${}()|[\\]]/g, "\\$&")
-      .replace(/\s+/g, "[\\s\\p{P}\\p{S}\\d]+");     
-    const anchorRegex = buildGapRegex(anchorWords);   // <– one-liner
-
-    console.log(`[anchor-expand] Trying anchor: "${anchorWords}", Regex:`, anchorRegex);
-
-    const anchorElements: HTMLElement[] = [];
-    const TEMP_ANCHOR_CLASS = "_temp-pdf-highlight-anchor";
-
-    await new Promise<void>(resolve => {
-        markInstance.markRegExp(anchorRegex, {
-            className: TEMP_ANCHOR_CLASS,
-            exclude: [...excludeSelectors, ".pdf-highlight"],
-            acrossElements: true,
-            each: (el: Element) => anchorElements.push(el as HTMLElement),
-            done: () => {
-                console.log(`[anchor-expand] Found ${anchorElements.length} potential anchor elements.`);
-                resolve();
-            },
-            noMatch: () => {
-                console.log(`[anchor-expand] No anchor elements found.`);
-                resolve();
-            }
-        });
-    });
-
-    // Try to expand from each found anchor element
-    for (const anchorEl of anchorElements) {
-        const currentNodes: HTMLElement[] = [anchorEl];
-        let collectedText = normalize(anchorEl.textContent);
-        let collectedComparable = toComparable(anchorEl.textContent);
-        let searchNode: Node | null = anchorEl;
-
-        // If citation fits in the anchor node, highlight and return
-        if (collectedComparable.includes(citationComparable)) {
-            console.log(`[anchor-expand] Full citation found within the anchor element itself.`);
-            markInstance.unmark({ className: TEMP_ANCHOR_CLASS });
-            anchorEl.classList.add("pdf-highlight");
-            return [anchorEl];
-        }
-
-        // Expand forward, concatenating siblings, until full citation is included
-        while (collectedText.length < citationNorm.length * 2) {
-            console.log(`[anchor-expand][loop] Current collectedComparable: "${collectedComparable}"`);
-            console.log(`[anchor-expand][loop] Target citationComparable: "${citationComparable}"`);
-            if (collectedComparable.includes(citationComparable)) {
-                // Found the whole citation, highlight all nodes
-                console.log(`[anchor-expand] Success! Found full citation match spanning ${currentNodes.length} elements.`);
-                markInstance.unmark({ className: TEMP_ANCHOR_CLASS });
-                currentNodes.forEach(n => n.classList.add("pdf-highlight"));
-                return currentNodes;
-            }
-            // Find next sibling span
-            let nextElem: HTMLElement | null = null;
-            let sibling: Node | null = searchNode?.nextSibling;
-            while(sibling) {
-                if (sibling instanceof HTMLElement && sibling.matches('span') && normalize(sibling.textContent)) {
-                    nextElem = sibling;
-                    break;
-                }
-                sibling = sibling.nextSibling;
-            }
-            if (!nextElem) {
-                console.log(`[anchor-expand][loop] No suitable next sibling found. Breaking expansion.`);
-                break;
-            }
-
-            const nextElemTextNorm = normalize(nextElem.textContent);
-            const nextElemComparable = toComparable(nextElemTextNorm);
-
-            console.log(`[anchor-expand][loop] Adding next element. Normalized Text: "${nextElemTextNorm}", Comparable: "${nextElemComparable}"`);
-
-            currentNodes.push(nextElem);
-            collectedText += " " + normalize(nextElem.textContent);
-            collectedComparable += toComparable(nextElem.textContent);
-
-            console.log(`[anchor-expand][loop] New collectedComparable: "${collectedComparable}"`);
-            searchNode = nextElem;
-        }
-        // Final check after loop (in case it matched at the end)
-        console.log(`[anchor-expand][final-check] Checking after loop. Collected: "${collectedComparable}", Target: "${citationComparable}"`);
-        if (collectedComparable.includes(citationComparable)) {
-            console.log(`[anchor-expand] Success! Found full citation match at end of expansion, ${currentNodes.length} elements.`);
-            markInstance.unmark({ className: TEMP_ANCHOR_CLASS });
-            currentNodes.forEach(n => n.classList.add("pdf-highlight"));
-            return currentNodes;
-        }
-        // If not found, try next anchor
-    }
-
-    // If loop finishes without returning, anchor-expand failed for all anchors
-    console.log(`[anchor-expand] Strategy failed to find a full match.`);
-    markInstance.unmark({ className: TEMP_ANCHOR_CLASS });
-  }
-
-  // --- Strategy 2: Fallback to Regex Patterns --- (Your existing logic)
-  console.log(`[Fallback] Using regex patterns strategy.`);
+  console.log(`[Citation] Processing: "${citation.substring(0, 80)}..."`);
+  
+  // Use EXACTLY the same approach as user search - no normalization, no complexity
+  const regex = buildGapRegex(citation.trim());
+  console.log(`[Citation] Using regex:`, regex);
+  
+  const collectedElements: HTMLElement[] = [];
+  
   return new Promise((resolve) => {
-    const collectedElements: HTMLElement[] = []; // Fresh array for fallback results
-
-    // Minimum words that must be captured by a pattern to consider it a successful match
-    const MIN_WORDS_ACCEPT = 5; // Adjust as needed
-
-    // Utility: run a single mark attempt for fallback
-    const runMarkFallback = (
-      regex: RegExp,
-      doneCallback: () => void
-    ) => {
-      markInstance.markRegExp(regex, {
-        className: "pdf-highlight", // Use final highlight class
-        exclude: excludeSelectors,
-        acrossElements: true,
-        each: (el: Element) => {
-          if (!collectedElements.includes(el as HTMLElement)) collectedElements.push(el as HTMLElement);
-        },
-        done: doneCallback,
-      });
-    };
-
-    // Build the list of regex patterns to try in priority order
-    const patterns: { regex: RegExp, type: string, label: string }[] = [];
-    const words = citationNorm.split(/\s+/); // Use normalized words
-
-    // 1️⃣ Full citation – whitespace tolerant (STRICT first)
-    patterns.push({ regex: buildLooseRegex(citationNorm), type: "full", label: "full-citation" });
-
-    // 2️⃣ Sentence / medium fragments
-    const sentenceFragments = splitCitationToFragments(citation); // Use original for splitting logic
-    sentenceFragments.forEach((frag, i) => {
-        const normFrag = normalize(frag);
-        if(normFrag) patterns.push({ regex: buildLooseRegex(normFrag), type: "fragment", label: `fragment-${i}` });
+    markInstance.markRegExp(regex, {
+      className: "pdf-highlight",
+      exclude: excludeSelectors,
+      acrossElements: true,
+      each: (el: Element) => {
+        collectedElements.push(el as HTMLElement);
+      },
+      done: () => {
+        console.log(`[Citation] Found ${collectedElements.length} elements`);
+        resolve(collectedElements);
+      },
+      noMatch: () => {
+        console.log(`[Citation] No match found`);
+        resolve(collectedElements);
+      },
     });
-
-    // 3️⃣ Microfragments
-    const MICRO_SIZE = 5;
-    for (let i = 0; i <= words.length - MICRO_SIZE; i++) {
-      const micro = words.slice(i, i + MICRO_SIZE).join(" ");
-      if (micro.split(/\s+/).length >= 4) {
-        patterns.push({ regex: buildLooseRegex(micro), type: "micro", label: `micro-${i}` });
-      }
-    }
-
-    // NOTE: Anchored regex fallback is removed as anchor-expand is primary
-
-    console.log(`[Fallback] Trying ${patterns.length} patterns in order:`, patterns.map(p => p.label));
-
-    // Recursive runner over patterns (adapted for fallback)
-    const tryPatternAt = (idx: number) => {
-      if (idx >= patterns.length) {
-        if (collectedElements.length === 0) {
-          const keywords = words.filter((w) => w.length >= 5).slice(0, 3);
-          console.log(`[Fallback] No patterns matched. Falling back to keywords:`, keywords);
-          if (keywords.length) {
-            let remaining = keywords.length;
-            keywords.forEach((kw) => {
-              runMarkFallback(buildLooseRegex(kw), () => {
-                remaining--;
-                if (remaining === 0) {
-                   console.log(`[Fallback][keywords] Matched ${collectedElements.length} elements after checking all keywords`);
-
-                  // Evaluate the combined match size before resolving
-                  const allTexts = collectedElements.map(el => normalize(el.textContent)).filter(Boolean);
-                  const combined = allTexts.join(" ").trim();
-                  const combinedWordCount = combined.split(/\s+/).filter(Boolean).length;
-
-                  if (combinedWordCount < MIN_WORDS_ACCEPT) {
-                    console.warn(`[Fallback][keywords] Total matched words (${combinedWordCount}) below threshold (${MIN_WORDS_ACCEPT}). Discarding all keyword matches.`);
-                    markInstance.unmark({ elements: collectedElements });
-                    resolve([]); // Return empty – treat as not found
-                  } else {
-                    resolve(collectedElements);
-                  }
-                }
-              });
-            });
-          } else {
-            console.log(`[Fallback][keywords] No keywords found`);
-            resolve(collectedElements);
-          }
-        } else {
-           console.log(`[Fallback] No more patterns, resolving with ${collectedElements.length} elements found.`);
-           resolve(collectedElements);
-        }
-        return;
-      }
-
-      const { regex, type, label } = patterns[idx];
-      const preMatchCount = collectedElements.length;
-
-      console.log(`[Fallback][pattern:${label}] Trying regex:`, regex);
-
-      runMarkFallback(regex, () => {
-        const postMatchCount = collectedElements.length;
-        const newElementsFound = postMatchCount > preMatchCount;
-
-        if (newElementsFound) {
-          const currentMatchElements = collectedElements.slice(preMatchCount);
-          const texts = currentMatchElements.map(el => normalize(el.textContent)).filter(Boolean);
-          const totalLen = texts.reduce((sum, text) => sum + text.length, 0);
-
-          // Calculate word count across the matched text
-          const combinedText = texts.join(" ").trim();
-          const wordCount = combinedText.split(/\s+/).filter(Boolean).length;
-
-          console.log(`[Fallback][pattern:${label}] Matched ${currentMatchElements.length} new elements, total text length: ${totalLen}`);
-          console.log(`[Fallback][pattern:${label}] First few matched texts:`, texts.slice(0, 3).map(t => `"${t.substring(0, 50)}..."`));
-
-          const MAX_LENGTH_MULTIPLIER = 1.5;
-          if (totalLen > citationNorm.length * MAX_LENGTH_MULTIPLIER || wordCount < MIN_WORDS_ACCEPT) {
-            console.warn(`[Fallback][pattern:${label}] ${wordCount < MIN_WORDS_ACCEPT ? 'Undersized' : 'Oversized'} match! Discarding (wordCount: ${wordCount}, totalLen: ${totalLen})`);
-            // Use markInstance.unmark on the specific elements found in this pass
-            markInstance.unmark({ elements: currentMatchElements });
-            collectedElements.splice(preMatchCount, currentMatchElements.length);
-
-            tryPatternAt(idx + 1);
-            return;
-          }
-
-          console.log(`[Fallback][pattern:${label}] Winning pattern! Resolving with ${collectedElements.length} elements.`);
-          resolve(collectedElements);
-
-        } else {
-            console.log(`[Fallback][pattern:${label}] No new elements matched.`);
-            tryPatternAt(idx + 1);
-        }
-      });
-    };
-
-    tryPatternAt(0);
   });
 }
 
@@ -767,11 +558,13 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
 function applyHighlights() {
   if (!containerRef.current || isLoading) return;
 
+  console.log(`[Highlighting] Starting - Search: "${searchQuery}", Citations: ${file.citations?.length || 0}`);
+  
   setIsProcessingHighlights(true);
   setLoadingPhase("highlighting");
   const markInstance = new Mark(containerRef.current);
 
-  // 0. Always start with a clean slate
+  // Always start with a clean slate
   markInstance.unmark({
     done: () => requestAnimationFrame(() => {
       if (!containerRef.current) {
@@ -781,12 +574,12 @@ function applyHighlights() {
       }
 
       /* ────────────────────────────────────────────────
-         USER SEARCH BRANCH
+         USER SEARCH BRANCH (unchanged - this works well)
          ──────────────────────────────────────────────── */
       if (searchQuery.trim()) {
+        console.log(`[User Search] Processing: "${searchQuery}"`);
         const regex = buildGapRegex(searchQuery);
 
-        // ► collect exactly ONE representative element per match
         const reps: HTMLElement[] = [];
         const seenIds = new Set<string>();
 
@@ -802,6 +595,7 @@ function applyHighlights() {
             }
           },
           done: () => {
+            console.log(`[User Search] Found ${reps.length} matches`);
             setUserSearchMatches(reps);
             const first = reps.length ? 0 : -1;
             setCurrentUserSearchMatchIndex(first);
@@ -817,80 +611,100 @@ function applyHighlights() {
             setLoadingPhase("complete");
           },
           noMatch: () => {
+            console.log(`[User Search] No matches found`);
             setUserSearchMatches([]);
             setCurrentUserSearchMatchIndex(-1);
             setIsProcessingHighlights(false);
             setLoadingPhase("complete");
           },
         });
-        return; // nothing else to do in this call
+        return;
       }
 
       /* ────────────────────────────────────────────────
-         everything below is unchanged: citation handling
+         CITATION HIGHLIGHTING BRANCH (simplified)
          ──────────────────────────────────────────────── */
-
       if (file.citations && file.citations.length > 0 && citationList.length === 0) {
-        // Build map only once per file
-        const newMap: Map<
-          string,
-          { fragments: string[]; elements: HTMLElement[] }
-        > = new Map();
-
+        console.log(`[Citations] Processing ${file.citations.length} citations ONE BY ONE`);
+        
+        const newMap: Map<string, { fragments: string[]; elements: HTMLElement[] }> = new Map();
         const unique = Array.from(new Set(file.citations.filter(Boolean)));
         setTotalCitationsToProcess(unique.length);
         setHighlightProgress(0);
 
-        const build = async () => {
-          for (let i = 0; i < unique.length; i++) {
-            const cit = unique[i];
-            const els = await highlightCitationFragments(
-              cit,
-              markInstance,
-              EXCLUDE_SELECTORS
-            );
-            if (els.length) {
+        const processCitationSequentially = async (index: number) => {
+          if (index >= unique.length) {
+            // All done
+            console.log(`[Citations] Final: ${newMap.size}/${unique.length} citations highlighted`);
+            
+            setCitationToElementsMap(newMap);
+            const list = Array.from(newMap.keys());
+            setCitationList(list);
+
+            const start = list.length ? 0 : -1;
+            setCurrentCitationIndex(start);
+
+            setUserSearchMatches([]);
+            setCurrentUserSearchMatchIndex(-1);
+
+            if (start !== -1) {
+              applyActiveCitationHighlight(start, list, newMap);
+            } else {
+              setIsProcessingHighlights(false);
+              setLoadingPhase("complete");
+            }
+            return;
+          }
+
+          const cit = unique[index];
+          console.log(`[Citations] Processing ${index + 1}/${unique.length}: "${cit.substring(0, 50)}..."`);
+          
+          // Add a small delay to ensure DOM is stable (like user typing delay)
+          await new Promise(resolve => setTimeout(resolve, 10));
+          
+          try {
+            const els = await highlightCitationFragments(cit, markInstance, EXCLUDE_SELECTORS);
+            
+            if (els.length > 0) {
               newMap.set(cit, {
                 fragments: splitCitationToFragments(cit),
                 elements: els,
               });
+              console.log(`[Citations] ✅ Success: ${els.length} elements`);
+            } else {
+              console.log(`[Citations] ❌ No matches found`);
+              
+              // Debug comparison with user search approach
+              console.log(`[Debug] Test this in user search: "${cit.substring(0, 100)}..."`);
+              
+              // Try to help debug by checking if text exists in DOM at all
+              if (containerRef.current) {
+                const pdfText = containerRef.current.textContent || '';
+                const firstFewWords = cit.split(' ').slice(0, 3).join(' ');
+                if (pdfText.includes(firstFewWords)) {
+                  console.log(`[Debug] ⚠️  First few words "${firstFewWords}" found in PDF - might be encoding issue`);
+                } else {
+                  console.log(`[Debug] ❌ First few words "${firstFewWords}" NOT found in PDF`);
+                }
+              }
             }
-            setHighlightProgress(i + 1);
+          } catch (error) {
+            console.error(`[Citations] Error processing citation ${index + 1}:`, error);
           }
-
-          setCitationToElementsMap(newMap);
-          const list = Array.from(newMap.keys());
-          setCitationList(list);
-
-          const start = list.length ? 0 : -1;
-          setCurrentCitationIndex(start);
-
-          // clear any search state
-          setUserSearchMatches([]);
-          setCurrentUserSearchMatchIndex(-1);
-
-          if (start !== -1) {
-            applyActiveCitationHighlight(start, list, newMap);
-          } else {
-            setIsProcessingHighlights(false);
-            setLoadingPhase("complete");
-          }
+          
+          setHighlightProgress(index + 1);
+          
+          // Process next citation
+          processCitationSequentially(index + 1);
         };
 
-        build();
-      } else if (currentCitationIndex !== -1 && citationList.length) {
-        applyActiveCitationHighlight(
-          currentCitationIndex,
-          citationList,
-          citationToElementsMap
-        );
-      } else {
-        setIsProcessingHighlights(false);
-        setLoadingPhase("complete");
+        // Start processing from first citation
+        processCitationSequentially(0);
       }
-    }),
-  });
-}
+      
+    }) // <- This closes the requestAnimationFrame callback
+  }); // <- This closes the markInstance.unmark call
+} // <- This closes the applyHighlights function
 
 
   // Function to highlight *only* the fragments of the currently selected citation
