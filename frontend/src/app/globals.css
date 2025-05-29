@@ -1,0 +1,242 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: var(--font-satoshi);
+}
+
+@layer base {
+  :root {
+    /* Main colors */
+    --background: 39 24% 93%; /* #F5EFE4 */
+    --foreground: 24 9% 30%; /* #534B46 - main text */
+    --body-text: 35 8% 37%; /* #696255 */
+    
+    /* Primary colors */
+    --primary: 17 21% 25%; /* #4E3B31 */
+    --primary-hover: 19 24% 63%; /* #B79C8A */
+    --primary-foreground: 39 24% 93%; /* #F5EFE4 - for text on primary */
+    
+    /* Secondary colors */
+    --secondary: 40 29% 91%; /* #EDE9E1 */
+    --secondary-hover: 39 32% 89%; /* #EDE6D9 */
+    --secondary-foreground: 24 9% 30%; /* #534B46 */
+    --secondary-border: 39 32% 89%; /* #E6DFC9 */
+
+    /* Component colors */
+    --card: 39 24% 93%;
+    --card-foreground: 24 9% 30%;
+    --popover: 39 24% 93%;
+    --popover-foreground: 24 9% 30%;
+    --muted: 39 32% 89%;
+    --muted-foreground: 35 8% 37%;
+    --accent: 19 24% 63%;
+    --accent-foreground: 24 9% 30%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 39 24% 93%;
+    --border: 39 32% 89%;
+    --input: 39 32% 89%;
+    --ring: 17 21% 25%;
+
+    /* Chart colors */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* Other variables */
+    --radius: 0.5rem;
+    --font-satoshi: 'Satoshi', sans-serif;
+
+    /* Sidebar colors */
+    --sidebar-background: 39 24% 93%;
+    --sidebar-foreground: 24 9% 30%;
+    --sidebar-primary: 17 21% 25%;
+    --sidebar-primary-foreground: 39 24% 93%;
+    --sidebar-accent: 39 32% 89%;
+    --sidebar-accent-foreground: 24 9% 30%;
+    --sidebar-border: 39 32% 89%;
+    --sidebar-ring: 17 21% 25%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+
+.truncate-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+
+
+.responsive-table {
+  width: 100%;
+}
+
+/* When the table container gets smaller, hide organization column */
+@container (max-width: 900px) {
+  .organization-column {
+    display: none;
+  }
+  .organization-fallback {
+    display: block;
+  }
+}
+
+/* When the table container gets even smaller, hide status column */
+@container (max-width: 700px) {
+  .status-column {
+    display: none;
+  }
+  .status-fallback {
+    display: block;
+  }
+}
+
+/* Custom styling for markdown content */
+.markdown-content {
+  @apply text-sm text-gray-600;
+}
+
+.markdown-content p {
+  @apply leading-normal;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  @apply pl-4 my-2;
+}
+
+.markdown-content ul {
+  @apply list-disc;
+}
+
+.markdown-content ol {
+  @apply list-decimal;
+}
+
+.markdown-content li,
+.markdown-content li[class*="my-0"],
+.markdown-content ul li,
+.markdown-content ol li {
+  @apply mb-2 relative !important;
+  display: list-item !important;
+}
+
+/* Style for paragraphs inside list items to avoid unwanted margins */
+.markdown-content li > p,
+.markdown-content li[class*="my-0"] > p {
+  @apply my-0 inline !important;
+}
+
+/* Ensure nested lists are properly indented and spaced */
+.markdown-content li > ul,
+.markdown-content li > ol {
+  @apply mt-2 mb-0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  @apply font-medium my-2;
+}
+
+.markdown-content h1 {
+  @apply text-lg;
+}
+
+.markdown-content h2 {
+  @apply text-base;
+}
+
+.markdown-content h3,
+.markdown-content h4 {
+  @apply text-sm;
+}
+
+.markdown-content code {
+  @apply bg-secondary/60 px-1 py-0.5 rounded text-xs font-mono;
+}
+
+.markdown-content pre {
+  @apply bg-secondary/60 p-2 rounded-md my-2 overflow-x-auto;
+}
+
+.markdown-content blockquote {
+  @apply border-l-4 border-secondary-border pl-2 my-2 italic bg-secondary/50 py-1 rounded-r;
+}
+
+.markdown-content a {
+  @apply text-blue-600 underline hover:text-blue-800;
+}
+
+.markdown-content strong {
+  @apply font-bold;
+}
+
+.markdown-content em {
+  @apply italic;
+}
