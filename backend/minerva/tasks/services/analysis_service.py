@@ -3,7 +3,6 @@
 import os
 import gc
 from uuid import uuid4
-from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.tasks.services.tender_criteria_analysis_service import perform_criteria_analysis
 from minerva.tasks.services.tender_description_filtering_service import perform_description_filtering
 from minerva.tasks.services.tender_description_generation_service import generate_tender_description
@@ -223,35 +222,21 @@ async def _process_tender_pipeline(
     shared_browser: Browser,
     tender_analysis: TenderAnalysis,
     analysis_id: str,
-    analysis_session_id: str,  # NEW parameter
     rag_index_name: str,
     embedding_model: str,
     current_user: Optional[User],
     criteria_definitions: List[AnalysisCriteria],
     semaphore: asyncio.Semaphore,
-    source_manager: TenderSourceManager,
-    cost_record_id: str
+    source_manager: TenderSourceManager
 ):
-    """End-to-end processing for one tender with cost tracking"""
+    """End-to-end processing for one tender: extraction → criteria → description."""
     async with semaphore:
         tender_id_str = original_metadata.get("details_url", "UNKNOWN_ID")
-        cost_record_id = None
-        
         try:
-            # Create cost tracking record for this tender
-            cost_record_id = await CostTrackingService.create_analysis_cost_record(
-                user_id=str(current_user.id),
-                tender_analysis_id=analysis_id,
-                tender_id=tender_id_str,
-                analysis_session_id=analysis_session_id
-            )
-            
             tender_dict = {
                 "id": original_metadata.get("details_url"),
                 **original_metadata
             }
-            
-            # File extraction (existing logic, no LLM costs here typically)
             extraction_res = await perform_file_extraction(
                 playwright_browser=shared_browser,
                 source_manager=source_manager,
@@ -264,46 +249,40 @@ async def _process_tender_pipeline(
                 check_existing_analysis=False,
                 use_elasticsearch=False
             )
-            
             if extraction_res.get("status") != "success":
                 logger.warning(f"Extraction failed/skipped for tender {tender_id_str}: {extraction_res.get('reason')}")
-                if cost_record_id:
-                    await CostTrackingService.complete_analysis_cost_record(cost_record_id, "failed")
                 return None
 
-            # --- Criteria analysis with cost tracking ---
+            # --- Criteria analysis ---
             criteria_res = await perform_criteria_analysis(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 rag_index_name=rag_index_name,
                 embedding_model=embedding_model,
                 criteria=tender_analysis.criteria,
                 criteria_definitions=criteria_definitions,
-                cost_record_id=cost_record_id,  # NEW parameter
                 extraction_id=extraction_res.get("extraction_id"),
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
             )
-            
             if criteria_res.get("status") != "success":
                 logger.warning(f"Criteria analysis not successful for tender {tender_id_str}: {criteria_res.get('reason')}")
-                if cost_record_id:
-                    await CostTrackingService.complete_analysis_cost_record(cost_record_id, "failed")
                 return None
 
-            # --- Description generation with cost tracking ---
+            # --- Description generation ---
+            description_text = ""
             desc_res = await generate_tender_description(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 rag_index_name=rag_index_name,
                 embedding_model=embedding_model,
-                cost_record_id=cost_record_id,
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
             )
-            description_text = desc_res.get("tender_description", "") if desc_res.get("status") == "success" else ""
+            if desc_res.get("status") == "success":
+                description_text = desc_res.get("tender_description", "")
 
-            # --- Build final TenderAnalysisResult object (existing logic) ---
+            # --- Build final TenderAnalysisResult object ---
             tender_result_obj = create_tender_analysis_result_v2(
                 original_tender_metadata=original_metadata,
                 processed_files_data=extraction_res.get("processed_files", {}),
@@ -316,15 +295,9 @@ async def _process_tender_pipeline(
                 criteria_definitions=criteria_definitions,
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
             )
-            
-            await CostTrackingService.complete_analysis_cost_record(cost_record_id, "completed")
-            
             return tender_result_obj
-            
         except Exception as exc:
             logger.error(f"Pipeline error for tender {tender_id_str}: {exc}", exc_info=True)
-            if cost_record_id:
-                await CostTrackingService.complete_analysis_cost_record(cost_record_id, "failed")
             return None
 
 async def analyze_relevant_tenders_with_our_rag(
@@ -341,19 +314,10 @@ async def analyze_relevant_tenders_with_our_rag(
     criteria_definitions: list = None,
     batch_size: int = 10
 ):
-    # Generate unique session ID for this analysis run
-    analysis_session_id = str(uuid4())
-    cost_record_id = await CostTrackingService.create_analysis_cost_record(
-        user_id=str(current_user.id),
-        tender_analysis_id=analysis_id,
-        tender_id="batch",                 # any sentinel text
-        analysis_session_id=analysis_session_id
-    )
-    
     playwright: Optional[Playwright] = None
     browser: Optional[Browser] = None
     try:
-        # Start Playwright and create shared browser (existing code)
+        # Start Playwright and create shared browser
         playwright = await async_playwright().start()
         browser = await playwright.chromium.launch(headless=True)
         logger.info(f"Playwright browser started. Concurrency set to: {batch_size}")
@@ -369,19 +333,18 @@ async def analyze_relevant_tenders_with_our_rag(
         if criteria_definitions is None or len(criteria_definitions) == 0:
             criteria_definitions = tender_analysis.criteria
 
-        # Initialize semaphore for concurrency control (existing code)
+        # Initialize semaphore for concurrency control
         semaphore = asyncio.Semaphore(batch_size)
-        # Embedding configuration (existing code)
+        # Embedding configuration
         embedding_config = EmbeddingConfig(
             index_name=tender_names_index_name,
             namespace="",
             embedding_model=embedding_model
         )
 
-        # Initialize source manager (existing code)
+        # Initialize source manager
         source_manager = TenderSourceManager(embedding_config)
 
-        # Search logic (existing code)
         search_results = await perform_tender_search(
                 search_phrase=tender_analysis.search_phrase,
                 tender_names_index_name=tender_names_index_name,
@@ -398,12 +361,15 @@ async def analyze_relevant_tenders_with_our_rag(
             
         all_tender_matches = search_results["all_tender_matches"]
         combined_search_matches = search_results["combined_search_matches"]
-        search_id = search_results.get("search_id")
+        search_id = search_results.get("search_id")  # Get the new search_id
 
-        # --- AI Filtering Logic (existing code) ---
+
+        # --- AI Filtering Logic (remains the same) ---
         logger.info(f"Combined search found {len(all_tender_matches)} unique tenders before AI filtering.")
         if not all_tender_matches:
             logger.info("No tenders found in either Pinecone or Elasticsearch.")
+            # Ensure cleanup happens even if we return early
+            # No pool cleanup needed now
             if browser: await browser.close()
             if playwright: await playwright.stop()
             return TenderSearchResponse(
@@ -419,22 +385,23 @@ async def analyze_relevant_tenders_with_our_rag(
             analysis_id=analysis_id,
             current_user=current_user,
             ai_batch_size=ai_batch_size,
-            cost_record_id=cost_record_id,
             search_id=search_id
         )
         
         all_filtered_tenders = filter_results["filtered_tenders"]
-        initial_ai_filter_id = filter_results.get("initial_ai_filter_id")
+        initial_ai_filter_id = filter_results.get("initial_ai_filter_id") # Get the ID
 
         if not all_filtered_tenders:
             logger.info("No tenders left after initial AI filtering.")
+            # Ensure cleanup happens even if we return early
+            # No pool cleanup needed now
             if browser: await browser.close()
             if playwright: await playwright.stop()
             return TenderSearchResponse(
                 query=tender_analysis.search_phrase,
                 total_tenders_analyzed=0,
                 analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id,
+                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
                 description_filter_id=None
             )
 
@@ -444,26 +411,23 @@ async def analyze_relevant_tenders_with_our_rag(
         async def build_pipeline_tasks():
             tasks = []
             for tender in all_filtered_tenders:
-                # FIXED: Use the correct variable name
-                original_metadata = combined_search_matches.get(tender.id, {}).get("metadata", {})
-                if not original_metadata:
+                original_meta = combined_search_matches.get(tender.id, {}).get("metadata", {})
+                if not original_meta:
                     logger.warning(f"Missing original metadata for tender {tender.id}; skipping")
                     continue
                 tasks.append(
                     _process_tender_pipeline(
                         tender_obj=tender,
-                        original_metadata=original_metadata,  # FIXED: correct variable name
+                        original_metadata=original_meta,
                         shared_browser=browser,
                         tender_analysis=tender_analysis,
                         analysis_id=analysis_id,
-                        analysis_session_id=analysis_session_id,  # NEW: add session ID
                         rag_index_name=rag_index_name,
                         embedding_model=embedding_model,
                         current_user=current_user,
                         criteria_definitions=criteria_definitions,
                         semaphore=semaphore,
-                        source_manager=source_manager,
-                        cost_record_id=cost_record_id
+                        source_manager=source_manager
                     )
                 )
             return tasks
@@ -481,23 +445,23 @@ async def analyze_relevant_tenders_with_our_rag(
                 query=tender_analysis.search_phrase,
                 total_tenders_analyzed=0,
                 analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id,
+                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
                 description_filter_id=None
             )
 
-        # --- Description-based filtering (existing logic) ---
+        # --- Description-based filtering ---
         description_filter_results = await perform_description_filtering(
             tender_analysis=tender_analysis,
             tender_results=successful_tender_results,
             analysis_id=analysis_id,
             current_user=current_user,
             ai_batch_size=ai_batch_size,
-            save_results=False,
+            save_results=False, # Set to True
         )
 
         filtered_tenders = description_filter_results.get("filtered_tenders", [])
         filtered_out_tenders = description_filter_results.get("filtered_out_tenders", [])
-        description_filter_id = description_filter_results.get("description_filter_id")
+        description_filter_id = description_filter_results.get("description_filter_id") # Get the ID
         logger.info(f"Description filtering finished. Got {len(filtered_tenders)} tenders.")
 
         if not filtered_tenders:
@@ -508,11 +472,11 @@ async def analyze_relevant_tenders_with_our_rag(
                 query=tender_analysis.search_phrase,
                 total_tenders_analyzed=0,
                 analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id,
-                description_filter_id=description_filter_id
+                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
+                description_filter_id=description_filter_id # Add ID here
             )
 
-        # (Save filtered_out logic - existing code)
+        # (Save filtered_out logic stays as is, we keep existing code block but change source list)
         description_filtered_tenders_results = []
         for filtered_out_tender in filtered_out_tenders:
             # Create file storage info while maintaining the existing processed_files structure
@@ -544,7 +508,7 @@ async def analyze_relevant_tenders_with_our_rag(
             processed_files = {
                 "successful_count": len(filtered_out_tender.uploaded_files),
                 "filenames": [file.filename for file in filtered_out_tender.uploaded_files],
-                "storage_info": file_storage_info
+                "storage_info": file_storage_info  # Add new field for storage info
             }
             
             description_filtered_tender = FilteredTenderAnalysisResult(
@@ -569,8 +533,7 @@ async def analyze_relevant_tenders_with_our_rag(
             await db.filtered_tender_analysis_results.insert_many(
                 [tender.model_dump(by_alias=True) for tender in description_filtered_tenders_results]
             )
-
-        # --- Final Save and Update Logic (existing code) ---
+        # --- Final Save and Update Logic (remains the same) ---
         for final_result in filtered_tenders:
             await db.tender_analysis_results.insert_one(final_result.dict(by_alias=True))
             logger.info(f"Successfully analyzed and saved tender: {final_result.id}")
@@ -588,8 +551,8 @@ async def analyze_relevant_tenders_with_our_rag(
             query=tender_analysis.search_phrase,
             total_tenders_analyzed=len(filtered_tenders),
             analysis_results=filtered_tenders,
-            initial_ai_filter_id=initial_ai_filter_id,
-            description_filter_id=description_filter_id
+            initial_ai_filter_id=initial_ai_filter_id, # Add ID here
+            description_filter_id=description_filter_id # Add ID here
         )
 
     except Exception as e:
@@ -599,7 +562,7 @@ async def analyze_relevant_tenders_with_our_rag(
             detail=f"Error in combined analysis: {str(e)}"
         )
     finally:
-        # --- Shared Browser Cleanup (existing code) ---
+        # --- Shared Browser Cleanup ---
         if browser:
             logger.info("Closing shared Playwright browser...")
             try:
@@ -618,6 +581,7 @@ async def analyze_relevant_tenders_with_our_rag(
         # Final garbage collection
         gc.collect()
         logger.info("Final garbage collection performed after analysis completed")
+
 
 
 async def run_all_tender_analyses(

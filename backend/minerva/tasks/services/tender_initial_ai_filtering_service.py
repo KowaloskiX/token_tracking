@@ -27,7 +27,6 @@ async def perform_ai_filtering(
     all_tender_matches: List[Dict[str, Any]],
     combined_search_matches: Dict[str, Any],
     analysis_id: str,
-    cost_record_id: str,
     current_user: Optional[User] = None,
     ai_batch_size: int = 50,
     save_results: bool = False,
@@ -63,10 +62,7 @@ async def perform_ai_filtering(
     async def filter_batch_with_ai(batch):
         try:
             filtered_batch = await RAGManager.ai_filter_tenders(
-                tender_analysis=tender_analysis,
-                tender_matches=batch,
-                current_user=current_user,
-                cost_record_id=cost_record_id,          # ⇦ keyword!
+                tender_analysis, batch, current_user
             )
             return filtered_batch.matches if filtered_batch and filtered_batch.matches else []
         except Exception as e:
@@ -96,10 +92,7 @@ async def perform_ai_filtering(
         logger.info(f"AI filtering reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")
     else:
         filtered_results = await RAGManager.ai_filter_tenders(
-            tender_analysis=tender_analysis,
-            tender_matches=all_tender_matches,
-            current_user=current_user,
-            cost_record_id=cost_record_id,          # ⇦ keyword!
+            tender_analysis, all_tender_matches, current_user
         )
         all_filtered_tenders = filtered_results.matches if filtered_results and filtered_results.matches else []
         logger.info(f"AI filtering reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")
