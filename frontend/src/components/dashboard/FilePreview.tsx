@@ -168,7 +168,7 @@ const normalizeCitationText = (text: string): string => {
 
 async function highlightCitationFragments(
   citation: string,
-  markInstance: any,
+  containerElement: HTMLElement,
   excludeSelectors: string[]
 ): Promise<HTMLElement[]> {
   
@@ -176,29 +176,33 @@ async function highlightCitationFragments(
 
   console.log(`[Citation] Processing: "${citation.substring(0, 80)}..."`);
   
-  // Use EXACTLY the same approach as user search - no normalization, no complexity
+  // Create a FRESH Mark.js instance for each citation to avoid state issues
+  const freshMarkInstance = new Mark(containerElement);
   const regex = buildGapRegex(citation.trim());
   console.log(`[Citation] Using regex:`, regex);
   
   const collectedElements: HTMLElement[] = [];
   
   return new Promise((resolve) => {
-    markInstance.markRegExp(regex, {
-      className: "pdf-highlight",
-      exclude: excludeSelectors,
-      acrossElements: true,
-      each: (el: Element) => {
-        collectedElements.push(el as HTMLElement);
-      },
-      done: () => {
-        console.log(`[Citation] Found ${collectedElements.length} elements`);
-        resolve(collectedElements);
-      },
-      noMatch: () => {
-        console.log(`[Citation] No match found`);
-        resolve(collectedElements);
-      },
-    });
+    // Add a small delay to let any previous Mark.js operations complete
+    setTimeout(() => {
+      freshMarkInstance.markRegExp(regex, {
+        className: "pdf-highlight",
+        exclude: excludeSelectors,
+        acrossElements: true,
+        each: (el: Element) => {
+          collectedElements.push(el as HTMLElement);
+        },
+        done: () => {
+          console.log(`[Citation] Found ${collectedElements.length} elements`);
+          resolve(collectedElements);
+        },
+        noMatch: () => {
+          console.log(`[Citation] No match found`);
+          resolve(collectedElements);
+        },
+      });
+    }, 25); // Small delay between citations
   });
 }
 
@@ -556,7 +560,7 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
   }
 
 function applyHighlights() {
-  if (!containerRef.current || isLoading) return;
+if (!containerRef.current || isLoading) return;
 
   console.log(`[Highlighting] Starting - Search: "${searchQuery}", Citations: ${file.citations?.length || 0}`);
   
@@ -566,7 +570,7 @@ function applyHighlights() {
 
   // Always start with a clean slate
   markInstance.unmark({
-    done: () => requestAnimationFrame(() => {
+    done: () => requestAnimationFrame(async () => {
       if (!containerRef.current) {
         setIsProcessingHighlights(false);
         setLoadingPhase("complete");
@@ -622,10 +626,16 @@ function applyHighlights() {
       }
 
       /* ────────────────────────────────────────────────
-         CITATION HIGHLIGHTING BRANCH (simplified)
+         CITATION HIGHLIGHTING BRANCH (IMPROVED)
          ──────────────────────────────────────────────── */
       if (file.citations && file.citations.length > 0 && citationList.length === 0) {
-        console.log(`[Citations] Processing ${file.citations.length} citations ONE BY ONE`);
+        console.log(`[Citations] Processing ${file.citations.length} citations with improved DOM readiness`);
+        
+        // WAIT FOR DOM TO BE FULLY READY
+        const isDomReady = await waitForTextLayerReady(3000);
+        if (!isDomReady) {
+          console.warn(`[Citations] DOM not ready, but proceeding anyway`);
+        }
         
         const newMap: Map<string, { fragments: string[]; elements: HTMLElement[] }> = new Map();
         const unique = Array.from(new Set(file.citations.filter(Boolean)));
@@ -659,11 +669,20 @@ function applyHighlights() {
           const cit = unique[index];
           console.log(`[Citations] Processing ${index + 1}/${unique.length}: "${cit.substring(0, 50)}..."`);
           
-          // Add a small delay to ensure DOM is stable (like user typing delay)
-          await new Promise(resolve => setTimeout(resolve, 10));
+          // LONGER delay and DOM check before each citation
+          await new Promise(resolve => setTimeout(resolve, 100)); // Increased from 10ms to 100ms
+          
+          // Double-check container is still available
+          if (!containerRef.current) {
+            console.error(`[Citations] Container lost during processing`);
+            setIsProcessingHighlights(false);
+            setLoadingPhase("complete");
+            return;
+          }
           
           try {
-            const els = await highlightCitationFragments(cit, markInstance, EXCLUDE_SELECTORS);
+            // Use the improved function with fresh Mark instance
+            const els = await highlightCitationFragments(cit, containerRef.current, EXCLUDE_SELECTORS);
             
             if (els.length > 0) {
               newMap.set(cit, {
@@ -672,19 +691,34 @@ function applyHighlights() {
               });
               console.log(`[Citations] ✅ Success: ${els.length} elements`);
             } else {
-              console.log(`[Citations] ❌ No matches found`);
+              console.log(`[Citations] ❌ No matches found - trying debug`);
               
-              // Debug comparison with user search approach
-              console.log(`[Debug] Test this in user search: "${cit.substring(0, 100)}..."`);
-              
-              // Try to help debug by checking if text exists in DOM at all
+              // ENHANCED DEBUGGING
               if (containerRef.current) {
                 const pdfText = containerRef.current.textContent || '';
-                const firstFewWords = cit.split(' ').slice(0, 3).join(' ');
-                if (pdfText.includes(firstFewWords)) {
-                  console.log(`[Debug] ⚠️  First few words "${firstFewWords}" found in PDF - might be encoding issue`);
-                } else {
-                  console.log(`[Debug] ❌ First few words "${firstFewWords}" NOT found in PDF`);
+                const firstTenWords = cit.split(' ').slice(0, 10).join(' ');
+                const firstFiveWords = cit.split(' ').slice(0, 5).join(' ');
+                const firstThreeWords = cit.split(' ').slice(0, 3).join(' ');
+                
+                console.log(`[Debug] Citation: "${cit}"`);
+                console.log(`[Debug] First 10 words: "${firstTenWords}"`);
+                console.log(`[Debug] First 5 words: "${firstFiveWords}"`);
+                console.log(`[Debug] First 3 words: "${firstThreeWords}"`);
+                console.log(`[Debug] PDF contains first 10 words:`, pdfText.includes(firstTenWords));
+                console.log(`[Debug] PDF contains first 5 words:`, pdfText.includes(firstFiveWords));
+                console.log(`[Debug] PDF contains first 3 words:`, pdfText.includes(firstThreeWords));
+                
+                // Try searching with shorter fragments
+                if (!pdfText.includes(firstTenWords) && pdfText.includes(firstFiveWords)) {
+                  console.log(`[Debug] 🔄 Retrying with first 5 words only`);
+                  const retryEls = await highlightCitationFragments(firstFiveWords, containerRef.current, EXCLUDE_SELECTORS);
+                  if (retryEls.length > 0) {
+                    newMap.set(cit, {
+                      fragments: splitCitationToFragments(firstFiveWords),
+                      elements: retryEls,
+                    });
+                    console.log(`[Debug] ✅ Retry success with shorter text: ${retryEls.length} elements`);
+                  }
                 }
               }
             }
@@ -704,7 +738,31 @@ function applyHighlights() {
       
     }) // <- This closes the requestAnimationFrame callback
   }); // <- This closes the markInstance.unmark call
-} // <- This closes the applyHighlights function
+}
+
+const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean> => {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    if (!containerRef.current) return false;
+    
+    // Check if text layer has meaningful content
+    const textContent = containerRef.current.textContent || '';
+    const textNodes = containerRef.current.querySelectorAll('[class*="textLayer"] span');
+    
+    // Make sure we have both text content and rendered text spans
+    if (textContent.trim().length > 100 && textNodes.length > 10) {
+      console.log(`[DOM Ready] Text layer ready: ${textContent.length} chars, ${textNodes.length} spans`);
+      return true;
+    }
+    
+    // Wait a bit before checking again
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  
+  console.warn(`[DOM Ready] Timeout waiting for text layer (${maxWaitMs}ms)`);
+  return false;
+};
 
 
   // Function to highlight *only* the fragments of the currently selected citation
@@ -750,48 +808,41 @@ function applyHighlights() {
 
 
   // Trigger highlighting logic when relevant dependencies change
-  useEffect(() => {
-    // Determine if content is ready
-    const isPdfReady = (file.type === "pdf" || fileUrl) && pagesRendered >= numPages && numPages > 0;
-    const isTextReady = file.type === "txt" && rawText;
-    const isConvertedDocReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && fileUrl && pagesRendered >= numPages && numPages > 0;
-    // Fallback for converted docs where only raw text is available
-    const isConvertedDocTextOnlyReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && !fileUrl && rawText && fileError;
+useEffect(() => {
+  // Determine if content is ready
+  const isPdfReady = (file.type === "pdf" || fileUrl) && pagesRendered >= numPages && numPages > 0;
+  const isTextReady = file.type === "txt" && rawText;
+  const isConvertedDocReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && fileUrl && pagesRendered >= numPages && numPages > 0;
+  const isConvertedDocTextOnlyReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && !fileUrl && rawText && fileError;
 
-    const isContentReady = isPdfReady || isTextReady || isConvertedDocReady || isConvertedDocTextOnlyReady;
+  const isContentReady = isPdfReady || isTextReady || isConvertedDocReady || isConvertedDocTextOnlyReady;
 
-    if (isContentReady && !isLoading && containerRef.current) {
-      console.log("Content ready, triggering applyHighlights. Search:", searchQuery, "Citations available:", !!file.citations?.length);
-      // Use a short delay to ensure the text layer DOM is fully available after page render
-      const highlightDelay = 50; // ms
-      const timeoutId = setTimeout(() => {
-          if (containerRef.current) { // Re-check containerRef inside timeout
-             applyHighlights();
-          }
-      }, highlightDelay);
-      // Cleanup function to clear timeout if dependencies change before it fires
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Clear highlights if content isn't ready
-       clearAllHighlightsAndState();
-       console.log("Content not ready or loading, clearing highlights. Ready states:", { isPdfReady, isTextReady, isConvertedDocReady, isConvertedDocTextOnlyReady, isLoading });
-    }
-
-    // Debounce or delay could be added here if performance is an issue on rapid changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-      searchQuery, // User input
-      // file.citations, // Citations array (rely on file object change)
-      file, // File object change detects new citations
-      pagesRendered, // PDF page rendering progress
-      numPages,      // PDF total pages
-      fileUrl,       // Indicates PDF/converted DOCX is loaded
-      rawText,       // Indicates text content is loaded (for TXT or fallback)
-      isLoading,     // Overall loading state
-      fileError      // Handle cases where only text fallback is available
-      // Do NOT depend on citationList, currentCitationIndex etc. here - those are results, not triggers.
-      // applyHighlights itself manages the state transitions based on searchQuery vs citations.
-  ]);
+  if (isContentReady && !isLoading && containerRef.current) {
+    console.log("Content ready, triggering IMPROVED applyHighlights. Search:", searchQuery, "Citations available:", !!file.citations?.length);
+    
+    // INCREASED delay to ensure the text layer DOM is fully available after page render
+    const highlightDelay = 500; // Increased from 50ms to 500ms
+    const timeoutId = setTimeout(() => {
+        if (containerRef.current) {
+           applyHighlights(); // Use the improved function
+        }
+    }, highlightDelay);
+    
+    return () => clearTimeout(timeoutId);
+  } else {
+    clearAllHighlightsAndState();
+    console.log("Content not ready or loading, clearing highlights. Ready states:", { isPdfReady, isTextReady, isConvertedDocReady, isConvertedDocTextOnlyReady, isLoading });
+  }
+}, [
+    searchQuery, 
+    file, 
+    pagesRendered, 
+    numPages,      
+    fileUrl,       
+    rawText,       
+    isLoading,     
+    fileError      
+]);
 
   // Function to scroll to a specific element
   function scrollToElement(element: HTMLElement | null, markAsActiveSearchMatch: boolean) {
