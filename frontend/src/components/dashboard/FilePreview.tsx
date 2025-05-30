@@ -29,17 +29,17 @@ const customStyles = `
   }
   /* Base highlight style (can be used for search or dimmed citations) */
   .pdf-highlight {
-    background-color: rgba(255, 255, 0, 0.3); /* Light yellow, less prominent */
+    background-color: rgb(214, 210, 136);
     border-radius: 2px;
   }
   /* Active citation highlight style */
   .pdf-highlight.active-citation {
-    background-color: yellow !important; /* Bright yellow, prominent */
-    box-shadow: 0 0 3px 1px rgba(255, 215, 0, 0.7); /* Optional glow */
+    background-color: yellow !important;
+    box-shadow: 0 0 3px 1px rgba(255, 215, 0, 0.7);
   }
-  /* Style for the specific element scrolled to (useful for search) */
-  .active-match {
-     outline: 1px solid red; /* Or different background */
+  /* Active search highlight style */
+  .pdf-highlight.active-search {
+    background-color: yellow !important;
   }
 `;
 
@@ -165,6 +165,46 @@ const normalizeCitationText = (text: string): string => {
     .trim()
     .toLowerCase();
 };
+
+async function highlightSearchQuery(
+  searchQuery: string,
+  containerElement: HTMLElement,
+  excludeSelectors: string[]
+): Promise<HTMLElement[]> {
+  
+  if (!searchQuery?.trim()) return [];
+
+  console.log(`[Search] Processing: "${searchQuery}"`);
+  
+  // Create a FRESH Mark.js instance for search to avoid state issues
+  const freshMarkInstance = new Mark(containerElement);
+  const regex = buildGapRegex(searchQuery.trim());
+  console.log(`[Search] Using regex:`, regex);
+  
+  const collectedElements: HTMLElement[] = [];
+  
+  return new Promise((resolve) => {
+    // Add a small delay to let any previous Mark.js operations complete
+    setTimeout(() => {
+      freshMarkInstance.markRegExp(regex, {
+        className: "pdf-highlight",
+        exclude: excludeSelectors,
+        acrossElements: true,
+        each: (el: Element) => {
+          collectedElements.push(el as HTMLElement);
+        },
+        done: () => {
+          console.log(`[Search] Found ${collectedElements.length} elements`);
+          resolve(collectedElements);
+        },
+        noMatch: () => {
+          console.log(`[Search] No match found`);
+          resolve(collectedElements);
+        },
+      });
+    }, 25); // Small delay between operations
+  });
+}
 
 async function highlightCitationFragments(
   citation: string,
@@ -550,6 +590,11 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
     if (containerRef.current) {
       const markInstance = new Mark(containerRef.current);
       markInstance.unmark();
+      // Also clear active highlight classes
+      const activeElements = containerRef.current.querySelectorAll('.pdf-highlight.active-citation, .pdf-highlight.active-search');
+      activeElements.forEach((el) => {
+        el.classList.remove('active-citation', 'active-search');
+      });
     }
     setUserSearchMatches([]);
     setCurrentUserSearchMatchIndex(-1);
@@ -643,50 +688,57 @@ if (!containerRef.current || isLoading) return;
       }
 
       /* ────────────────────────────────────────────────
-         USER SEARCH BRANCH (unchanged - this works well)
+         USER SEARCH BRANCH (IMPROVED - same as citations)
          ──────────────────────────────────────────────── */
-if (searchQuery.trim()) {
-  console.log(`[User Search] Processing: "${searchQuery}"`);
-  const regex = buildGapRegex(searchQuery);
+      if (searchQuery.trim()) {
+        console.log(`[User Search] Processing: "${searchQuery}"`);
+        
+        // WAIT FOR DOM TO BE FULLY READY (same as citations)
+        const isDomReady = await waitForTextLayerReady(3000);
+        if (!isDomReady) {
+          console.warn(`[User Search] DOM not ready, but proceeding anyway`);
+        }
+        
+        try {
+          // Use the improved search function with fresh Mark instance
+          const allElements = await highlightSearchQuery(searchQuery, containerRef.current, EXCLUDE_SELECTORS);
+          
+          if (allElements.length > 0) {
+            // Group elements that are close together (same logical match)
+            const groupedMatches = groupNearbyElements(allElements);
+            
+            console.log(`[User Search] Found ${groupedMatches.length} unique matches (from ${allElements.length} elements)`);
+            setUserSearchMatches(groupedMatches);
+            const first = groupedMatches.length ? 0 : -1;
+            setCurrentUserSearchMatchIndex(first);
 
-  const allElements: HTMLElement[] = [];
+            // Clear citation mode
+            setCitationToElementsMap(new Map());
+            setCitationList([]);
+            setCurrentCitationIndex(-1);
 
-  markInstance.markRegExp(regex, {
-    className: "pdf-highlight",
-    exclude: EXCLUDE_SELECTORS,
-    acrossElements: true,
-    each: (el) => {
-      allElements.push(el as HTMLElement);
-    },
-    done: () => {
-      // Group elements that are close together (same logical match)
-      const groupedMatches = groupNearbyElements(allElements);
-      
-      console.log(`[User Search] Found ${groupedMatches.length} unique matches (from ${allElements.length} elements)`);
-      setUserSearchMatches(groupedMatches);
-      const first = groupedMatches.length ? 0 : -1;
-      setCurrentUserSearchMatchIndex(first);
-
-      // clear citation mode
-      setCitationToElementsMap(new Map());
-      setCitationList([]);
-      setCurrentCitationIndex(-1);
-
-      if (first !== -1) scrollToElement(groupedMatches[first], true);
-
-      setIsProcessingHighlights(false);
-      setLoadingPhase("complete");
-    },
-    noMatch: () => {
-      console.log(`[User Search] No matches found`);
-      setUserSearchMatches([]);
-      setCurrentUserSearchMatchIndex(-1);
-      setIsProcessingHighlights(false);
-      setLoadingPhase("complete");
-    },
-  });
-  return;
-}
+            if (first !== -1) {
+              applyActiveSearchHighlight(first, groupedMatches);
+            } else {
+              setIsProcessingHighlights(false);
+              setLoadingPhase("complete");
+            }
+          } else {
+            console.log(`[User Search] No matches found`);
+            setUserSearchMatches([]);
+            setCurrentUserSearchMatchIndex(-1);
+            setIsProcessingHighlights(false);
+            setLoadingPhase("complete");
+          }
+        } catch (error) {
+          console.error(`[User Search] Error processing search:`, error);
+          setUserSearchMatches([]);
+          setCurrentUserSearchMatchIndex(-1);
+          setIsProcessingHighlights(false);
+          setLoadingPhase("complete");
+        }
+        return;
+      }
 
       /* ────────────────────────────────────────────────
          CITATION HIGHLIGHTING BRANCH (IMPROVED)
@@ -845,6 +897,33 @@ const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean>
   return false;
 };
 
+  // Function to highlight *only* the currently selected search result
+  function applyActiveSearchHighlight(
+    searchIndex: number,
+    currentSearchMatches: HTMLElement[]
+  ) {
+    if (!containerRef.current || searchIndex < 0 || searchIndex >= currentSearchMatches.length) {
+      setIsProcessingHighlights(false);
+      setLoadingPhase('complete');
+      return;
+    }
+
+    console.log(`Applying active search highlight for result ${searchIndex + 1}/${currentSearchMatches.length}`);
+
+    // 1️⃣ Remove previous active-search classes
+    const prevActives = containerRef.current.querySelectorAll('.pdf-highlight.active-search');
+    prevActives.forEach((el) => el.classList.remove('active-search'));
+
+    // 2️⃣ Add active class to current search match
+    const currentMatch = currentSearchMatches[searchIndex];
+    currentMatch.classList.add('active-search');
+
+    // 3️⃣ Scroll to the element
+    scrollToElement(currentMatch);
+
+    setIsProcessingHighlights(false);
+    setLoadingPhase('complete');
+  }
 
   // Function to highlight *only* the fragments of the currently selected citation
   function applyActiveCitationHighlight(
@@ -880,7 +959,7 @@ const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean>
 
       // 3️⃣ Scroll to first element
       if (citationData.elements.length > 0) {
-        scrollToElement(citationData.elements[0], false);
+        scrollToElement(citationData.elements[0]);
       }
 
       setIsProcessingHighlights(false);
@@ -926,20 +1005,9 @@ useEffect(() => {
 ]);
 
   // Function to scroll to a specific element
-  function scrollToElement(element: HTMLElement | null, markAsActiveSearchMatch: boolean) {
+  function scrollToElement(element: HTMLElement | null) {
     if (!element) return;
-
-    // Remove active class from previous search match if applicable
-    if (currentUserSearchMatchIndex >= 0 && userSearchMatches[currentUserSearchMatchIndex]) {
-        userSearchMatches[currentUserSearchMatchIndex].classList.remove("active-match");
-    }
-
     element.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    // Add specific class for the currently focused *search* match
-    if (markAsActiveSearchMatch) {
-        element.classList.add("active-match");
-    }
   }
 
   // --- Navigation ---
@@ -952,7 +1020,7 @@ useEffect(() => {
         nextIndex = 0; // Wrap around
       }
       setCurrentUserSearchMatchIndex(nextIndex);
-      scrollToElement(userSearchMatches[nextIndex], true);
+      applyActiveSearchHighlight(nextIndex, userSearchMatches);
     } else { // Navigate Citations
       if (citationList.length === 0) return;
       let nextIndex = currentCitationIndex + 1;
@@ -973,7 +1041,7 @@ useEffect(() => {
         prevIndex = userSearchMatches.length - 1; // Wrap around
       }
       setCurrentUserSearchMatchIndex(prevIndex);
-      scrollToElement(userSearchMatches[prevIndex], true);
+      applyActiveSearchHighlight(prevIndex, userSearchMatches);
     } else { // Navigate Citations
       if (citationList.length === 0) return;
       let prevIndex = currentCitationIndex - 1;
