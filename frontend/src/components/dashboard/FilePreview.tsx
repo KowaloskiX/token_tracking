@@ -734,7 +734,25 @@ if (!containerRef.current || isLoading) return;
 
         // Start processing from first citation
         processCitationSequentially(0);
+        return; // Important: return here to avoid the fallback below
       }
+
+      /* ────────────────────────────────────────────────
+         🚨 FIX: FALLBACK FOR NO SEARCH AND NO CITATIONS
+         ──────────────────────────────────────────────── */
+      // If we reach here, there's nothing to highlight
+      console.log(`[Highlighting] No search query or citations to process - finishing immediately`);
+      
+      // Clear any existing state
+      setUserSearchMatches([]);
+      setCurrentUserSearchMatchIndex(-1);
+      setCitationToElementsMap(new Map());
+      setCitationList([]);
+      setCurrentCitationIndex(-1);
+      
+      // Mark as complete
+      setIsProcessingHighlights(false);
+      setLoadingPhase("complete");
       
     }) // <- This closes the requestAnimationFrame callback
   }); // <- This closes the markInstance.unmark call
