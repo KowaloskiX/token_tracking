@@ -559,6 +559,71 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
     // Don't clear searchQuery here, it's user input
   }
 
+function groupNearbyElements(elements: HTMLElement[]): HTMLElement[] {
+  if (elements.length === 0) return [];
+
+  // Sort elements by their position (top to bottom, left to right)
+  const sortedElements = elements.slice().sort((a, b) => {
+    const rectA = a.getBoundingClientRect();
+    const rectB = b.getBoundingClientRect();
+    
+    const yDiff = rectA.top - rectB.top;
+    if (Math.abs(yDiff) > 2) { // Smaller threshold for same-line detection
+      return yDiff;
+    }
+    return rectA.left - rectB.left; // Same line, sort left to right
+  });
+
+  const groups: HTMLElement[][] = [];
+  let currentGroup: HTMLElement[] = [sortedElements[0]];
+
+  for (let i = 1; i < sortedElements.length; i++) {
+    const current = sortedElements[i];
+    const previous = sortedElements[i - 1];
+    
+    const currentRect = current.getBoundingClientRect();
+    const previousRect = previous.getBoundingClientRect();
+    
+    // Calculate distances
+    const verticalDistance = Math.abs(currentRect.top - previousRect.top);
+    const horizontalDistance = Math.abs(currentRect.left - previousRect.right);
+    
+    // Different conditions for same line vs. multi-line matches
+    let shouldGroup = false;
+    
+    if (verticalDistance <= 5) {
+      // Same line: elements should be close horizontally
+      shouldGroup = horizontalDistance <= 50;
+    } else if (verticalDistance <= 40) {
+      // Potentially next line: check if it's a line wrap scenario
+      const isNextLine = currentRect.top > previousRect.top; // Current is below previous
+      const isReasonableLineHeight = verticalDistance >= 10 && verticalDistance <= 40; // Reasonable line height
+      
+      // For line wrapping, the new line element should be to the left of or close to the previous element
+      // OR if the previous element was near the end of its line, the new element can start from the left
+      const couldBeLineWrap = isNextLine && isReasonableLineHeight && 
+        (currentRect.left <= previousRect.left + 100); // Allow some flexibility for line wrapping
+      
+      shouldGroup = couldBeLineWrap;
+    }
+    
+    if (shouldGroup) {
+      // Same logical match, add to current group
+      currentGroup.push(current);
+    } else {
+      // Different match, start a new group
+      groups.push(currentGroup);
+      currentGroup = [current];
+    }
+  }
+  
+  // Add the last group
+  groups.push(currentGroup);
+
+  // Return the first element from each group (representing the match)
+  return groups.map(group => group[0]);
+}
+
 function applyHighlights() {
 if (!containerRef.current || isLoading) return;
 
@@ -580,50 +645,48 @@ if (!containerRef.current || isLoading) return;
       /* ────────────────────────────────────────────────
          USER SEARCH BRANCH (unchanged - this works well)
          ──────────────────────────────────────────────── */
-      if (searchQuery.trim()) {
-        console.log(`[User Search] Processing: "${searchQuery}"`);
-        const regex = buildGapRegex(searchQuery);
+if (searchQuery.trim()) {
+  console.log(`[User Search] Processing: "${searchQuery}"`);
+  const regex = buildGapRegex(searchQuery);
 
-        const reps: HTMLElement[] = [];
-        const seenIds = new Set<string>();
+  const allElements: HTMLElement[] = [];
 
-        markInstance.markRegExp(regex, {
-          className: "pdf-highlight",
-          exclude: EXCLUDE_SELECTORS,
-          acrossElements: true,
-          each: (el) => {
-            const id = (el as HTMLElement).getAttribute("data-markjs");
-            if (id && !seenIds.has(id)) {
-              reps.push(el as HTMLElement);
-              seenIds.add(id);
-            }
-          },
-          done: () => {
-            console.log(`[User Search] Found ${reps.length} matches`);
-            setUserSearchMatches(reps);
-            const first = reps.length ? 0 : -1;
-            setCurrentUserSearchMatchIndex(first);
+  markInstance.markRegExp(regex, {
+    className: "pdf-highlight",
+    exclude: EXCLUDE_SELECTORS,
+    acrossElements: true,
+    each: (el) => {
+      allElements.push(el as HTMLElement);
+    },
+    done: () => {
+      // Group elements that are close together (same logical match)
+      const groupedMatches = groupNearbyElements(allElements);
+      
+      console.log(`[User Search] Found ${groupedMatches.length} unique matches (from ${allElements.length} elements)`);
+      setUserSearchMatches(groupedMatches);
+      const first = groupedMatches.length ? 0 : -1;
+      setCurrentUserSearchMatchIndex(first);
 
-            // clear citation mode
-            setCitationToElementsMap(new Map());
-            setCitationList([]);
-            setCurrentCitationIndex(-1);
+      // clear citation mode
+      setCitationToElementsMap(new Map());
+      setCitationList([]);
+      setCurrentCitationIndex(-1);
 
-            if (first !== -1) scrollToElement(reps[first], true);
+      if (first !== -1) scrollToElement(groupedMatches[first], true);
 
-            setIsProcessingHighlights(false);
-            setLoadingPhase("complete");
-          },
-          noMatch: () => {
-            console.log(`[User Search] No matches found`);
-            setUserSearchMatches([]);
-            setCurrentUserSearchMatchIndex(-1);
-            setIsProcessingHighlights(false);
-            setLoadingPhase("complete");
-          },
-        });
-        return;
-      }
+      setIsProcessingHighlights(false);
+      setLoadingPhase("complete");
+    },
+    noMatch: () => {
+      console.log(`[User Search] No matches found`);
+      setUserSearchMatches([]);
+      setCurrentUserSearchMatchIndex(-1);
+      setIsProcessingHighlights(false);
+      setLoadingPhase("complete");
+    },
+  });
+  return;
+}
 
       /* ────────────────────────────────────────────────
          CITATION HIGHLIGHTING BRANCH (IMPROVED)
