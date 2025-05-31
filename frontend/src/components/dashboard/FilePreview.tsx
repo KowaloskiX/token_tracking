@@ -19,8 +19,6 @@ declare global {
       prev: () => void;
       getMatchCount: () => number;
       getCurrentIndex: () => number;
-      getCurrentMode: () => 'search' | 'citation';
-      getCurrentCitation?: () => string | null;
     };
   }
 }
@@ -276,7 +274,8 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearchBar, setShowSearchBar] = useState<boolean>(true); // Keep visible
 
-  const textFileNavStateRef = useRef<{count: number, index: number, mode: 'search' | 'citation', currentCitation?: string}>({count: 0, index: -1, mode: 'search'});
+  const textFileNavStateRef = useRef<{count: number, index: number}>({count: 0, index: -1});
+
 
   // State for User Search Results
   const [userSearchMatches, setUserSearchMatches] = useState<HTMLElement[]>([]);
@@ -603,14 +602,8 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
 
   // Function to clear all highlights and reset related state
 function clearAllHighlightsAndState() {
-  // For text files, let the TextFileRenderer handle its own cleanup
+  // Never touch text file highlighting - it's completely isolated
   if (file.type === "txt") {
-    // Reset the main state variables that affect the UI
-    setUserSearchMatches([]);
-    setCurrentUserSearchMatchIndex(-1);
-    setCitationToElementsMap(new Map());
-    setCitationList([]);
-    setCurrentCitationIndex(-1);
     return;
   }
 
@@ -997,9 +990,8 @@ const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean>
 
   // Trigger highlighting logic when relevant dependencies change
 useEffect(() => {
-  // For text files, don't use the PDF highlighting logic
+  // COMPLETELY SKIP text files - they are handled in isolation
   if (file.type === "txt") {
-    // Text file highlighting is handled inside TextFileRenderer
     return;
   }
 
@@ -1123,227 +1115,97 @@ function handlePrev() {
 
   // --- Rendering Components ---
 
-const TextFileRenderer = ({ text, citations }: { text: string; citations?: string[] }) => {
+const TextFileRenderer = ({ text }: { text: string }) => {
   const textContentRef = useRef<HTMLDivElement>(null);
-  const localSearchMatchesRef = useRef<HTMLElement[]>([]);
-  const localCitationMatchesRef = useRef<HTMLElement[]>([]);
-  const localCitationListRef = useRef<string[]>([]);
+  const localMatchesRef = useRef<HTMLElement[]>([]);
   const localCurrentIndexRef = useRef<number>(-1);
-  const localCurrentModeRef = useRef<'search' | 'citation'>('search');
   const lastSearchQueryRef = useRef<string>("");
-  const lastCitationsRef = useRef<string[]>([]);
 
   // Function to update the counter display directly in the DOM
   const updateCounterDisplay = () => {
     const counterElement = document.querySelector('[data-text-file-counter]');
-    if (counterElement) {
-      const mode = localCurrentModeRef.current;
-      const matches = mode === 'search' ? localSearchMatchesRef.current : localCitationMatchesRef.current;
+    if (counterElement && localMatchesRef.current.length > 0) {
+      const count = localMatchesRef.current.length;
       const index = localCurrentIndexRef.current;
-      
-      if (matches.length > 0 && index >= 0) {
-        const modeText = mode === 'search' ? 'fragment' : 'cytat';
-        const modeTextPlural = mode === 'search' ? 'fragmentów' : 'cytatów';
-        counterElement.textContent = `${index + 1} / ${matches.length} ${matches.length === 1 ? modeText : modeTextPlural}`;
-      } else {
-        counterElement.textContent = '';
-      }
+      counterElement.textContent = `${index + 1} / ${count} fragmentów`;
     }
   };
 
-  // Function to apply active highlighting
-  const applyActiveHighlight = (index: number, matches: HTMLElement[], className: string) => {
-    if (!textContentRef.current || index < 0 || index >= matches.length) return;
-    
-    // Remove previous active classes
-    textContentRef.current.querySelectorAll('.pdf-highlight.active-search, .pdf-highlight.active-citation').forEach(el => {
-      el.classList.remove('active-search', 'active-citation');
-    });
-    
-    // Add active class to current match
-    if (matches[index]) {
-      matches[index].classList.add(className);
-      matches[index].scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  };
-
-  // Handle search highlighting
+  // Handle text highlighting - only highlights, doesn't manage navigation
   useEffect(() => {
     if (!textContentRef.current) return;
 
-    // Only process if search query actually changed
-    if (searchQuery === lastSearchQueryRef.current) return;
-
     const markInstance = new Mark(textContentRef.current);
-    
-    // If no search query, just clear search highlights but keep citations
-    if (!searchQuery.trim()) {
-      // Only unmark search highlights, keep citations
-      const searchElements = textContentRef.current.querySelectorAll('.pdf-highlight.active-search');
-      searchElements.forEach(el => el.classList.remove('active-search'));
-      
-      localSearchMatchesRef.current = [];
-      lastSearchQueryRef.current = "";
-      
-      // Switch to citation mode if citations exist
-      if (localCitationMatchesRef.current.length > 0) {
-        localCurrentModeRef.current = 'citation';
-        localCurrentIndexRef.current = 0;
-        applyActiveHighlight(0, localCitationMatchesRef.current, 'active-citation');
-      } else {
-        localCurrentIndexRef.current = -1;
-      }
-      
-      textFileNavStateRef.current = {
-        count: localCitationMatchesRef.current.length,
-        index: localCitationMatchesRef.current.length > 0 ? 0 : -1,
-        mode: 'citation'
-      };
-      
-      updateCounterDisplay();
-      return;
-    }
-
-    console.log(`[TextFile] NEW search: "${searchQuery}"`);
-
-    // Clear only search highlights, keep citation highlights
-    const searchElements = textContentRef.current.querySelectorAll('.pdf-highlight.active-search');
-    searchElements.forEach(el => {
-      if (!el.classList.contains('active-citation')) {
-        const markInstance = new Mark(el as HTMLElement);
-        markInstance.unmark();
-      } else {
-        el.classList.remove('active-search');
-      }
-    });
-
-    const regex = buildGapRegex(searchQuery);
-    const collectedElements: HTMLElement[] = [];
-
-    markInstance.markRegExp(regex, {
-      className: "pdf-highlight",
-      exclude: EXCLUDE_SELECTORS,
-      acrossElements: true,
-      each: (el: Element) => {
-        collectedElements.push(el as HTMLElement);
-      },
+    markInstance.unmark({
       done: () => {
-        console.log(`[TextFile Search] Found ${collectedElements.length} matches`);
-        
-        if (collectedElements.length > 0) {
-          const groupedMatches = groupNearbyElements(collectedElements);
-          localSearchMatchesRef.current = groupedMatches;
-          localCurrentIndexRef.current = 0;
-          localCurrentModeRef.current = 'search';
-          lastSearchQueryRef.current = searchQuery;
-          
-          textFileNavStateRef.current = {
-            count: groupedMatches.length,
-            index: 0,
-            mode: 'search'
-          };
-          
-          console.log(`[TextFile] Set search matches: ${groupedMatches.length}, index: 0`);
-          
-          // Apply active highlight to first match
-          applyActiveHighlight(0, groupedMatches, 'active-search');
-          updateCounterDisplay();
-        } else {
-          localSearchMatchesRef.current = [];
+        if (!searchQuery.trim()) {
+          localMatchesRef.current = [];
           localCurrentIndexRef.current = -1;
-          lastSearchQueryRef.current = searchQuery;
-          
-          textFileNavStateRef.current = {
-            count: 0,
-            index: -1,
-            mode: 'search'
-          };
-          
+          lastSearchQueryRef.current = "";
+          textFileNavStateRef.current = {count: 0, index: -1};
           updateCounterDisplay();
+          return;
         }
+
+        // Only process if search query actually changed
+        if (searchQuery === lastSearchQueryRef.current) return;
+
+        console.log(`[TextFile] NEW search: "${searchQuery}"`);
+
+        const regex = buildGapRegex(searchQuery);
+        const collectedElements: HTMLElement[] = [];
+
+        markInstance.markRegExp(regex, {
+          className: "pdf-highlight",
+          exclude: EXCLUDE_SELECTORS,
+          acrossElements: true,
+          each: (el: Element) => {
+            collectedElements.push(el as HTMLElement);
+          },
+          done: () => {
+            console.log(`[TextFile Search] Found ${collectedElements.length} matches`);
+            
+            if (collectedElements.length > 0) {
+              const groupedMatches = groupNearbyElements(collectedElements);
+              localMatchesRef.current = groupedMatches;
+              localCurrentIndexRef.current = 0; // Reset to first match for NEW search
+              lastSearchQueryRef.current = searchQuery;
+              
+              // Update the ref that other parts of the component can read
+              textFileNavStateRef.current = {count: groupedMatches.length, index: 0};
+              
+              console.log(`[TextFile] Set matches: ${groupedMatches.length}, index: 0`);
+              
+              // Apply active highlight to first match
+              textContentRef.current?.querySelectorAll('.pdf-highlight.active-search').forEach(el => {
+                el.classList.remove('active-search');
+              });
+              
+              if (groupedMatches[0]) {
+                groupedMatches[0].classList.add('active-search');
+                groupedMatches[0].scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+              
+              updateCounterDisplay();
+            } else {
+              localMatchesRef.current = [];
+              localCurrentIndexRef.current = -1;
+              lastSearchQueryRef.current = searchQuery;
+              textFileNavStateRef.current = {count: 0, index: -1};
+              updateCounterDisplay();
+            }
+          },
+        });
       },
     });
   }, [searchQuery, text]);
 
-  // Handle citation highlighting
-  useEffect(() => {
-    if (!textContentRef.current || !citations || citations.length === 0) {
-      localCitationMatchesRef.current = [];
-      localCitationListRef.current = [];
-      lastCitationsRef.current = [];
-      
-      // If no search query either, update the nav state
-      if (!searchQuery.trim()) {
-        textFileNavStateRef.current = {
-          count: 0,
-          index: -1,
-          mode: 'citation'
-        };
-        updateCounterDisplay();
-      }
-      return;
-    }
-
-    // Check if citations actually changed
-    const citationsChanged = JSON.stringify(citations) !== JSON.stringify(lastCitationsRef.current);
-    if (!citationsChanged) return;
-
-    console.log(`[TextFile] Processing ${citations.length} citations`);
-
-    const processCitations = async () => {
-      const markInstance = new Mark(textContentRef.current!);
-      const uniqueCitations = Array.from(new Set(citations.filter(Boolean)));
-      const allCitationElements: HTMLElement[] = [];
-      const processedCitations: string[] = [];
-
-      for (const citation of uniqueCitations) {
-        try {
-          const elements = await highlightCitationFragments(citation, textContentRef.current!, EXCLUDE_SELECTORS);
-          if (elements.length > 0) {
-            allCitationElements.push(...elements);
-            processedCitations.push(citation);
-            console.log(`[TextFile Citation] ✅ "${citation.substring(0, 30)}...": ${elements.length} elements`);
-          } else {
-            console.log(`[TextFile Citation] ❌ No matches for: "${citation.substring(0, 30)}..."`);
-          }
-        } catch (error) {
-          console.error(`[TextFile Citation] Error processing citation:`, error);
-        }
-      }
-
-      localCitationMatchesRef.current = groupNearbyElements(allCitationElements);
-      localCitationListRef.current = processedCitations;
-      lastCitationsRef.current = [...citations];
-
-      console.log(`[TextFile] Processed citations: ${localCitationMatchesRef.current.length} matches from ${processedCitations.length} citations`);
-
-      // If no active search, switch to citation mode
-      if (!searchQuery.trim() && localCitationMatchesRef.current.length > 0) {
-        localCurrentModeRef.current = 'citation';
-        localCurrentIndexRef.current = 0;
-        
-        textFileNavStateRef.current = {
-          count: localCitationMatchesRef.current.length,
-          index: 0,
-          mode: 'citation'
-        };
-        
-        applyActiveHighlight(0, localCitationMatchesRef.current, 'active-citation');
-        updateCounterDisplay();
-      }
-    };
-
-    processCitations();
-  }, [citations, text, searchQuery]);
-
-  // Set up navigation functions
+  // Set up navigation functions - completely separate from highlighting
   useEffect(() => {
     if (file.type === "txt") {
       window.textFileNavigation = {
         next: () => {
-          const mode = localCurrentModeRef.current;
-          const matches = mode === 'search' ? localSearchMatchesRef.current : localCitationMatchesRef.current;
-          
+          const matches = localMatchesRef.current;
           if (matches.length === 0) return;
           
           let nextIndex = localCurrentIndexRef.current + 1;
@@ -1351,24 +1213,24 @@ const TextFileRenderer = ({ text, citations }: { text: string; citations?: strin
             nextIndex = 0;
           }
           
-          console.log(`[TextFile Navigation] Next ${mode}: ${localCurrentIndexRef.current} -> ${nextIndex} (total: ${matches.length})`);
+          console.log(`[Navigation] Next: ${localCurrentIndexRef.current} -> ${nextIndex} (total: ${matches.length})`);
           localCurrentIndexRef.current = nextIndex;
+          textFileNavStateRef.current = {count: matches.length, index: nextIndex};
           
-          textFileNavStateRef.current = {
-            count: matches.length,
-            index: nextIndex,
-            mode: mode,
-            currentCitation: mode === 'citation' && localCitationListRef.current[nextIndex] ? localCitationListRef.current[nextIndex] : undefined
-          };
+          // Update active highlight
+          textContentRef.current?.querySelectorAll('.pdf-highlight.active-search').forEach(el => {
+            el.classList.remove('active-search');
+          });
           
-          const className = mode === 'search' ? 'active-search' : 'active-citation';
-          applyActiveHighlight(nextIndex, matches, className);
+          if (matches[nextIndex]) {
+            matches[nextIndex].classList.add('active-search');
+            matches[nextIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          
           updateCounterDisplay();
         },
         prev: () => {
-          const mode = localCurrentModeRef.current;
-          const matches = mode === 'search' ? localSearchMatchesRef.current : localCitationMatchesRef.current;
-          
+          const matches = localMatchesRef.current;
           if (matches.length === 0) return;
           
           let prevIndex = localCurrentIndexRef.current - 1;
@@ -1376,32 +1238,24 @@ const TextFileRenderer = ({ text, citations }: { text: string; citations?: strin
             prevIndex = matches.length - 1;
           }
           
-          console.log(`[TextFile Navigation] Prev ${mode}: ${localCurrentIndexRef.current} -> ${prevIndex} (total: ${matches.length})`);
+          console.log(`[Navigation] Prev: ${localCurrentIndexRef.current} -> ${prevIndex} (total: ${matches.length})`);
           localCurrentIndexRef.current = prevIndex;
+          textFileNavStateRef.current = {count: matches.length, index: prevIndex};
           
-          textFileNavStateRef.current = {
-            count: matches.length,
-            index: prevIndex,
-            mode: mode,
-            currentCitation: mode === 'citation' && localCitationListRef.current[prevIndex] ? localCitationListRef.current[prevIndex] : undefined
-          };
+          // Update active highlight
+          textContentRef.current?.querySelectorAll('.pdf-highlight.active-search').forEach(el => {
+            el.classList.remove('active-search');
+          });
           
-          const className = mode === 'search' ? 'active-search' : 'active-citation';
-          applyActiveHighlight(prevIndex, matches, className);
+          if (matches[prevIndex]) {
+            matches[prevIndex].classList.add('active-search');
+            matches[prevIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          
           updateCounterDisplay();
         },
-        getMatchCount: () => {
-          const mode = localCurrentModeRef.current;
-          return mode === 'search' ? localSearchMatchesRef.current.length : localCitationMatchesRef.current.length;
-        },
-        getCurrentIndex: () => localCurrentIndexRef.current,
-        getCurrentMode: () => localCurrentModeRef.current,
-        getCurrentCitation: () => {
-          if (localCurrentModeRef.current === 'citation' && localCurrentIndexRef.current >= 0) {
-            return localCitationListRef.current[localCurrentIndexRef.current] || null;
-          }
-          return null;
-        }
+        getMatchCount: () => localMatchesRef.current.length,
+        getCurrentIndex: () => localCurrentIndexRef.current
       };
     }
 
@@ -1410,7 +1264,7 @@ const TextFileRenderer = ({ text, citations }: { text: string; citations?: strin
         delete window.textFileNavigation;
       }
     };
-  }, [file.type]);
+  }, [file.type]); // Only depend on file.type
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 max-w-[900px] mx-auto">
@@ -1452,17 +1306,14 @@ const isTextFile = file.type === "txt";
 const isCitationMode = !searchQuery.trim() && citationList.length > 0 && !isTextFile;
 const isSearchMode = searchQuery.trim();
 
-// For text files, get the current mode from the navigation state
-const textFileMode = isTextFile && window.textFileNavigation ? window.textFileNavigation.getCurrentMode() : 'search';
-const textFileIsCitationMode = isTextFile && textFileMode === 'citation';
-const textFileIsSearchMode = isTextFile && textFileMode === 'search';
+// Use window functions directly, but forceUpdateCounter will trigger re-renders
+const textFileMatchCount = isTextFile && window.textFileNavigation ? window.textFileNavigation.getMatchCount() : 0;
+const textFileCurrentIndex = isTextFile && window.textFileNavigation ? window.textFileNavigation.getCurrentIndex() : -1;
 
 const displayCount = isTextFile ? textFileNavStateRef.current.count : (isCitationMode ? citationList.length : userSearchMatches.length);
 const currentIndex = isTextFile ? textFileNavStateRef.current.index : (isCitationMode ? currentCitationIndex : currentUserSearchMatchIndex);
 
-const currentCitationText = isTextFile && textFileIsCitationMode && window.textFileNavigation
-  ? window.textFileNavigation.getCurrentCitation?.() || null
-  : (isCitationMode && currentCitationIndex !== -1 ? citationList[currentCitationIndex] : null);
+const currentCitationText = isCitationMode && currentCitationIndex !== -1 ? citationList[currentCitationIndex] : null;
   
   
   // Helper function to get loading message based on the current phase
@@ -1495,8 +1346,7 @@ const currentCitationText = isTextFile && textFileIsCitationMode && window.textF
     !searchQuery.trim() &&
     !!file.citations &&
     file.citations.length > 0 &&
-    citationList.length === 0 &&
-    !isTextFile; // Text files handle citations internally
+    citationList.length === 0;
 
   // Show overlay while any loading OR citation processing is active
   const showLoadingOverlay =
@@ -1583,12 +1433,10 @@ const currentCitationText = isTextFile && textFileIsCitationMode && window.textF
   {isProcessingHighlights || isProcessingCitations ? (
      <span className="italic">Przetwarzanie...</span>
   ) : displayCount > 0 ? (
-     `${currentIndex + 1} / ${displayCount} ${
-       (isTextFile && textFileIsCitationMode) || (!isTextFile && isCitationMode) ? 'cytat' : 'fragment'
-     }${displayCount !== 1 ? 'ów' : ''}`
-  ) : isSearchMode || (isTextFile && textFileIsSearchMode) ? (
+     `${currentIndex + 1} / ${displayCount} ${isCitationMode ? 'cytat' : 'fragment'}${displayCount !== 1 ? 'ów' : ''}`
+  ) : isSearchMode ? (
      "No matches"
-  ) : file.citations && file.citations.length > 0 && citationList.length === 0 && !isProcessingCitations && !isTextFile ? (
+  ) : file.citations && file.citations.length > 0 && citationList.length === 0 && !isProcessingCitations ? (
      "Brak cytatów w pliku."
   ) : (
      "" // Nothing to show if no search/citations
@@ -1621,7 +1469,7 @@ const currentCitationText = isTextFile && textFileIsCitationMode && window.textF
              {/* Current Citation Text Display */}
              {currentCitationText && (
                 <div className="w-full text-xs bg-secondary p-2 mt-2 rounded border border-secondary-border text-primary overflow-hidden text-ellipsis whitespace-nowrap">
-                  <span className="font-medium">Citation {currentIndex + 1}: </span>
+                  <span className="font-medium">Citation {currentCitationIndex + 1}: </span>
                   <span className="italic">{currentCitationText}</span>
                 </div>
               )}
@@ -1681,8 +1529,8 @@ const currentCitationText = isTextFile && textFileIsCitationMode && window.textF
                     </p>
                  </div>
               )}
-               {/* Render the text content with citations support */}
-              <TextFileRenderer text={rawText} citations={file.citations} />
+               {/* Render the text content */}
+              <TextFileRenderer text={rawText} />
             </div>
           ) : !isLoading && !fileError ? ( // No preview available state (and not loading/error)
             <div className="flex items-center justify-center h-full">
