@@ -24,10 +24,12 @@ def extract_bzp_plan_fields(text: str) -> tuple[str|None, str|None]:
 
     # Normalize line endings
     lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    
     for i, line in enumerate(lines):
+
         if "2.9" in line and "Numer planu postępow" in line:
-            # Try to extract from same line
-            m = re.search(r"2\.9\.\)?\s*Numer planu postępow[aą]ń w BZP:\s*(.+)", line)
+            # Try to extract from same line - improved regex to handle various Polish characters
+            m = re.search(r"2\.9\.\)?\s*Numer planu postępow[aąeę]*[nń]*\s*w\s*BZP:\s*(.+)", line, re.IGNORECASE)
             if m and m.group(1).strip():
                 plan_num = m.group(1).strip()
             # Or from next line
@@ -35,14 +37,33 @@ def extract_bzp_plan_fields(text: str) -> tuple[str|None, str|None]:
                 next_line = lines[i+1].strip()
                 if next_line and not next_line.startswith("2.10"):
                     plan_num = next_line
+                    
         if "2.10" in line and "Identyfikator pozycji planu postępow" in line:
-            m = re.search(r"2\.10\.\)?\s*Identyfikator pozycji planu postępow[aą]ń:\s*(.+)", line)
+            # Try extraction from the same line first
+            m = re.search(r"2\.10\.\)?\s*Identyfikator pozycji planu postępow[aąeę]*[nń]*:\s*(.+)", line, re.IGNORECASE)
             if m and m.group(1).strip():
                 plan_id = m.group(1).strip()
-            elif i+1 < len(lines):
-                next_line = lines[i+1].strip()
-                if next_line and not next_line.startswith("2.11"):
-                    plan_id = next_line
+            else:
+                # Walk forward until we hit a non-empty line (skip possible blank line directly after 2.10)
+                look_ahead_idx = i + 1
+                while look_ahead_idx < len(lines):
+                    candidate_line = lines[look_ahead_idx].strip()
+                    # Skip empty lines
+                    if not candidate_line:
+                        look_ahead_idx += 1
+                        continue
+                    # Stop scanning if we already moved into next numbered section header (e.g. 2.11.) or a SEKCJA header
+                    if re.match(r"^2\.11\)|^SEKCJA", candidate_line, re.IGNORECASE):
+                        break
+                    # At this point we consider candidate_line as the one that should hold the identifier
+                    id_match = re.match(r"^(\d+(?:\.\d+)*)", candidate_line)
+                    if id_match:
+                        plan_id = id_match.group(1)
+                    else:
+                        # Fallback: take full candidate line
+                        plan_id = candidate_line
+                    break  # We processed a non-empty candidate line; exit loop
+                    
     return plan_num, plan_id
 
 

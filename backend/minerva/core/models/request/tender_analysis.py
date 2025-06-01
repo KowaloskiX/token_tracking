@@ -45,7 +45,8 @@ class TenderAnalysisUpdate(BaseModel):
     search_phrase: Optional[str] = None
     sources: List[str] = None
     criteria: Optional[List[AnalysisCriteria]] = None
-    org_id: Optional[str] = None  # Add this field
+    org_id: Optional[str] = None
+    assigned_users: Optional[List[str]] = None  # Add this field
 
 class TenderAnalysisResultUpdate(BaseModel):
     tender_url: Optional[str] = None

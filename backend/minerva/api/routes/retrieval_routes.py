@@ -176,7 +176,7 @@ async def ingest_elasticsearch(request: ElasticIngestionRequest):
             })
         
         # Perform bulk ingestion
-        success, failed = helpers.bulk(es_client, actions, stats_only=True)
+        success, failed = await helpers.async_bulk(es_client, actions, stats_only=True)
         
         return {
             "status": "success", 
@@ -211,7 +211,7 @@ async def search_by_date(
         }
         
         # Execute the search
-        result = es_client.search(
+        result = await es_client.search(
             index=index_name,
             body={
                 "query": query,
@@ -260,7 +260,7 @@ async def compare_search_results(request: CompareSearchRequest):
         }
         
         # Execute Elasticsearch search
-        es_result = es_client.search(
+        es_result = await es_client.search(
             index=request.index_name_es,
             body={
                 "query": es_query,

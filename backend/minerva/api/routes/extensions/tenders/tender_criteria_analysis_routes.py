@@ -25,6 +25,7 @@ class TenderCriteriaAnalysisRequest(BaseModel):
     save_results: Optional[bool] = False
     use_elasticsearch: Optional[bool] = False
     include_vector_results: Optional[bool] = False
+    language: Optional[str] = "polish"
 
 class TenderCriteriaAnalysisResponse(BaseModel):
     status: str
@@ -71,7 +72,8 @@ async def analyze_tender_criteria(
             current_user=current_user,
             save_results=request.save_results,
             include_vector_results=request.include_vector_results,
-            use_elasticsearch=request.use_elasticsearch
+            use_elasticsearch=request.use_elasticsearch,
+            language=request.language
         )
         
         return criteria_result

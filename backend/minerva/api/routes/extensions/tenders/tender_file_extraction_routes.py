@@ -29,6 +29,7 @@ class TenderExtractionRequest(BaseModel):
     analysis_id: Optional[str] = None
     save_results: Optional[bool] = False
     use_elasticsearch: Optional[bool] = False
+    check_existing_analysis: Optional[bool] = False
 
 class TenderExtractionResponse(BaseModel):
     status: str
@@ -92,7 +93,8 @@ async def extract_tender_files(
             analysis_id=request.analysis_id,
             current_user=current_user,
             save_results=request.save_results,
-            use_elasticsearch=request.use_elasticsearch
+            use_elasticsearch=request.use_elasticsearch,
+            check_existing_analysis=request.check_existing_analysis
         )
         
         if extraction_result["status"] == "error":

@@ -104,3 +104,40 @@ class User(BaseModel):
         if max_tokens is None:  # Enterprise users have unlimited tokens
             return True
         return (self.daily_tokens + token_count) <= max_tokens
+
+    async def can_leave_organization(self) -> tuple[bool, str]:
+        """
+        Check if user can safely leave their organization.
+        Returns (can_leave, reason_if_cannot)
+        """
+        if not self.org_id:
+            return False, "User is not in any organization"
+        
+        # Count total members in the organization
+        member_count = await db["users"].count_documents({"org_id": self.org_id})
+        
+        # If user is the only member, they can always leave
+        if member_count <= 1:
+            return True, ""
+        
+        # If user is not an admin, they can leave
+        if self.role != UserRole.ADMIN:
+            return True, ""
+        
+        # If user is admin, check if there are other admins
+        admin_count = await db["users"].count_documents({
+            "org_id": self.org_id,
+            "role": "admin",
+            "_id": {"$ne": self.id}  # Exclude current user
+        })
+        
+        if admin_count == 0:
+            return False, "Cannot leave as you are the only admin. Please assign another admin first."
+        
+        return True, ""
+
+    async def get_organization_member_count(self) -> int:
+        """Get the number of members in the user's organization"""
+        if not self.org_id:
+            return 0
+        return await db["users"].count_documents({"org_id": self.org_id})

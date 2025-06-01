@@ -77,21 +77,13 @@ class FileExtractionService:
         if not extractor:
             raise ValueError(f"No extractor registered for file type: {extension}")
 
-        all_chunks = list(extractor.extract_file_content(file_path))
-        if not all_chunks:
-            logger.warning(f"No content extracted from {file_path}")
-            # Explicitly release extractor if it was created and no chunks found
-            extractor = None
-            gc.collect()
-            return []
-
         processed_files: List[Tuple[bytes, str, str, bytes, str]] = []
         # original_bytes = file_path.read_bytes() # MODIFIED: Remove eager loading
         original_filename = file_path.name
         original_bytes_top_level = None  # MODIFIED: Initialize to None
         read_top_level_bytes_once = False # MODIFIED: Flag to read only once
 
-        for chunk in all_chunks:
+        for chunk in extractor.extract_file_content(file_path):
             extracted_filename = chunk.metadata.get("filename", original_filename) # Use original_filename as fallback
             preview_chars = chunk.metadata.get("preview_chars", "")
             extracted_bytes = chunk.content.encode("utf-8", errors="replace")

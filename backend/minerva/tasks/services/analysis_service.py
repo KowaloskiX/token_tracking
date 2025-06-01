@@ -105,6 +105,7 @@ def create_tender_analysis_result_v2(
     criteria_definitions: list, 
     tender_pinecone_id: str,
     tender_description: Optional[str] = None,
+    language: Optional[str] = None
 ) -> TenderAnalysisResult:
     # Map criteria name to AnalysisCriteria definition
     criteria_defs_map = {c.name: c for c in criteria_definitions}
@@ -213,7 +214,8 @@ def create_tender_analysis_result_v2(
         tender_description=tender_description,
         pinecone_config=pinecone_config,
         tender_pinecone_id=tender_pinecone_id,
-        updates=[]
+        updates=[],
+        language=language
     )
 
 async def _process_tender_pipeline(
@@ -227,7 +229,8 @@ async def _process_tender_pipeline(
     current_user: Optional[User],
     criteria_definitions: List[AnalysisCriteria],
     semaphore: asyncio.Semaphore,
-    source_manager: TenderSourceManager
+    source_manager: TenderSourceManager,
+    language: str = "polish"
 ):
     """End-to-end processing for one tender: extraction → criteria → description."""
     async with semaphore:
@@ -247,7 +250,7 @@ async def _process_tender_pipeline(
                 current_user=current_user,
                 save_results=False,
                 check_existing_analysis=False,
-                use_elasticsearch=False
+                use_elasticsearch=True
             )
             if extraction_res.get("status") != "success":
                 logger.warning(f"Extraction failed/skipped for tender {tender_id_str}: {extraction_res.get('reason')}")
@@ -264,6 +267,9 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
+                language=language,
+                original_tender_metadata=original_metadata,
+                use_elasticsearch=True
             )
             if criteria_res.get("status") != "success":
                 logger.warning(f"Criteria analysis not successful for tender {tender_id_str}: {criteria_res.get('reason')}")
@@ -278,6 +284,7 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
+                language=language
             )
             if desc_res.get("status") == "success":
                 description_text = desc_res.get("tender_description", "")
@@ -294,6 +301,7 @@ async def _process_tender_pipeline(
                 pinecone_config=QueryConfig(index_name=rag_index_name, namespace="", embedding_model=embedding_model),
                 criteria_definitions=criteria_definitions,
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
+                language=language
             )
             return tender_result_obj
         except Exception as exc:
@@ -312,7 +320,8 @@ async def analyze_relevant_tenders_with_our_rag(
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 10
+    batch_size: int = 10,
+    language: str = "polish"
 ):
     playwright: Optional[Playwright] = None
     browser: Optional[Browser] = None
@@ -329,6 +338,9 @@ async def analyze_relevant_tenders_with_our_rag(
             return TenderAnalysis(**tender_analysis_doc)
 
         tender_analysis = await initialize_services()
+
+        if tender_analysis.language:
+            language = tender_analysis.language
 
         if criteria_definitions is None or len(criteria_definitions) == 0:
             criteria_definitions = tender_analysis.criteria
@@ -427,7 +439,8 @@ async def analyze_relevant_tenders_with_our_rag(
                         current_user=current_user,
                         criteria_definitions=criteria_definitions,
                         semaphore=semaphore,
-                        source_manager=source_manager
+                        source_manager=source_manager,
+                        language=language
                     )
                 )
             return tasks

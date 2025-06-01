@@ -30,7 +30,7 @@ def log_mem(tag: str = ""):
         logger.debug(f"Unable to log memory usage for tag '{tag}': {mem_exc}")
 
 # Configurable max parallel file tasks (per tender)
-MAX_PARALLEL_FILE_TASKS = int(os.getenv("MAX_PARALLEL_FILE_TASKS", "20"))
+MAX_PARALLEL_FILE_TASKS = int(os.getenv("MAX_PARALLEL_FILE_TASKS", "28"))
 
 # Helper function to sanitize filenames
 
@@ -82,14 +82,20 @@ async def perform_file_extraction(
                 logger.info(f"[{tender_id_str}] Found existing analysis. Reusing file extraction results.")
                 
                 # Gather the necessary data from the existing analysis
-                are_files_in_correct_index = True
+                are_files_ready_to_reuse = True
                 successful_files = []
                 for file in existing_analysis.get("uploaded_files", []):
                     if file.get("file_pinecone_config").get("query_config").get("index_name") != rag_index_name:
                         logger.info(f"[{tender_id_str}] Skipping files reuse {file.get('filename')} because it is not in the correct pinecone index.")
-                        are_files_in_correct_index = False
+                        are_files_ready_to_reuse = False
                         break
 
+                    if use_elasticsearch:
+                        if not file.get("file_pinecone_config").get("elasticsearch_indexed", False):
+                            logger.info(f"[{tender_id_str}] Skipping files reuse {file.get('filename')} because it is not in elastic search index.")
+                            are_files_ready_to_reuse = False
+                            break
+                        
                     successful_files.append({
                         "filename": file.get("filename"),
                         "type": file.get("type"),
@@ -101,7 +107,7 @@ async def perform_file_extraction(
                         "file_pinecone_config": file.get("file_pinecone_config")
                     })
                 
-                if are_files_in_correct_index:
+                if are_files_ready_to_reuse:
                     processed_files_summary = {
                         'successful_files': successful_files,
                         'total_processed': len(successful_files),
@@ -208,6 +214,7 @@ async def perform_file_extraction(
         tender_name = tender.get('name', "")
         tender_pinecone_id = f"{sanitize_id(tender_name)}_{uuid4()}"
         rag_manager = RAGManager(rag_index_name, namespace, embedding_model, tender_pinecone_id, use_elasticsearch=use_elasticsearch)
+        await rag_manager.ensure_elasticsearch_index_initialized()
         
         # Extract files
         logger.info(f"[{tender_id_str}] Starting file extraction from {details_url}")
@@ -272,7 +279,7 @@ async def perform_file_extraction(
             async with file_semaphore:
                 try:
                     # Embed & upsert
-                    file_pinecone_config = await rag_manager.upload_file_content_to_pinecone(file_content, filename)
+                    file_pinecone_config = await rag_manager.upload_file_content(file_content, filename)
 
                     # Release raw content
                     file_content = None

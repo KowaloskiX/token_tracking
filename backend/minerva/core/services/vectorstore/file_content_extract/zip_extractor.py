@@ -58,22 +58,18 @@ class ZipFileExtractor(BaseFileExtractor):
                             for content in extractor.extract_file_content(extracted_path):
                                 if content.metadata is None:
                                     content.metadata = {}
+                                # Always keep the inner extractor’s own fields
+                                content.metadata.setdefault("filename", extracted_path.name)
+                                content.metadata.setdefault("inner_temp_path", str(extracted_path))
+                                content.metadata.setdefault("original_filename", extracted_path.name)
+
+                                # Add archive provenance (these are new keys, so setdefault not required)
                                 content.metadata["archive_source"] = file_path.name
-                                content.metadata["archive_type"] = ext[1:]  # 'zip', '7z', or 'rar'
-                                content.metadata["filename"] = extracted_path.name
-                                # Instead of loading bytes here (which can be huge and double held),
-                                # attach the temporary file path so the downstream service can lazily
-                                # read bytes **once** and then delete the temp file.
-                                content.metadata["inner_temp_path"] = str(extracted_path)
-                                content.metadata["original_filename"] = extracted_path.name
+                                content.metadata["archive_type"]   = ext[1:]     
                                 yield content
                                 # We can safely delete the extracted file after it has been yielded;
                                 # FileExtractionService will have copied the bytes by the time the
                                 # generator advances again.
-                                try:
-                                    os.remove(extracted_path)
-                                except Exception:
-                                    pass
                                 gc.collect()
                         else:
                             self.logger.warning(

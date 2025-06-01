@@ -12,7 +12,7 @@ from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryT
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.sources.source_types import TenderSourceType
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
-from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag, run_all_analyses_for_user, run_all_tender_analyses, run_partial_tender_analyses
+from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag, run_all_analyses_for_user, run_all_tender_analyses, run_partial_tender_analyses, _process_tender_pipeline
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, Response
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
@@ -26,6 +26,7 @@ from minerva.core.models.request.tender_analysis import (
     TenderSearchRequest,
     UserAnalysisTestRequest
 )
+from minerva.core.services.keyword_search.elasticsearch import es_client
 from minerva.core.models.user import User
 from minerva.core.models.utils import PyObjectId
 from minerva.core.database.database import db
@@ -34,6 +35,7 @@ from pydantic import ValidationError, BaseModel, Field
 import pytz
 import json
 import random
+from playwright.async_api import async_playwright
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -91,6 +93,12 @@ class TenderAnalysisResultSummary(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
+        
+
+class SingleTenderAnalysisRequest(BaseModel):
+    tender_url: str = Field(..., description="URL of the tender to analyze")
+    analysis_id: str = Field(..., description="ID of the analysis configuration to use")
+
 
 # kanban helper functions:
 async def reorder_tenders(board_id: str, column_id: str) -> None:
@@ -199,7 +207,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
 
         # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-05-22"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-05-27"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -240,7 +248,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_names_index_name="tenders",
             elasticsearch_index_name="tenders",
             embedding_model="text-embedding-3-large",
-            rag_index_name="files-rag-23-04-2025",
+            rag_index_name="test-files-rag",
             criteria_definitions=criteria_definitions
         )
         
@@ -294,6 +302,7 @@ async def create_tender_analysis(
             # Get optional instruction
             instruction = getattr(criterion, 'instruction', None)
             subcriteria = getattr(criterion, 'subcriteria', None)
+            keywords = getattr(criterion, 'keywords', None)
             
             criteria_with_weights.append({
                 "name": criterion.name,
@@ -303,6 +312,7 @@ async def create_tender_analysis(
                 "exclude_from_score": exclude_from_score,
                 "instruction": instruction,  # Add the instruction field
                 "subcriteria": subcriteria,
+                "keywords": keywords,
             })
 
         # Rest of the function remains the same
@@ -343,14 +353,17 @@ async def create_tender_analysis(
 async def list_tender_analysis(
     current_user: User = Depends(get_current_user)
 ):
-    """List all tender analyses for the current user or anyone in their organization"""
+    """List all tender analyses for the current user, including those they're assigned to"""
     try:
-        base_query = [{"user_id": current_user.id}]
-        # Only add org_id filter if it is defined and not empty
-        if current_user.org_id and current_user.org_id.strip():
-            base_query.append({"org_id": current_user.org_id})
-        
-        query = {"$or": base_query}
+        # Build a more comprehensive query:
+        # 1. Analyses created by the user
+        # 2. Analyses where the user is specifically assigned
+        query = {
+            "$or": [
+                {"user_id": current_user.id},  # User is creator
+                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+            ]
+        }
         
         analyses_cursor = db.tender_analysis.find(query)
         analyses = await analyses_cursor.to_list(None)
@@ -368,18 +381,25 @@ async def get_tender_analysis(
     analysis_id: PyObjectId,
     current_user: User = Depends(get_current_user)
 ):
-    """Get a specific tender analysis by ID for the user or their organization"""
+    """Get a specific tender analysis by ID for the user or if they're assigned"""
     try:
-        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
-        if current_user.org_id and current_user.org_id.strip():
-            query["$or"].append({"org_id": current_user.org_id})
+        # Check if:
+        # 1. User created the analysis
+        # 2. User is assigned to the analysis
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},  # User is creator
+                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+            ]
+        }
         
         analysis = await db.tender_analysis.find_one(query)
         
         if not analysis:
             raise HTTPException(
                 status_code=404,
-                detail="Tender analysis not found"
+                detail="Tender analysis not found or you don't have access to it"
             )
         
         return TenderAnalysis(**analysis)
@@ -391,6 +411,7 @@ async def get_tender_analysis(
             detail=f"Error getting tender analysis: {str(e)}"
         )
 
+# First, let's modify the update method to handle assigned_users correctly
 @router.put("/tender-analysis/{analysis_id}", response_model=TenderAnalysis)
 async def update_tender_analysis(
     analysis_id: PyObjectId,
@@ -399,44 +420,72 @@ async def update_tender_analysis(
 ):
     """Update a tender analysis configuration"""
     try:
-        # Check if analysis exists and belongs to user
-        # This query should also check for org_id like the GET endpoint does
-        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
-        if current_user.org_id and current_user.org_id.strip():
-            query["$or"].append({"org_id": current_user.org_id})
-            
-        existing = await db.tender_analysis.find_one(query)
+        logger.info(f"Updating tender analysis {analysis_id} by user {current_user.id} (role: {current_user.role})")
         
-        if not existing:
+        # First, find the analysis
+        analysis = await db.tender_analysis.find_one({"_id": analysis_id})
+        if not analysis:
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found"
             )
         
-        # Filter out None values and prepare update
+        # Check permissions - expanded for better debugging
+        is_owner = str(analysis.get("user_id")) == str(current_user.id)
+        is_admin = current_user.role == "admin"  # Simplified - any admin can update
+
+        logger.info(f"""Permission check details:
+        - User ID: {current_user.id}
+        - User role: {current_user.role}
+        - Analysis owner ID: {analysis.get("user_id")}
+        - Is owner: {is_owner}
+        - Is admin: {is_admin}
+        """)
+        
+        if not (is_owner or is_admin):
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to update this analysis"
+            )
+        
+        # Process the update data
         update_dict = {
             k: v for k, v in update_data.dict().items() 
             if v is not None
         }
         
-        if not update_dict:
-            return TenderAnalysis(**existing)
+        # Validate assigned_users if present
+        if "assigned_users" in update_dict:
+            logger.info(f"Processing assigned users: {update_dict['assigned_users']}")
+            
+            # Always include the owner in assigned_users
+            owner_id = str(analysis.get("user_id"))
+            if owner_id not in update_dict["assigned_users"]:
+                update_dict["assigned_users"].append(owner_id)
+                logger.info(f"Added owner {owner_id} to assigned_users")
+                
+            logger.info(f"Final assigned users list: {update_dict['assigned_users']}")
         
         # Add updated_at timestamp
         update_dict["updated_at"] = datetime.utcnow()
         
         # Perform update
-        await db.tender_analysis.update_one(
+        result = await db.tender_analysis.update_one(
             {"_id": analysis_id},
             {"$set": update_dict}
         )
+        
+        logger.info(f"Update result: matched={result.matched_count}, modified={result.modified_count}")
         
         # Get updated document
         updated = await db.tender_analysis.find_one({"_id": analysis_id})
         return TenderAnalysis(**updated)
     
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
     except Exception as e:
-        logger.error(f"Error updating tender analysis: {str(e)}")
+        logger.error(f"Error updating tender analysis: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error updating tender analysis: {str(e)}"
@@ -486,54 +535,254 @@ async def get_tender_analysis_results(
     analysis_id: PyObjectId,
     page: int = 1,
     limit: int = 10,
-    org_id: Optional[str] = None,  # Add org_id as a query parameter
+    org_id: Optional[str] = None,
+    include_historical: bool = False,
     current_user: User = Depends(get_current_user)
 ):
-    """Get paginated results for a specific tender analysis"""
+    """Get paginated results for a specific tender analysis with future submission deadlines only (unless include_historical=True)"""
     try:
-        # Check if analysis exists and belongs to user or their organization
-        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
-        if current_user.org_id and current_user.org_id.strip():
-            query["$or"].append({"org_id": current_user.org_id})
-        elif org_id and org_id.strip() and org_id == current_user.org_id:
-            query["$or"].append({"org_id": org_id})
-            
-        analysis = await db.tender_analysis.find_one(query)
+        logger.info(f"Fetching results for analysis {analysis_id} by user {current_user.id}, include_historical={include_historical}")
         
+        # First, directly find the analysis document to check permissions
+        analysis = await db.tender_analysis.find_one({"_id": analysis_id})
         if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found")
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found"
             )
         
-        # Calculate skip for pagination
-        skip = (page - 1) * limit
+        # Check if user has access to this analysis
+        is_owner = str(analysis.get("user_id")) == str(current_user.id)
+        is_assigned = str(current_user.id) in analysis.get("assigned_users", [])
         
-        # Heavy sub-documents are not needed in the list view, exclude them to
-        # keep the payload small (≈ 10× smaller) and to avoid the Pydantic
-        # cost of validating thousands of big objects.
-        projection = {
-            # textual blobs / big arrays
-            "criteria_analysis": 0,
-            "criteria_analysis_archive": 0,
-            "company_match_explanation": 0,
-            "tender_description": 0,
-            "uploaded_files": 0,
-            "file_extraction_status": 0,
-            "pinecone_config": 0,
-        }
+        logger.info(f"Access check: is_owner={is_owner}, is_assigned={is_assigned}")
+        
+        if not (is_owner or is_assigned):
+            logger.warning(f"User {current_user.id} doesn't have access to analysis {analysis_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have access to this analysis"
+            )
+        
+        # User has access, proceed with fetching results
+        skip = (page - 1) * limit
+        current_date = datetime.utcnow()
+        
+        if include_historical:
+            # Simple query without deadline filtering for historical results
+            pipeline = [
+                # Match documents for this analysis
+                {
+                    "$match": {
+                        "tender_analysis_id": analysis_id
+                    }
+                },
+                # Apply projection to exclude heavy fields
+                {
+                    "$project": {
+                        "criteria_analysis": 0,
+                        "criteria_analysis_archive": 0,
+                        "company_match_explanation": 0,
+                        "tender_description": 0,
+                        "uploaded_files": 0,
+                        "file_extraction_status": 0,
+                        "pinecone_config": 0,
+                    }
+                },
+                # Sort by creation date
+                {"$sort": {"created_at": -1}},
+                # Apply pagination
+                {"$skip": skip},
+                {"$limit": limit}
+            ]
+            
+            # Get total count without deadline filtering
+            total = await db.tender_analysis_results.count_documents(
+                {"tender_analysis_id": analysis_id}
+            )
+        else:
+            # Use aggregation pipeline to filter by future submission deadlines
+            pipeline = [
+                # Match documents for this analysis
+                {
+                    "$match": {
+                        "tender_analysis_id": analysis_id,
+                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
+                    }
+                },
+                # Add a field to parse the submission deadline
+                {
+                    "$addFields": {
+                        "parsed_deadline": {
+                            "$switch": {
+                                "branches": [
+                                    # Handle format: "2025-06-10 11:00"
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%Y-%m-%d %H:%M",
+                                                "onError": None
+                                            }
+                                        }
+                                    },
+                                    # Handle format: "10/06/2025 08:00:00"
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%d/%m/%Y %H:%M:%S",
+                                                "onError": None
+                                            }
+                                        }
+                                    },
+                                    # Handle format: "2025-06-10" (date only)
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%Y-%m-%d",
+                                                "onError": None
+                                            }
+                                        }
+                                    }
+                                ],
+                                "default": None
+                            }
+                        }
+                    }
+                },
+                # Filter to only include future deadlines or unparseable dates (to be safe)
+                {
+                    "$match": {
+                        "$or": [
+                            {"parsed_deadline": {"$gt": current_date}},
+                            {"parsed_deadline": None}  # Keep tenders with unparseable dates
+                        ]
+                    }
+                },
+                # Remove the temporary parsed_deadline field and apply projection
+                {
+                    "$project": {
+                        "criteria_analysis": 0,
+                        "criteria_analysis_archive": 0,
+                        "company_match_explanation": 0,
+                        "tender_description": 0,
+                        "uploaded_files": 0,
+                        "file_extraction_status": 0,
+                        "pinecone_config": 0,
+                        "parsed_deadline": 0  # Remove the temporary field
+                    }
+                },
+                # Sort by creation date
+                {"$sort": {"created_at": -1}},
+                # Apply pagination
+                {"$skip": skip},
+                {"$limit": limit}
+            ]
 
-        cursor = db.tender_analysis_results.find(
-            {
-                "tender_analysis_id": analysis_id,
-                "pinecone_config": {"$ne": None, "$exists": True},
-            },
-            projection,
-        ).sort("created_at", -1).skip(skip).limit(limit)
+            # Get total count of future deadlines for this analysis
+            count_pipeline = [
+                {
+                    "$match": {
+                        "tender_analysis_id": analysis_id,
+                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
+                    }
+                },
+                {
+                    "$addFields": {
+                        "parsed_deadline": {
+                            "$switch": {
+                                "branches": [
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%Y-%m-%d %H:%M",
+                                                "onError": None
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%d/%m/%Y %H:%M:%S",
+                                                "onError": None
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "case": {
+                                            "$regexMatch": {
+                                                "input": "$tender_metadata.submission_deadline",
+                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
+                                            }
+                                        },
+                                        "then": {
+                                            "$dateFromString": {
+                                                "dateString": "$tender_metadata.submission_deadline",
+                                                "format": "%Y-%m-%d",
+                                                "onError": None
+                                            }
+                                        }
+                                    }
+                                ],
+                                "default": None
+                            }
+                        }
+                    }
+                },
+                {
+                    "$match": {
+                        "$or": [
+                            {"parsed_deadline": {"$gt": current_date}},
+                            {"parsed_deadline": None}
+                        ]
+                    }
+                },
+                {"$count": "total"}
+            ]
 
-        raw_results = await cursor.to_list(None)
+            count_result = await db.tender_analysis_results.aggregate(count_pipeline).to_list(None)
+            total = count_result[0]["total"] if count_result else 0
 
-        # Convert ObjectId instances to strings so they are JSON-serialisable.
+        # Execute the aggregation pipeline
+        raw_results = await db.tender_analysis_results.aggregate(pipeline).to_list(None)
+        logger.info(f"Found {len(raw_results)} {'historical' if include_historical else 'future'} results for page {page}")
+
+        # Convert ObjectId instances to strings
         def _stringify_ids(doc):
             for k in ("_id", "tender_analysis_id", "user_id"):
                 if k in doc and isinstance(doc[k], ObjectId):
@@ -542,19 +791,18 @@ async def get_tender_analysis_results(
 
         results = [_stringify_ids(r) for r in raw_results]
 
-        total = await db.tender_analysis_results.count_documents(
-            {"tender_analysis_id": analysis_id}
-        )
-
-        # Dump JSON manually, falling back to str() on unknown types (ObjectId, datetime)
+        logger.info(f"Returning {len(results)} {'historical' if include_historical else 'future'} results (total: {total})")
         payload = {"results": results, "total": total}
         return Response(
             content=json.dumps(payload, default=str, ensure_ascii=False),
             media_type="application/json",
         )
 
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
     except Exception as e:
-        logger.error(f"Error getting tender analysis results: {str(e)}")
+        logger.error(f"Error getting tender analysis results: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error getting tender analysis results: {str(e)}"
@@ -569,18 +817,20 @@ async def get_all_tender_analysis_results(
     """
     Get all results (non-paginated) for a specific tender analysis.
     """
-    # The same logic for verifying analysis ownership
-    query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
-    if current_user.org_id and current_user.org_id.strip():
-        query["$or"].append({"org_id": current_user.org_id})
-    elif org_id and org_id.strip() and org_id == current_user.org_id:
-        query["$or"].append({"org_id": org_id})
-
+    # Check if analysis exists and belongs to user or the user is assigned to it
+    query = {
+        "_id": analysis_id,
+        "$or": [
+            {"user_id": current_user.id},  # User is creator
+            {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+        ]
+    }
+    
     analysis = await db.tender_analysis.find_one(query)
     if not analysis:
         raise HTTPException(
             status_code=404,
-            detail="Tender analysis not found"
+            detail="Tender analysis not found or you don't have access to it"
         )
 
     # Simply fetch ALL results (no skip/limit)
@@ -624,7 +874,7 @@ async def test_extractors():
         # ("epropublico_main", "https://e-propublico.pl/Ogloszenia/Details/d7f144e7-2693-442f-bd07-6ffb7995a063"),
         # ("platformazakupowa", "https://platformazakupowa.pl/transakcja/1065234"),
         # ("smartpzp", "https://portal.smartpzp.pl/pazp/public/postepowanie?postepowanie=76699829"),
-        # ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1612179,d7931f2b96e75a1c7d742ca775b1e22e.html"),
+        ("logintrade", "https://lafargeholcim.logintrade.net/portal,szczegolyZapytaniaOfertowe,f40c67caee744d36e260eb256f5e30e1.html"),
         # ("ted", "https://ted.europa.eu/en/notice/-/detail/129599-2025"),
     # ("ezamawiajacy", "https://zimkrakow.ezamawiajacy.pl/app/demand/notice/public/164269/details"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/468376/wykonanie-okresowej-kontroli-instalacji-gazowych-w-nieruchomosciach-polozonych-w-obszarze-dzialania-oddzialu-terenowego-malopolskiego-2"),
@@ -636,7 +886,11 @@ async def test_extractors():
         # ("ezamowienia", "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-d1c9e5f6-b4b1-4660-b573-aabb973989a4")
         # ("orlenconnect", "https://connect.orlen.pl/app/outRfx/492099/supplier/status"),
         # ("pge", "https://swpp2.gkpge.pl/app/demand/notice/public/96084/details")
-        ("logintrade", "https://suus.logintrade.net/portal,szczegolyZapytaniaOfertowe,51f45516c9f09f4f0fb4eb2af1845f2f.html")
+        ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1621948,35f035581b097deddd7805921a2a69bd.html"),
+        # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/externalProject.do?method=show&pid=1063335"),
+        # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/projectForwarding.do?pid=1063424"),
+        ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
+        ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
 
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/471684/remont-pustostanow-lokali-mieszkalnych-czesc-nr-1-marszalkowska-34-50-m-23-adk-2-czesc-nr-2-krucza-6-14-m-5-adk-2-w-podziale-na-2-czesci"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/473338/opracowanie-dokumentacji-projektowo-kosztorysowej-na-remont-budynku-rozdzielnicy-agregatorowni-zlokalizowanej-na-terenie-stacji-pomp-rzecznych-przy-ul-czerniakowskiej-124-dzielnica-srodmiescie-1"),
@@ -1661,10 +1915,12 @@ async def get_filtered_tender_by_id(
             status_code=500,
             detail=f"Error retrieving filtered tender: {str(e)}"
         )
-    
+
+ELASTIC_FILES_INDEX = "files-rag"
+
 @router.post("/cleanup-filtered-files-by-date")
 async def cleanup_files_by_date(
-    days_old: int = Query(0, description="Delete files older than this many days"),
+    days_old: int = Query(7, description="Delete files older than this many days"),
     current_user: User = Depends(get_current_user)
 ):
     logger.info(f"Starting cleanup of filtered files older than {days_old} days, initiated by user {current_user.id}")
@@ -1686,6 +1942,29 @@ async def cleanup_files_by_date(
         except Exception as e:
             logger.error(f"Error deleting file from storage ({blob_url}): {str(e)}", exc_info=True)
             return False
+        
+    async def delete_from_pinecone(file_pinecone_config: Dict[str, Any]) -> bool:
+        try:
+            index_name = file_pinecone_config["query_config"]["index_name"]
+            namespace = file_pinecone_config["query_config"]["namespace"]
+            prefix = file_pinecone_config["pinecone_unique_id_prefix"]
+            
+            logger.debug(f"Attempting to delete vectors from Pinecone index: {index_name}, namespace: {namespace}, prefix: {prefix}")
+            
+            query_config = QueryConfig(
+                index_name=index_name,
+                namespace=namespace,
+                embedding_model=file_pinecone_config["query_config"]["embedding_model"]
+            )
+            
+            pinecone_query_tool = QueryTool(config=query_config)
+            pinecone_query_tool.delete_from_pinecone_by_id_prefix(prefix)
+            
+            logger.debug(f"Successfully deleted vectors from Pinecone with prefix: {prefix}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting vectors from Pinecone: {str(e)}", exc_info=True)
+            return False
 
     # Calculate the cutoff date
     cutoff_date = datetime.utcnow() - timedelta(days=days_old)
@@ -1706,6 +1985,36 @@ async def cleanup_files_by_date(
         "already_deleted": 0,
         "errors": 0
     }
+    
+    try:
+        es_resp = await es_client.delete_by_query(
+            index=ELASTIC_FILES_INDEX,                       # "files-rag"
+            body={
+                "query": {
+                    "range": {
+                        "created_at": {              # set when the chunk was stored
+                            "lt": cutoff_date.isoformat()
+                        }
+                    }
+                }
+            },
+            refresh=True,                            # make deletions visible immediately
+            wait_for_completion=True,                # block until finished
+            conflicts="proceed",                     # ignore version conflicts
+        )
+        deleted_count = es_resp.get("deleted", 0)
+        logger.info(
+            "Global Elasticsearch cleanup: removed %d documents older than %s from %s",
+            deleted_count, cutoff_date.isoformat(), ELASTIC_FILES_INDEX,
+        )
+        deletion_stats["es_deleted_global"] = deleted_count
+    except Exception:
+        logger.exception(
+            "Global delete_by_query failed for index %s (cut-off %s)",
+            ELASTIC_FILES_INDEX, cutoff_date.isoformat(),
+        )
+        # make sure stats always exists even on failure
+        deletion_stats["es_deleted_global"] = 0
     
     for tender_index, tender in enumerate(filtered_tenders):
         tender_id = str(tender.get("_id", "unknown"))
@@ -2274,5 +2583,163 @@ async def update_criteria_analysis(
     )
     
     return {"message": "Criteria analysis updated successfully"}
+    
+
+@router.post("/analyze-single-tender", response_model=Dict[str, Any])
+async def analyze_single_tender(
+    request: SingleTenderAnalysisRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Analyze a single tender by its URL using an existing analysis configuration"""
+    try:
+        logger.info(f"Starting single tender analysis for URL: {request.tender_url}, Analysis ID: {request.analysis_id}")
+        
+        # 1. Validate and get the analysis configuration
+        try:
+            analysis_oid = ObjectId(request.analysis_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid analysis_id format")
+            
+        analysis_doc = await db.tender_analysis.find_one({"_id": analysis_oid})
+        if not analysis_doc:
+            raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
+            
+        # Check if user has access to this analysis
+        is_owner = str(analysis_doc.get("user_id")) == str(current_user.id)
+        is_assigned = str(current_user.id) in analysis_doc.get("assigned_users", [])
+        
+        if not (is_owner or is_assigned):
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have access to this analysis"
+            )
+            
+        tender_analysis = TenderAnalysis(**analysis_doc)
+        criteria_definitions = tender_analysis.criteria
+        language = tender_analysis.language or "polish"
+        
+        # 2. Initialize services
+        embedding_config = EmbeddingConfig(
+            index_name="tenders",
+            namespace="",
+            embedding_model="text-embedding-3-large"
+        )
+        source_manager = TenderSourceManager(embedding_config)
+        
+        # 3. Determine source type and extract metadata
+        source_type = None
+        for source_name, source_config in source_manager.source_configs.items():
+            if source_name.value in request.tender_url or any(domain in request.tender_url for domain in getattr(source_config, 'domains', [])):
+                source_type = source_name
+                break
+                
+        if not source_type:
+            # Try to guess from URL patterns
+            if "ezamowienia.gov.pl" in request.tender_url:
+                source_type = TenderSourceType("ezamowienia")
+            elif "ezamawiajacy.pl" in request.tender_url:
+                source_type = TenderSourceType("ezamawiajacy")
+            elif "platformazakupowa.pl" in request.tender_url:
+                source_type = TenderSourceType("platformazakupowa")
+            elif "eb2b.com.pl" in request.tender_url:
+                source_type = TenderSourceType("eb2b")
+            elif "logintrade.net" in request.tender_url:
+                source_type = TenderSourceType("logintrade")
+            else:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Unable to determine source type for URL: {request.tender_url}"
+                )
+        
+        logger.info(f"Detected source type: {source_type.value}")
+        
+        # 4. Create basic metadata structure
+        # For single tender analysis, we'll create minimal metadata
+        original_metadata = {
+            "details_url": request.tender_url,
+            "source_type": source_type.value,
+            "name": "Test Analysis",
+            "organization": "Test",
+            "submission_deadline": "2025-07-07 07:07",
+            "procedure_type": "",
+            "initiation_date": datetime.utcnow().strftime("%Y-%m-%d")
+        }
+        
+        # 5. Initialize browser for processing
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=True)
+        
+        try:
+            # 6. Create semaphore for the pipeline
+            semaphore = asyncio.Semaphore(1)
+            
+            # 7. Run the tender pipeline
+            tender_result = await _process_tender_pipeline(
+                tender_obj=None,  # We don't have a tender object from search
+                original_metadata=original_metadata,
+                shared_browser=browser,
+                tender_analysis=tender_analysis,
+                analysis_id=request.analysis_id,
+                rag_index_name="files-rag-23-04-2025",
+                embedding_model="text-embedding-3-large",
+                current_user=current_user,
+                criteria_definitions=criteria_definitions,
+                semaphore=semaphore,
+                source_manager=source_manager,
+                language=language
+            )
+            
+            if not tender_result:
+                return {
+                    "status": "failed",
+                    "message": "Failed to process tender through pipeline",
+                    "tender_url": request.tender_url,
+                    "analysis_id": request.analysis_id
+                }
+            
+            # 8. Save the result to database
+            await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
+            
+            # 9. Update analysis last_run timestamp
+            await db.tender_analysis.update_one(
+                {"_id": analysis_oid},
+                {"$set": {
+                    "last_run": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            
+            # 10. Assign order number
+            await assign_order_numbers(analysis_oid, current_user)
+            
+            logger.info(f"Successfully analyzed single tender: {tender_result.id}")
+            
+            return {
+                "status": "success",
+                "message": "Tender analyzed successfully",
+                "tender_url": request.tender_url,
+                "analysis_id": request.analysis_id,
+                "result_id": str(tender_result.id),
+                "tender_score": tender_result.tender_score,
+                "tender_name": tender_result.tender_metadata.name if tender_result.tender_metadata else "Unknown",
+                "organization": tender_result.tender_metadata.organization if tender_result.tender_metadata else "Unknown",
+                "files_processed": len(tender_result.uploaded_files)
+            }
+            
+        finally:
+            # 11. Cleanup browser resources
+            if browser:
+                await browser.close()
+            if playwright:
+                await playwright.stop()
+                
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error analyzing single tender: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing single tender: {str(e)}"
+        )
     
     

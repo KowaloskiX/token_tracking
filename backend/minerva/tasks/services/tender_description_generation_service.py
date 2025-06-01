@@ -22,14 +22,15 @@ async def generate_tender_description(
     embedding_model: str,
     analysis_id: Optional[str] = None,
     current_user: Optional[User] = None,
-    save_results: bool = False
+    save_results: bool = False,
+    language: str = "polish"
 ) -> Dict[str, Any]:
     rag_manager = None
     try:
         # Memory log before description generation
         log_mem(f"{tender_pinecone_id} generate_tender_description:start")
         # Initialize RAG manager
-        rag_manager = RAGManager(rag_index_name, "", embedding_model, tender_pinecone_id)
+        rag_manager = RAGManager(rag_index_name, "", embedding_model, tender_pinecone_id, language=language)
         
         logger.info(f"[{tender_pinecone_id}] Starting tender description generation")
         

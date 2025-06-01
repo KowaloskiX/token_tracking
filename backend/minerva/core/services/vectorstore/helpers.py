@@ -1,4 +1,11 @@
 import tiktoken
+from pydantic import BaseModel
+
+class ChunkingConfig(BaseModel):
+    chunk_size: int = 750
+    chunk_overlap: int = 150
+    tokenizer_name: str = "cl100k_base"
+
 
 def count_tokens(text, model="text-embedding-3-large"):
     enc = tiktoken.encoding_for_model(model)

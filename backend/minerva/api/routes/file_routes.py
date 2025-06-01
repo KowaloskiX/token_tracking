@@ -1,5 +1,4 @@
 # file_routes.py
-import copy
 from datetime import datetime
 import io
 import json
@@ -30,7 +29,6 @@ from urllib.parse import unquote
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
 
 openai = OpenAI()
-
 router = APIRouter()
 
 @router.post("/", response_model=FileModel)
@@ -42,81 +40,54 @@ async def create_file(
     assistant_id: str = Form(None)
 ):
     try:
-        # -- Branch 1: PDF logic, using maybe_ocr_pdf --
-        file_cp = copy.deepcopy(file)
-        file_cp2 = copy.deepcopy(file)
-        file_bytes_content = await file_cp.read()
+        # Ensure filename is not None
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="File must have a filename")
+        
+        # Read file content once and reuse it
+        file_bytes_content = await file.read()
 
-        vercel_url = upload_file_to_s3(file_cp.filename, file_bytes_content)
-
-        if file.filename.lower().endswith(".pdf"):
-            # Extract text (either from pdfplumber or OCR)
-            extracted_text = await maybe_ocr_pdf(file)
-
-            # Create a text buffer to upload to OpenAI
-            text_bytes = extracted_text.encode("utf-8")
-            in_memory_file = io.BytesIO(text_bytes)
-
-            # Rename to .txt (so we know it's text data on OpenAI side)
-            txt_filename = file.filename.rsplit('.', 1)[0] + ".txt"
-            in_memory_file.name = txt_filename
-
-            # Upload the text to OpenAI
-            openai_file = openai.files.create(
-                file=in_memory_file,
-                purpose="assistants"
+        # Upload to S3
+        try:
+            s3_url = upload_file_to_s3(file.filename, file_bytes_content)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload file to S3: {str(e)}"
             )
-            file_size = len(text_bytes)
-
-            # If no file_type was provided, default to 'txt'
-            if not file_type:
-                file_type = "txt"
-
-        # -- Branch 2: Non-PDF logic (e.g. .docx, .txt, .csv, etc.) --
-        else:
-            content = await file.read()
-            in_memory_file = io.BytesIO(content)
-            in_memory_file.name = file.filename
-
-            openai_file = openai.files.create(
-                file=in_memory_file,
-                purpose="assistants"
-            )
-            file_size = len(content)
-
-            if not file_type:
-                # Infer file extension or mark as unknown
-                if '.' in file.filename:
-                    file_type = file.filename.split('.')[-1].lower()
-                else:
-                    file_type = 'unknown'
 
         # Attach file to your vector store if you have an assistant_id
         file_pinecone_config = None
+        file_preview_chars = None
         if assistant_id:
             assistant = await db["assistants"].find_one({"_id": ObjectId(assistant_id)})
             if assistant:
-                if assistant["openai_vectorstore_id"]:
-                    openai.vector_stores.files.create(
-                        vector_store_id=assistant["openai_vectorstore_id"],
-                        file_id=openai_file.id
-                    )
-
-                if assistant.get('pinecone_config', None):            
+                if assistant.get('pinecone_config', None):
                     uploaded_files_pinecone_id = assistant.get('uploaded_files_pinecone_id', None)
                     pinecone_config_dict = assistant.get('pinecone_config', None)
+                    
                     rag_manager = RAGManager(
                         index_name=pinecone_config_dict['index_name'],
                         namespace=pinecone_config_dict['namespace'],
                         embedding_model=pinecone_config_dict['embedding_model'],
-                        tender_pinecone_id=uploaded_files_pinecone_id
+                        tender_pinecone_id=uploaded_files_pinecone_id,
+                        use_elasticsearch=pinecone_config_dict.get('use_elasticsearch', False),
+                        es_config=pinecone_config_dict.get('es_config', None),
+                        language=pinecone_config_dict.get('language', None)
                     )
+                    
+                    if pinecone_config_dict.get('use_elasticsearch', False):
+                        await rag_manager.ensure_elasticsearch_index_initialized()
+                    
                     # --- Extract text content using the same extraction pipeline utilised across the codebase ---
-                    file_bytes_content = await file_cp2.read()
+                    # Reuse the file_bytes_content we already read
 
                     # Write the uploaded bytes to a temporary file so that our extraction
                     # service can process it just like in tender extraction flows.
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_cp2.filename).suffix) as tmp_file:
+                    # Safely get file suffix, defaulting to empty string if no extension
+                    file_suffix = Path(file.filename).suffix if file.filename else ""
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as tmp_file:
                         tmp_file.write(file_bytes_content)
                         tmp_file.flush()
                         temp_path = Path(tmp_file.name)
@@ -129,33 +100,60 @@ async def create_file(
 
                         # Fall back to raw UTF-8 decode if extractors returned nothing
                         if not extracted_results:
-                            extracted_results = [(file_bytes_content, file_cp2.filename, "", file_bytes_content, file_cp2.filename)]
+                            extracted_results = [(file_bytes_content, file.filename, "", file_bytes_content, file.filename)]
 
                         # Upload each extracted chunk to Pinecone, keeping the config from the first
                         file_pinecone_config = None
-                        for (extracted_bytes, extracted_filename, _preview, _orig_bytes, _orig_name) in extracted_results:
-                            cfg = await rag_manager.upload_file_content_to_pinecone(extracted_bytes, extracted_filename)
+                        file_preview_chars = None
+                        for i, (extracted_bytes, extracted_filename, _preview, _orig_bytes, _orig_name) in enumerate(extracted_results):
+                            cfg = await rag_manager.upload_file_content(extracted_bytes, extracted_filename)
                             if file_pinecone_config is None:
                                 file_pinecone_config = cfg
+                            if file_preview_chars is None:
+                                file_preview_chars = _preview  # Use preview from first extraction result
                     finally:
                         # Clean up temp file
                         try:
                             os.remove(temp_path)
-                        except Exception:
+                        except Exception as cleanup_error:
                             pass
+                    
                     rag_manager.clean_up()
-                    print("uploaded file to pinecone", file_pinecone_config)
+
+        # If no assistant_id or no vector processing, still extract preview for file metadata
+        if file_preview_chars is None:
+            file_suffix = Path(file.filename).suffix if file.filename else ""
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as tmp_file:
+                tmp_file.write(file_bytes_content)
+                tmp_file.flush()
+                temp_path = Path(tmp_file.name)
+
+            extraction_service = FileExtractionService()
+
+            try:
+                # Extract just for preview, don't process for vector store
+                extracted_results = await extraction_service.process_file_async(temp_path)
+                if extracted_results:
+                    # Use preview from first extraction result
+                    _, _, file_preview_chars, _, _ = extracted_results[0]
+            finally:
+                # Clean up temp file
+                try:
+                    os.remove(temp_path)
+                except Exception as cleanup_error:
+                    pass
 
         # Create a FileModel record in your database
         file_model = FileModel(
             filename=file.filename,
-            bytes=file_size,
+            bytes=len(file_bytes_content),  # Use the actual file content length
             owner_id=owner_id,
             parent_folder_id=parent_folder_id,
-            blob_url=vercel_url,
-            openai_file_id=openai_file.id,
+            blob_url=s3_url,
             type=file_type,
             file_pinecone_config=file_pinecone_config,
+            preview_chars=file_preview_chars,  # Add the preview from extraction
             user_file=True,
             shared_with=[]  # Initialize empty shared_with list
         )
@@ -309,7 +307,10 @@ async def transform_excel_to_txt(file: UploadFile = File(...)):
     Endpoint to transform an Excel file (xls or xlsx) with multiple sheets into separate text files.
     Returns a list of generated text files, one for each worksheet.
     """
-    # Ensure the file is Excel format
+    # Ensure filename is not None and is Excel format
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File must have a filename")
+    
     if not (file.filename.endswith('.xls') or file.filename.endswith('.xlsx')):
         raise HTTPException(status_code=400, detail="File must be an .xls or .xlsx Excel file")
     
@@ -386,6 +387,10 @@ async def transform_excel_to_json(
     Endpoint to transform an Excel file (xls or xlsx) with multiple sheets into JSON files.
     Each sheet is converted to a JSON file and uploaded to OpenAI.
     """
+    # Ensure filename is not None and is Excel format
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File must have a filename")
+    
     if not (file.filename.endswith('.xls') or file.filename.endswith('.xlsx')):
         raise HTTPException(status_code=400, detail="File must be an .xls or .xlsx Excel file")
     
@@ -436,7 +441,7 @@ async def transform_excel_to_json(
 
                 if assistant_id:
                     assistant = await db["assistants"].find_one({"_id": ObjectId(assistant_id)})
-                    if assistant:
+                    if assistant and assistant.get("openai_vectorstore_id"):
                         openai.vector_stores.files.create(
                             vector_store_id=assistant["openai_vectorstore_id"],
                             file_id=openai_file.id
@@ -450,7 +455,8 @@ async def transform_excel_to_json(
                     parent_folder_id=parent_folder_id,
                     openai_file_id=openai_file.id,
                     type="xls",
-                    shared_with=[]
+                    shared_with=[],
+                    user_file=True
                 )
                 
                 # Insert into database
@@ -533,7 +539,6 @@ async def create_files_with_openai_id(request: BatchFileCreateRequest):
                     file_data=file_data,
                     owner_id=request.owner_id,
                     folder_id=folder_id,
-                    vector_store_indexed=vector_store_success
                 )
                 
                 created_files.append(file_model)
@@ -604,9 +609,18 @@ async def create_file_record(
     file_data, 
     owner_id: str, 
     folder_id: str = None,
-    vector_store_indexed: bool = False
 ) -> FileModel:
     """Create a file record in the database."""
+    # Safely determine file type
+    file_type = file_data.type
+    if not file_type and file_data.filename:
+        if '.' in file_data.filename:
+            file_type = file_data.filename.split('.')[-1].lower()
+        else:
+            file_type = 'unknown'
+    elif not file_type:
+        file_type = 'unknown'
+    
     file_model = FileModel(
         filename=file_data.filename,
         bytes=file_data.bytes,
@@ -614,9 +628,9 @@ async def create_file_record(
         blob_url=file_data.blob_url,
         parent_folder_id=str(folder_id) if folder_id else None,
         openai_file_id=file_data.openai_file_id,
-        type=file_data.type or file_data.filename.split('.')[-1].lower() if '.' in file_data.filename else 'unknown',
+        type=file_type,
         shared_with=[],
-        vector_store_indexed=vector_store_indexed  # Add this field to your FileModel
+        user_file=True
     )
     
     result = await db["files"].insert_one(file_model.dict(by_alias=True))
@@ -721,7 +735,6 @@ async def enrich_files(
                     file_data=file_data,
                     owner_id=request.owner_id,
                     folder_id=folder_id,
-                    vector_store_indexed=assistant is not None
                 )
                 enriched_files.append(file_model)
                 file_ids_to_attach.append(file_data.openai_file_id)
@@ -751,7 +764,6 @@ async def enrich_files(
                     file_data=file_data,
                     owner_id=request.owner_id,
                     folder_id=folder_id,
-                    vector_store_indexed=assistant is not None
                 )
                 enriched_files.append(file_model)
                 file_ids_to_attach.append(openai_file.id)

@@ -32,6 +32,7 @@ RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sourc
     unrar \
     poppler-utils \
     tesseract-ocr \
+    tesseract-ocr-pol \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry and configure it

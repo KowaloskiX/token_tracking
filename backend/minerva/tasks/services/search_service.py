@@ -201,7 +201,7 @@ async def perform_tender_search(
                 }
 
                 logger.info(f"Querying Elasticsearch for source: {source} with query: {es_query}")
-                es_result = es_client.search(
+                es_result = await es_client.search(
                     index=elasticsearch_index_name,
                     body={
                         "query": es_query,
@@ -293,7 +293,7 @@ async def perform_tender_search(
             }
 
             logger.info(f"Querying Elasticsearch with query: {es_query}")
-            es_result = es_client.search(
+            es_result = await es_client.search(
                 index=elasticsearch_index_name,
                 body={
                     "query": es_query,
@@ -463,7 +463,7 @@ async def compare_tender_search_results(
         # Check Elasticsearch
         # Note: mget might return fewer docs if some IDs don't exist
         if tender_ids_to_compare: # Avoid empty mget request
-            mget_response = es_client.mget(index=es_index_name, body={"ids": tender_ids_to_compare})
+            mget_response = await es_client.mget(index=es_index_name, body={"ids": tender_ids_to_compare})
             found_in_es = {doc['_id'] for doc in mget_response.get('docs', []) if doc.get('found')}
             existing_ids_in_source.update(found_in_es)
             logger.info(f"Checked {len(tender_ids_to_compare)} IDs in Elasticsearch index '{es_index_name}'. Found {len(found_in_es)} existing IDs.")

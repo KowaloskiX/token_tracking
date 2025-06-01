@@ -24,7 +24,7 @@ if not NLTK_DATA_DIR.exists():
     NLTK_DATA_DIR.mkdir(parents=True, exist_ok=True)
 nltk.data.path.append(str(NLTK_DATA_DIR))
 
-# Download NLTK punkt_tab resource
+# Download NLTK punkt_tab resource3
 def download_nltk_data():
     try:
         # Check if punkt_tab is already downloaded
@@ -58,22 +58,22 @@ def configure_scheduler(loop):
 
     # Use WORKER_INDEX, TOTAL_*_WORKERS, and WORKER_TYPE from environment
     worker_index = int(os.getenv("WORKER_INDEX", 0))
-    total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 3))
-    total_analysis_workers = int(os.getenv("TOTAL_ANALYSIS_WORKERS", 6))
+    total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 6))
+    total_analysis_workers = int(os.getenv("TOTAL_ANALYSIS_WORKERS", 5))
     worker_type = os.getenv("WORKER_TYPE", "scraping")  # Default to scraping if not set
 
     # Schedule jobs based on worker type
     if worker_type == "scraping":
         scheduler.add_job(
             lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
-            trigger=CronTrigger(hour=19, minute=10, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=19, minute=37, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )
     elif worker_type == "analysis":
         scheduler.add_job(
             lambda: run_coroutine(analysis_main(worker_index, total_analysis_workers, get_today())),
-            trigger=CronTrigger(hour=21, minute=45, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=23, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"analysis_worker_{worker_index}",
             replace_existing=True
         )

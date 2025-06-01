@@ -12,6 +12,7 @@ from minerva.core.services.vectorstore.file_content_extract.base import Extracto
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
+from minerva.tasks.services.keyword_service import KeywordPresenceValidator
 from openai import AssistantEventHandler
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -75,36 +76,55 @@ class ElasticsearchConfig:
     def __init__(
         self,
         index_name: str = "files-rag",
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200
+        chunk_size: int = 750,
+        chunk_overlap: int = 150
     ):
         self.index_name = index_name
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
 class RAGManager:
-    def __init__(self, index_name: str, namespace: str, embedding_model: str, tender_pinecone_id: str, use_elasticsearch: bool = False, es_config: Optional[ElasticsearchConfig] = None):
+    def __init__(self, index_name: str, namespace: str, embedding_model: str, tender_pinecone_id: str, use_elasticsearch: bool = False, es_config: Optional[ElasticsearchConfig] = None, language: str = "polish"):
         # Memory log on RAGManager init
         log_mem(f"{tender_pinecone_id} RAGManager:init")
+        
         self.index_name = index_name
         self.namespace = namespace
         self.embedding_model = embedding_model
         self.tender_pinecone_id = tender_pinecone_id
+        
         self.chunker = TextChunker(ChunkingConfig())
+        
         self.embedding_tool = EmbeddingTool(EmbeddingConfig(
             index_name=index_name, namespace=namespace, embedding_model=embedding_model))
+        
         self.temp_dir = tempfile.mkdtemp()
+        
         self.registry = ExtractorRegistry()
+        
         self.use_elasticsearch = use_elasticsearch
         self.es_config = es_config or ElasticsearchConfig()
         
+        self.keyword_validator = KeywordPresenceValidator(es_client, self.es_config.index_name)
+        
+        if language is None:
+            language = "polish"
+        
+        self.language = language.lower()
+            
         # Ensure Elasticsearch index exists if enabled
         if self.use_elasticsearch:
-            self.ensure_elasticsearch_index()
+            self._ensure_elasticsearch_index_pending = True
 
-    def ensure_elasticsearch_index(self):
+    async def ensure_elasticsearch_index_initialized(self):
+        """Initialize Elasticsearch index if needed. This should be called after RAGManager creation."""
+        if self.use_elasticsearch and getattr(self, '_ensure_elasticsearch_index_pending', False):
+            await self.ensure_elasticsearch_index()
+            self._ensure_elasticsearch_index_pending = False
+
+    async def ensure_elasticsearch_index(self):
         """Create or update Elasticsearch index with proper mappings for file chunks"""
-        if not es_client.indices.exists(index=self.es_config.index_name):
+        if not await es_client.indices.exists(index=self.es_config.index_name):
             # Create index with mappings
             mappings = {
                 "mappings": {
@@ -123,7 +143,7 @@ class RAGManager:
                     }
                 }
             }
-            es_client.indices.create(
+            await es_client.indices.create(
                 index=self.es_config.index_name,
                 body=mappings
             )
@@ -145,11 +165,12 @@ class RAGManager:
                     }
                 }
             }
-            es_client.indices.put_mapping(
+            await es_client.indices.put_mapping(
                 index=self.es_config.index_name,
                 body=mappings
             )
             logger.info(f"Updated Elasticsearch index mappings: {self.es_config.index_name}")
+
 
     def clean_up(self):
         """Enhanced cleanup to properly release memory resources"""
@@ -189,7 +210,9 @@ class RAGManager:
         # Memory log after cleanup
         log_mem(f"{self.tender_pinecone_id} RAGManager:cleanup")
 
-    EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "8"))  # safe small default
+    # Default batch size for embedding/upsert operations. Pinecone supports up to 100 vectors per
+    # request, so we use 100 to maximize throughput unless overridden via the environment.
+    EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "25"))
 
     async def index_chunk_to_elasticsearch(self, chunk: str, metadata: dict) -> bool:
         try:
@@ -208,135 +231,102 @@ class RAGManager:
                 "_source": document
             }]
             
-            success, failed = helpers.bulk(es_client, actions, stats_only=True)
+            success, failed = await helpers.async_bulk(es_client, actions, stats_only=True)
             return success > 0 and failed == 0
             
         except Exception as e:
             logger.error(f"Error indexing chunk to Elasticsearch: {str(e)}")
             return False
 
-    async def upload_file_content_to_pinecone(self, file_content: bytes, filename: str):
-        # Memory log before chunking
-        log_mem(f"{self.tender_pinecone_id} upload_file_content_to_pinecone:start:{filename}")
+    async def upload_file_content(
+        self,
+        file_content: bytes,
+        filename: str,
+    ) -> FilePineconeConfig:
+        log_mem(f"{self.tender_pinecone_id} upload:start:{filename}")
 
         sanitized_filename = sanitize_id(filename)
         filename_unique_prefix = f"{sanitized_filename}_{uuid4()}"
 
-        # Decode bytes only once, then release
-        text: str = file_content.decode("utf-8") if isinstance(file_content, bytes) else file_content
-        file_content = None  # release raw bytes early
+        text = file_content.decode() if isinstance(file_content, (bytes, bytearray)) else file_content
+        file_content = None
+
         gc.collect()
 
         if not text or not text.strip():
-            logger.warning(f"No text extracted from file '{filename}'. Skipping embedding.")
             return FilePineconeConfig(
-                query_config=QueryConfig(
-                    index_name=self.index_name,
-                    namespace=self.namespace,
-                    embedding_model=self.embedding_model
-                ),
-                pinecone_unique_id_prefix=filename_unique_prefix
+                query_config=QueryConfig(self.index_name, self.namespace, self.embedding_model),
+                pinecone_unique_id_prefix=filename_unique_prefix,
             )
-        
-        es_success = True
-        
-        chunk_index_global = 0
-        # Stream chunks in small batches to keep memory low
-        current_batch: list = []
-        current_es_batch: list = []
-        
-        for chunk in safe_chunk_text(text, self.chunker, self.embedding_model):
-            if not chunk or not chunk.strip():
-                continue
 
-            tokens = count_tokens(chunk, self.embedding_model)
-            if tokens > MAX_TOKENS:
-                logger.error(
-                    f"Chunk {chunk_index_global} from filename={filename} is OVER LIMIT ({tokens} tokens)." )
-                # still embed smaller preview or skip – we skip to stay safe
-                chunk_index_global += 1
-                continue
+        # ─────────────── action generator ──────────────
+        async def gen_actions():
+            chunk_index_global = 0
+            batch_for_pinecone = []
 
-            chunk_id = f"{filename_unique_prefix}_{uuid4()}"
-            # Store both a short preview (200 chars) and the full text of the chunk
-            metadata = {
-                "tender_pinecone_id": self.tender_pinecone_id,
-                "source": sanitized_filename,
-                "extractor": "",
-                "source_type": "",
-                "chunk_index": chunk_index_global,
-                "preview": chunk[:200],
-                "text": chunk,
-                "timestamp": datetime.now().isoformat()
-            }
+            for chunk in safe_chunk_text(text, self.chunker, self.embedding_model):
+                if not chunk or not chunk.strip():
+                    continue
+                if count_tokens(chunk, self.embedding_model) > MAX_TOKENS:
+                    logger.error("Chunk %s from %s over token limit", chunk_index_global, filename)
+                    chunk_index_global += 1
+                    continue
 
-            current_batch.append({
-                "id": chunk_id,
-                "input": chunk,
-                "metadata": metadata
-            })
+                chunk_id = f"{filename_unique_prefix}_{uuid4()}"
+                metadata = {
+                    "tender_pinecone_id": self.tender_pinecone_id,
+                    "source": sanitized_filename,
+                    "extractor": "",
+                    "source_type": "",
+                    "chunk_index": chunk_index_global,
+                    "preview": chunk[:200],
+                    "text": chunk,
+                    "timestamp": datetime.now().isoformat(),
+                }
 
-            # Prepare Elasticsearch action if enabled
-            if self.use_elasticsearch:
-                metadata["id"] = chunk_id
-                current_es_batch.append({
-                    "_index": self.es_config.index_name,
-                    "_id": chunk_id,
-                    "_source": {
-                        "text": chunk,
-                        "metadata": metadata,
-                        "created_at": datetime.utcnow().isoformat()
+                batch_for_pinecone.append({"id": chunk_id, "input": chunk, "metadata": metadata})
+
+                if self.use_elasticsearch:
+                    action = {
+                        "_index": self.es_config.index_name,
+                        "_id": chunk_id,
+                        "_source": {
+                            "text": chunk,
+                            "metadata": metadata,
+                            "created_at": datetime.utcnow().isoformat(),
+                        },
                     }
-                })
+                    yield action
+                chunk_index_global += 1
 
-            chunk_index_global += 1
+                if len(batch_for_pinecone) >= self.EMBED_BATCH_SIZE:
+                    await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
+                    batch_for_pinecone.clear()
 
-            # Once we hit BATCH_SIZE, process both Pinecone and Elasticsearch batches
-            if len(current_batch) >= self.EMBED_BATCH_SIZE:
-                # Upload to Pinecone
-                await self.embedding_tool.embed_and_store_batch(current_batch)
-                current_batch = []
-                
-                # Bulk index to Elasticsearch if enabled
-                if self.use_elasticsearch and current_es_batch:
-                    try:
-                        success, failed = helpers.bulk(es_client, current_es_batch, stats_only=True)
-                        if not (success > 0 and failed == 0):
-                            logger.warning(f"Failed to index {failed} chunks to Elasticsearch for file {filename}")
-                            es_success = False
-                    except Exception as e:
-                        logger.error(f"Error during bulk Elasticsearch indexing: {str(e)}")
-                        es_success = False
-                    current_es_batch = []
-                
-                gc.collect()
-                malloc_trim()
+            if batch_for_pinecone:
+                await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
 
-        # Process any remaining chunks
-        if current_batch:
-            # Upload to Pinecone
-            await self.embedding_tool.embed_and_store_batch(current_batch)
-            current_batch = []
+        # Always process Elasticsearch if enabled
+        if self.use_elasticsearch:
+            async for ok, info in helpers.async_streaming_bulk(
+                    es_client,
+                    actions=gen_actions(),
+                    chunk_size=1_000,
+                    max_chunk_bytes=5 * 1024 ** 2,
+                    raise_on_error=False,
+                    raise_on_exception=False,
+            ):
+                if not ok:
+                    logger.warning("Failed ES item: %s", info)
+        else:
+            # If Elasticsearch is disabled, still need to process the generator to handle Pinecone uploads
+            async for _ in gen_actions():
+                pass
 
-        # Process any remaining Elasticsearch documents
-        if self.use_elasticsearch and current_es_batch:
-            try:
-                success, failed = helpers.bulk(es_client, current_es_batch, stats_only=True)
-                if not (success > 0 and failed == 0):
-                    logger.warning(f"Failed to index {failed} chunks to Elasticsearch for file {filename}")
-                    es_success = False
-            except Exception as e:
-                logger.error(f"Error during bulk Elasticsearch indexing: {str(e)}")
-                es_success = False
-
-        # release large string 'text'
         text = None
-        current_es_batch = None
-        gc.collect()
-        malloc_trim()
+        gc.collect(); malloc_trim()
 
-        # Memory log after embedding
-        log_mem(f"{self.tender_pinecone_id} upload_file_content_to_pinecone:after_embed:{filename}")
+        log_mem(f"{self.tender_pinecone_id} upload:after:{filename}")
 
         return FilePineconeConfig(
             query_config=QueryConfig(
@@ -345,8 +335,9 @@ class RAGManager:
                 embedding_model=self.embedding_model
             ),
             pinecone_unique_id_prefix=filename_unique_prefix,
-            elasticsearch_indexed=self.use_elasticsearch and es_success
+            elasticsearch_indexed=self.use_elasticsearch,
         )
+
         
     @staticmethod
     async def ai_filter_tenders(
@@ -398,14 +389,15 @@ class RAGManager:
                             "properties": {
                                 "matches": {
                                     "type": "array",
+                                    "description": "List of tenders that match the provided company profile and requirements.",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "id": {"type": "string"},
-                                            "name": {"type": "string"},
-                                            "organization": {"type": "string"},
+                                            "id": {"type": "string", "description": "Exact ID of the tender from the input list"},
+                                            "name": {"type": "string", "description": "Full title of the tender"},
+                                            "organization": {"type": "string", "description": "Organization issuing the tender"}
                                         },
-                                        "required": ["id", "name", "organization"],  # Added 'id' to required
+                                        "required": ["id", "name", "organization"],
                                         "additionalProperties": False
                                     }
                                 }
@@ -493,7 +485,7 @@ class RAGManager:
                 }
                 
                 try:
-                    es_results = es_client.search(
+                    es_results = await es_client.search(
                         index=self.es_config.index_name,
                         body={
                             "query": es_query,
@@ -535,7 +527,7 @@ class RAGManager:
                 "error": str(e)
             }
 
-    async def analyze_tender_criteria_and_location(self, current_user: User, criteria: List[AnalysisCriteria], include_vector_results: bool = False) -> Dict[str, Any]:
+    async def analyze_tender_criteria_and_location(self, current_user: User, criteria: List[AnalysisCriteria], include_vector_results: bool = False, original_tender_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Memory log at start
         log_mem(f"{self.tender_pinecone_id} analyze_tender_criteria_and_location:start")
         """
@@ -553,7 +545,7 @@ class RAGManager:
             try:
                 # Base prompt
                 base_prompt = (
-                    f"Please answer this question based on the public tender document content:\n\n"
+                    f"Please answer this question based on the documentation content:\n"
                     f"<QUESTION>{criterion.name}</QUESTION>\n"
                 )
 
@@ -562,21 +554,21 @@ class RAGManager:
                     has_instruction = True
                 
                 # Format template with conditional summary instructions
-                summary_description = f"<Your answer to the '{criterion.name}' question based on the documents."
+                summary_description = f"<Answer to the '{criterion.name}' question based on the documentation."
                 if has_instruction:
-                    summary_description += f"ADDITIONAL INSTRUCTION: {criterion.instruction}"
-                summary_description += " Response should directly support 'criteria_met' assessment.>"
+                    summary_description += f"Instruction for the answer: '{criterion.instruction}'"
+                # summary_description += " Response must directly support 'criteria_met' assessment.>"
                 
                 format_instructions = (
-                    f"Return your answer in the following JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <QUESTION> tag provided in the input.\n"
-                    f"The summary response should ALWAYS be in the same language as the <QUESTION> unless the instruction states otherwise.\n"
+                    f"Return your answer in JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <QUESTION> tag provided in the input.\n"
+                    f"The summary response must ALWAYS be in {self.language} unless the instruction states otherwise. Use correct character formatting/encoding for special characters for specific languages.\n"
                 ) + f"""
                 {{
                     "criteria": "<Exact copy of the input <QUESTION>>",
                     "analysis": {{
                         "summary": "{summary_description}",
                         "confidence": "<LOW|MEDIUM|HIGH - Your confidence in the summary and 'criteria_met' assessment based on the available information.>",
-                        "criteria_met": <true|false - Boolean indicating if the statement/question in <QUESTION> is affirmed as true by the documents.>
+                        "criteria_met": <true|false based on answer to question based in summary. It must reflect the conclusions from summary.>
                     }}
                 }}
                 """
@@ -585,115 +577,12 @@ class RAGManager:
                 prompt = base_prompt + format_instructions
 
                 # Get vector search results
-                elastic_search_results = []
-                if self.use_elasticsearch:
-                    # First, use LLM to extract keywords from the criterion description
-                    keyword_extraction_prompt = f"""
-                    You are a specialized system for analyzing public tender criteria (kryteria zamówień publicznych).
-                    Your task is to extract the most important keywords and key phrases from a tender criterion description.
-                    
-                    Important context:
-                    - This is for public tender analysis
-                    - Focus on specific terms, requirements, and technical specifications
-                    - Consider both formal requirements and technical details
-                    - Include any numerical values, dates, or specific qualifications
-                    - Extract terms that would be most useful for finding relevant documents in the tender
-                    
-                    Return ONLY a JSON array of strings, with each string being a keyword or key phrase.
-                    Example format: ["keyword1", "key phrase 2", "technical term 3"]
-                    
-                    Criterion name: {criterion.name}
-                    Criterion description: {criterion.description}
-                    """
-
-                    keyword_request = LLMSearchRequest(
-                        query=keyword_extraction_prompt,
-                        llm={
-                            "provider": "openai",
-                            "model": "gpt-4o-mini",
-                            "temperature": 0,
-                            "max_tokens": 4000,
-                            "system_message": "You are a keyword extraction system. Extract only the most relevant search terms.",
-                            "stream": False,
-                            "response_format": {
-                                "type": "json_schema",
-                                "json_schema": {
-                                    "name": "keyword_extraction_response",
-                                    "strict": True,
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "keywords": {
-                                                "type": "array",
-                                                "items": {"type": "string"}
-                                            }
-                                        },
-                                        "required": ["keywords"],
-                                        "additionalProperties": False
-                                    }
-                                }
-                            }
-                        }
+                keyword_validation_results = None
+                if criterion.keywords and self.use_elasticsearch:                        # ← only run when user supplied keywords
+                    keyword_validation_results = await self.keyword_validator.check_keywords(
+                        tender_id=self.tender_pinecone_id,
+                        keywords=criterion.keywords.split(",")
                     )
-
-                    keyword_response = await ask_llm_logic(keyword_request)
-                    response_data = json.loads(keyword_response.llm_response)
-                    keywords = response_data["keywords"]
-                    logger.info(f"Extracted keywords for criterion {criterion.name}: {keywords}")
-
-                    # Build Elasticsearch query using the extracted keywords
-                    should_clauses = []
-                    for keyword in keywords:
-                        should_clauses.append({"match": {"text": keyword}})
-
-                    es_query = {
-                        "bool": {
-                            "should": should_clauses,
-                            "minimum_should_match": 1,
-                            "filter": [
-                                {"term": {"metadata.tender_pinecone_id.keyword": self.tender_pinecone_id}}
-                            ]
-                        }
-                    }
-                    
-                    try:
-                        es_results = es_client.search(
-                            index=self.es_config.index_name,
-                            body={
-                                "query": es_query,
-                                "size": 5
-                            }
-                        )
-                        
-                        # Use a set to track unique texts
-                        seen_texts = set()
-                        unique_results = []
-                        
-                        for hit in es_results["hits"]["hits"]:
-                            text = hit["_source"]["text"]
-                            # Only add if we haven't seen this text before
-                            if text not in seen_texts:
-                                seen_texts.add(text)
-                                unique_results.append({
-                                    "text": text,
-                                    "score": hit["_score"],
-                                    "source": hit["_source"]["metadata"]["source"]
-                                })
-                        
-                        # Create the enhanced elasticsearch_results object
-                        elastic_search_results = {
-                            "results": unique_results,
-                            "search_keywords": keywords,
-                            "total_matches": len(unique_results)
-                        }
-                        
-                    except Exception as e:
-                        logger.error(f"Error during Elasticsearch search: {str(e)}", exc_info=True)
-                        elastic_search_results = {
-                            "results": [],
-                            "search_keywords": keywords,
-                            "total_matches": 0
-                        }
 
                 # Handle subcriteria queries if present
                 subcriteria_results = []
@@ -709,8 +598,7 @@ class RAGManager:
                     
                     # Add subcriteria results to the prompt
                     if any(result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0 for result in subcriteria_results):
-                        subcriteria_context = "\n\n<SUBCRITERIA_RESULTS>\n"
-                        subcriteria_context += "Additional context from specific subqueries:\n\n"
+                        subcriteria_context = "\n\n<DOCUMENTATION_CONTEXT>\n"
                         
                         for result in subcriteria_results:
                             has_results = result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0
@@ -719,29 +607,87 @@ class RAGManager:
                                 
                                 # Add vector search results
                                 if result["vector_total_matches"] > 0:
-                                    subcriteria_context += "\nVector search results:\n"
+                                    for idx, match in enumerate(result["vector_results"], 1):
+                                        subcriteria_context += f"{idx}. From {match['metadata'].get('source', 'unknown')} ):\n{match['metadata'].get('text', '')}\n"
+                                
+                        subcriteria_context += "\n</DOCUMENTATION_CONTEXT>\n"
+                        prompt += subcriteria_context
+
+                if keyword_validation_results and self.use_elasticsearch:
+                    kw_ctx  = "\n\n<KEYWORD_PRESENCE>\n"
+                    if keyword_validation_results["hits"]:
+                        kw_ctx += "The following keywords were found in tender documentation:\n"
+                        for hit in keyword_validation_results["hits"]:
+                            sample_snip = hit["snippets"][0]["text"]
+                            kw_ctx += f" - {hit['keyword']}: \"{sample_snip}\"\n"
+                    if keyword_validation_results["missing"]:
+                        kw_ctx += (
+                            "The following keywords **were NOT found** in tender documentation: "
+                            + ", ".join(keyword_validation_results["missing"])
+                            + "\n"
+                        )
+                    kw_ctx += "</KEYWORD_PRESENCE>\n"
+
+                subcriteria_results = []
+                if hasattr(criterion, 'subcriteria') and criterion.subcriteria and len(criterion.subcriteria) > 0:
+                    # Create tasks for all subcriteria queries
+                    subcriteria_tasks = [
+                        self.analyze_subcriteria(subcrit, self.tender_pinecone_id)
+                        for subcrit in criterion.subcriteria
+                    ]
+                    
+                    # Execute all subcriteria queries concurrently
+                    subcriteria_results = await asyncio.gather(*subcriteria_tasks)
+                    
+                    # Add subcriteria results to the prompt
+                    if any(result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0 for result in subcriteria_results):
+                        subcriteria_context = "\n\n<DOCUMENTATION_CONTEXT>\n"
+                        
+                        for result in subcriteria_results:
+                            has_results = result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0
+                            if has_results:
+                                subcriteria_context += f"\nResults for subquery: '{result['subcriteria']}'\n"
+                                
+                                # Add vector search results
+                                if result["vector_total_matches"] > 0:
                                     for idx, match in enumerate(result["vector_results"], 1):
                                         subcriteria_context += f"{idx}. From {match['metadata'].get('source', 'unknown')} ):\n{match['metadata'].get('text', '')}\n"
                                 
                                 # Add Elasticsearch results
-                                if result["elasticsearch_total_matches"] > 0:
-                                    subcriteria_context += "\nKeyword search results:\n"
-                                    for idx, match in enumerate(result["elasticsearch_results"], 1):
-                                        subcriteria_context += f"{idx}. From {match['source']}:\n{match['text']}\n"
+                                # if result["elasticsearch_total_matches"] > 0:
+                                #     subcriteria_context += "\nKeyword search results:\n"
+                                #     for idx, match in enumerate(result["elasticsearch_results"], 1):
+                                #         subcriteria_context += f"{idx}. From {match['source']}:\n{match['text']}\n"
                         
-                        subcriteria_context += "\n</SUBCRITERIA_RESULTS>\n"
+                        subcriteria_context += "\n</DOCUMENTATION_CONTEXT>\n"
                         prompt += subcriteria_context
 
+                if keyword_validation_results and self.use_elasticsearch:
+                    kw_ctx  = "\n\n<KEYWORD_PRESENCE>\n"
+                    if keyword_validation_results["hits"]:
+                        kw_ctx += "The following keywords were found in tender documentation:\n"
+                        for hit in keyword_validation_results["hits"]:
+                            sample_snip = hit["snippets"][0]["text"]
+                            kw_ctx += f" - {hit['keyword']}: \"{sample_snip}\"\n"
+                    if keyword_validation_results["missing"]:
+                        kw_ctx += (
+                            "The following keywords **were NOT found** in tender documentation: "
+                            + ", ".join(keyword_validation_results["missing"])
+                            + "\n"
+                        )
+                    kw_ctx += "</KEYWORD_PRESENCE>\n"
+                    prompt += kw_ctx
+
                 # Add Elasticsearch results to the prompt if available
-                if self.use_elasticsearch and elastic_search_results["total_matches"] > 0:
-                    es_context = "\n\n<ELASTICSEARCH_RESULTS>\n"
-                    es_context += "It was keywords search. Treat them as a context but do not overthink it as it was only keyword serach\n"
-                    es_context += f"Keywords used in search: {', '.join(elastic_search_results['search_keywords'])}\n\n"
-                    es_context += "Relevant document excerpts:\n"
-                    for idx, result in enumerate(elastic_search_results["results"], 1):
-                        es_context += f"\n{idx}. From {result['source']}:\n{result['text']}\n"
-                    es_context += "\n</ELASTICSEARCH_RESULTS>\n"
-                    prompt += es_context
+                # if self.use_elasticsearch and elastic_search_results["total_matches"] > 0:
+                #     es_context = "\n\n<ELASTICSEARCH_RESULTS>\n"
+                #     es_context += "It was keywords search. Treat them as a context but do not overthink it as it was only keyword serach\n"
+                #     es_context += f"Keywords used in search: {', '.join(elastic_search_results['search_keywords'])}\n\n"
+                #     es_context += "Relevant document excerpts:\n"
+                #     for idx, result in enumerate(elastic_search_results["results"], 1):
+                #         es_context += f"\n{idx}. From {result['source']}:\n{result['text']}\n"
+                #     es_context += "\n</ELASTICSEARCH_RESULTS>\n"
+                #     prompt += es_context
 
                 # Rest of your function remains the same
                 response_format = {
@@ -752,13 +698,14 @@ class RAGManager:
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "criteria": {"type": "string"},
+                                "criteria": {"type": "string", "description": "Exact text of the criterion question."},
                                 "analysis": {
                                     "type": "object",
+                                    "description": "Detailed analysis regarding whether the criterion is met.",
                                     "properties": {
-                                        "summary": {"type": "string"},
-                                        "confidence": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
-                                        "criteria_met": {"type": "boolean"}
+                                        "summary": {"type": "string", "description": summary_description},
+                                        "confidence": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Confidence level in the assessment."},
+                                        "criteria_met": {"type": "boolean", "description": "Whether the criterion is satisfied based on the documentation. It must reflect the conclusions from summary."}
                                     },
                                     "required": ["summary", "confidence", "criteria_met"],
                                     "additionalProperties": False
@@ -782,23 +729,28 @@ class RAGManager:
                         "model": "gpt-4o-mini",
                         "temperature": 0,
                         "max_tokens": 4000,
-                        "system_message": """You are a specialist in finding the response for criteria based on context.
-                        You will have access to main DOCUMENT_CONTEXT which is result of vector search by main criteria text.
-                        You can also recieve SUBCRITERIA_RESULTS which are results of vector searches by subcriteria queries.
+                        "system_message": """You are a public tender expert with enormous expertise and knowledge in public tenders. 
+                        You excel at finding the information in public tender documentation.
+                        In your work you always ground your responses in the documentation context and respond thoughtfully, never making false assessments as it is a critical branch of our business.
+                        Even the smallest mistake can cost millions and you perform the most accurate search you can.
+                        You have access to DOCUMENTATION_CONTEXT which is result of vector search in public tender documents.
 
-                        You should answer to main question but also consider and point out subcriteria results if provided.
-                        You should also stricly stick to optional ADDITIONAL INSTRUCTION if provided.
-                        """ if subcriteria_results else "You are a specialist in finding the response for criteria based on context. You should also stricly stick to optional ADDITIONAL INSTRUCTION if provided.",
+                        Always respond in {self.language} unless specified otherwise.
+                        """,
                         "stream": False, 
                         "response_format": response_format
                     }
                 )
-                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+
+                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)
                 parsed_output = json.loads(response.llm_response)
 
                 # Add ES results to the output if available
-                if elastic_search_results:
-                    parsed_output["elasticsearch_results"] = elastic_search_results
+                # if elastic_search_results:
+                #     parsed_output["elasticsearch_results"] = elastic_search_results
+
+                if keyword_validation_results:
+                    parsed_output["keyword_presence"] = keyword_validation_results
 
                 # Add subcriteria results to the output
                 if subcriteria_results:
@@ -821,13 +773,28 @@ class RAGManager:
             Returns a structured JSON with a single key: 'tender_location'.
             """
             try:
-                prompt = """
-                    Polish voivodeships to choose from: Dolnośląskie, Kujawsko-pomorskie, Lubelskie, Lubuskie, Łódzkie, Małopolskie, Mazowieckie, Opolskie, Podkarpackie, Podlaskie, Pomorskie, Śląskie, Świętokrzyskie, Warmińsko-mazurskie, Wielkopolskie, Zachodniopomorskie.
+                prompt = f"""
+                    Always respond in {self.language} unless specified otherwise.
+                    if original_tender_metadata is provided, use it to determine the language of the tender.
+                    original_tender_metadata: {original_tender_metadata}
+                    Otherwise or if not all info is provided, based on the documents, determine the geographic location of the tender.
+                    If you are not sure about the country, make it be Polska by default.
+                    
+                    For Polish tenders:
+                    - Use Polish voivodeships: Dolnośląskie, Kujawsko-pomorskie, Lubelskie, Lubuskie, Łódzkie, Małopolskie, Mazowieckie, Opolskie, Podkarpackie, Podlaskie, Pomorskie, Śląskie, Świętokrzyskie, Warmińsko-mazurskie, Wielkopolskie, Zachodniopomorskie
+                    - Use Polish names for countries (e.g., Niemcy for Germany)
+                    
+                    For non-Polish tenders:
+                    - Use the country's name in specified language
+                    - Set voivodeship to "UNKNOWN"
+                    - Use the city name as provided in the documents
+                    
                     Please determine the geographic location in terms of:
-                    - country (Kraj in polish. By default make it be Polska, only if you detect that is some other country then change to polish name of this contry. For example: Niemcy)
-                    - voivodeship (Województwo in polish. Choose one from the listed ones. Do not change the form or name. Example: Wielkopolskie)
-                    - city (Miejscowość/Miasto in polish. Example: Poznań)
-                    If information is not provided just answer with UNKNOWN.
+                    - country (Kraj in Polish)
+                    - voivodeship (Województwo in Polish, only for Polish tenders)
+                    - city (Miejscowość/Miasto in Polish)
+                    
+                    If information is not provided, answer with UNKNOWN.
                     Always return your answer in a structured output format.
                     """
 
@@ -839,9 +806,9 @@ class RAGManager:
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "country": {"type": "string"},
-                                    "city": {"type": "string"},
-                                    "voivodeship": {"type": "string"},
+                                    "country": {"type": "string", "description": "Country (in Polish) where the tender is executed."},
+                                    "city": {"type": "string", "description": "City or locality of the tender execution."},
+                                    "voivodeship": {"type": "string", "description": "Polish voivodeship (province) where the tender is located."},
                                 },
                                 "required": ["country", "city", "voivodeship"],
                                 "additionalProperties": False
@@ -851,7 +818,7 @@ class RAGManager:
 
                 request_data = LLMRAGRequest(
                     query=prompt,
-                    rag_query="Podaj kraj, województwie i miasto realizacji.",
+                    rag_query="Podaj kraj, województwo i miasto dla przetargu.",
                     vector_store={
                         "index_name": self.index_name,
                         "namespace": self.namespace,
@@ -859,7 +826,7 @@ class RAGManager:
                     },
                     llm={
                         "provider": "openai",
-                        "model": "gpt-4o-mini",
+                        "model": "gpt-4.1-mini",
                         "temperature": 0,
                         "max_tokens": 2000,
                         "system_message": "",
@@ -867,7 +834,7 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 2)
                 parsed_output = json.loads(response.llm_response)
 
                 if include_vector_results and hasattr(response, 'vector_search_results'):
@@ -931,7 +898,7 @@ class RAGManager:
         log_mem(f"{self.tender_pinecone_id} generate_tender_description:start")
         # Create thread and add initial message
         prompt = (
-                    "Please summarize exactly what this tender is about in Polish (public tender is zamówienie publiczne in polish).."
+                    f"Please summarize exactly what this tender is about in {self.language} (public tender is zamówienie publiczne in polish).."
                     "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
                     "If you detect that there is no enough data to create summary or it doesn't make sense resopond with 'Brak danych'."
                     "Respond with just the complete summary. (do not include the confidence level indicator)"
@@ -948,14 +915,14 @@ class RAGManager:
             },
             llm={
                 "provider": "openai",
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "temperature": 0.6,
                 "max_tokens": 2000,
-                "system_message": "",
+                "system_message": f"You are a tender analysis specialist. Always respond in {self.language}.",
                 "stream": False,
             }
         )
-        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id)
+        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 7)
 
         # Remove any '【...】' placeholders using regex
         description = re.sub(r'【.*?】', '', response.llm_response)
@@ -1035,10 +1002,11 @@ class RAGManager:
                             "properties": {
                                 "matches": {
                                     "type": "array",
+                                    "description": "List of tenders that match the company's search criteria.",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "id": {"type": "string"}
+                                            "id": {"type": "string", "description": "Exact ID of the tender from the input list"}
                                         },
                                         "required": ["id"],
                                         "additionalProperties": False

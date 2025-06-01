@@ -76,6 +76,7 @@ class TenderAnalysisResult(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     opened_at: Optional[datetime] = None
     order_number: Optional[int] = None
+    language: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -94,6 +95,7 @@ class AnalysisCriteria(BaseModel):
     exclude_from_score: Optional[bool] = None
     instruction: Optional[str] = None  # New field for optional LLM instruction
     subcriteria: Optional[list[str]] = None
+    keywords: Optional[str] = None
 
 class TenderAnalysis(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -106,9 +108,11 @@ class TenderAnalysis(BaseModel):
     criteria: List[AnalysisCriteria]
     filtering_rules: Optional[str] = None
     last_run: Optional[datetime] = None
+    language: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     active: bool = Field(default=True)
+    assigned_users: List[str] = Field(default_factory=list)  # Add this field
     
     class Config:
         arbitrary_types_allowed = True
