@@ -27,6 +27,7 @@ export interface KanbanBoard {
   created_at?: string;
   updated_at?: string;
   columns: KanbanColumn[];
+  assigned_users?: string[];    // ← add this
 }
 
 // Interface matching the backend MoveTenderRequest model for moving tenders between columns

@@ -7,7 +7,8 @@ import {
   Sparkles, 
   Lightbulb, 
   Info,
-  FileText
+  FileText,
+  KeyIcon
 } from "lucide-react";
 import { 
   HoverCard,
@@ -30,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import {  
+import { 
   Search, 
   Building2, 
   ClipboardList, 
@@ -39,7 +40,9 @@ import {
   Database,
   ChevronsUpDown,
   Check, 
-  Trash2
+  Trash2,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 import {
   Command,
@@ -55,8 +58,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { SOURCE_CONFIG, CRITERIA_CONFIG} from "@/app/constants/tenders";
+import { POLISH_SOURCES, TED_SOURCES, CRITERIA_CONFIG} from "@/app/constants/tenders";
 import { Slider } from "@/components/ui/slider";
+import { QuestionMarkIcon } from "@radix-ui/react-icons";
 
 const criteriaSchema = z.object({
   name: z.string().min(1, "Kryterium jest wymagane"),
@@ -66,6 +70,7 @@ const criteriaSchema = z.object({
   exclude_from_score: z.boolean().default(false),
   instruction: z.string().optional(),
   subcriteria: z.array(z.string()).optional(),
+  keywords: z.string().optional(),
 });
 
 const formSchema = z.object({
@@ -76,6 +81,7 @@ const formSchema = z.object({
   criteria: z.array(criteriaSchema)
     .min(1, "Co najmniej jedno kryterium jest wymagane")
     .max(20, "Możesz dodać maks. 20 kryteriów"),
+  assigned_users: z.array(z.string()).default([]),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -87,6 +93,7 @@ interface Props {
 }
 
 export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false }: Props) {
+  const [tedExpanded, setTedExpanded] = useState(false);
   const [weights, setWeights] = useState<Record<string, number>>(
     CRITERIA_CONFIG.reduce((acc, curr) => {
       acc[curr.id] = 3;
@@ -101,6 +108,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
       company_description: "",
       search_phrase: "",
       sources: [],
+      assigned_users: [],
       criteria: CRITERIA_CONFIG.map(c => ({
         name: c.name,
         description: c.description,
@@ -109,6 +117,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
         exclude_from_score: false,
         instruction: "",
         subcriteria: [],
+        keywords: "",
       }))
     },
   });
@@ -125,13 +134,10 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
     form.setValue("criteria", criteria);
   };
   
-  // Create a ref for the latest added criteria input
   const newCriteriaRef = useRef<HTMLInputElement | null>(null);
   
-  // Track the last added criteria index
   const [lastAddedIndex, setLastAddedIndex] = useState<number | null>(null);
   
-  // Effect to focus on newly added criteria's name field
   useEffect(() => {
     if (lastAddedIndex !== null && newCriteriaRef.current) {
       newCriteriaRef.current.focus();
@@ -199,12 +205,22 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Opis firmy
+                    <Search className="h-4 w-4" />
+                    Jakie przetargi chcesz wyszukiwać?
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </Button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
+                        <p>Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.</p>
+                      </HoverCardContent>
+                    </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Opisz swoją firmę tak, aby AI wiedziało co może Cię interesować..."
+                      placeholder="Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje..."
                       className="min-h-[100px]"
                       {...field}
                     />
@@ -220,8 +236,18 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
-                    <Search className="h-4 w-4" />
-                    Fraza wyszukiwania
+                    <KeyIcon className="h-4 w-4" />
+                    Słowa kluczowe
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </Button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
+                        <p>Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. <br />AI będzie używało tych informacji do wyszukiwania przetargów.</p>
+                      </HoverCardContent>
+                    </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Input placeholder="Np. Budowa infrastruktury drogowej" {...field} />
@@ -236,6 +262,9 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
               name="sources"
               render={({ field }) => {
                 const selectedSources = field.value || [];
+                const selectedTedCount = Object.keys(TED_SOURCES).filter(id => selectedSources.includes(id)).length;
+                const totalTedCount = Object.keys(TED_SOURCES).length;
+                
                 return (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
@@ -257,23 +286,78 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent width="w-full" className="p-0" align="start">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Szukaj źródła..." />
                         <CommandList>
                           <CommandEmpty>Nie znaleziono źródła.</CommandEmpty>
-                          <CommandGroup heading="Dostępne źródła">
-                            {Object.entries(SOURCE_CONFIG).map(([id, source]) => {
-                              const isSelected = selectedSources.includes(id);
+                          <CommandGroup>
+                            {Object.entries(POLISH_SOURCES).map(([sourceId, source]) => {
+                              const isSelected = selectedSources.includes(sourceId);
                               return (
                                 <CommandItem
-                                  key={id}
+                                  key={sourceId}
                                   onSelect={() => {
                                     const newValue = isSelected
-                                      ? selectedSources.filter((value) => value !== id)
-                                      : [...selectedSources, id];
+                                      ? selectedSources.filter((value) => value !== sourceId)
+                                      : [...selectedSources, sourceId];
                                     field.onChange(newValue);
                                   }}
+                                >
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <img 
+                                      src={source.icon} 
+                                      alt={source.label}
+                                      className="h-4 w-4 object-contain"
+                                    />
+                                    <span>{source.label}</span>
+                                  </div>
+                                  <Check
+                                    className={cn(
+                                      "ml-auto h-4 w-4",
+                                      isSelected ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                </CommandItem>
+                              );
+                            })}
+                            
+                            <CommandItem
+                              onSelect={() => setTedExpanded(!tedExpanded)}
+                              className="cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 flex-1">
+                                {tedExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                                <img 
+                                  src="/images/tender_sources/ted_logo.png" 
+                                  alt="TED Europa"
+                                  className="h-4 w-4 object-contain"
+                                />
+                                <span>TED Europa</span>
+                                {selectedTedCount > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    ({selectedTedCount}/{totalTedCount})
+                                  </span>
+                                )}
+                              </div>
+                            </CommandItem>
+                            
+                            {tedExpanded && Object.entries(TED_SOURCES).map(([sourceId, source]) => {
+                              const isSelected = selectedSources.includes(sourceId);
+                              return (
+                                <CommandItem
+                                  key={sourceId}
+                                  onSelect={() => {
+                                    const newValue = isSelected
+                                      ? selectedSources.filter((value) => value !== sourceId)
+                                      : [...selectedSources, sourceId];
+                                    field.onChange(newValue);
+                                  }}
+                                  className="pl-8"
                                 >
                                   <div className="flex items-center gap-2 flex-1">
                                     <img 
@@ -351,7 +435,6 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                   )}
                 />
 
-                {/* Weight slider with animation */}
                 <div className={`transition-all duration-300 ease-in-out ${!form.watch(`criteria.${index}.exclude_from_score`) ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
                   <FormField
                     control={form.control}
@@ -378,7 +461,6 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                   />
                 </div>
 
-                {/* Add new checkbox options */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   <FormField
                     control={form.control}
@@ -413,7 +495,6 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                             checked={field.value}
                             onCheckedChange={(checked) => {
                               field.onChange(checked);
-                              // If excluding from score, set weight to 1
                               if (checked) {
                                 form.setValue(`criteria.${index}.weight`, 1);
                               }
@@ -498,6 +579,42 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                       </div>
 
                       <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                            Słowa kluczowe
+                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
+                          </FormLabel>
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                                <HelpCircle className="h-3.5 w-3.5" />
+                              </Button>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
+                              <p>Wprowadź słowa kluczowe oddzielone przecinkami, np. &quot;certyfikacja, ISO, budżet&quot;</p>
+                            </HoverCardContent>
+                          </HoverCard>
+                        </div>
+
+                        <FormField
+                          control={form.control}
+                          name={`criteria.${index}.keywords`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'"
+                                  className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
+                                  {...field}
+                                  value={field.value || ''}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                             Dodatkowe zapytania
@@ -568,25 +685,26 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 </p>
               )}
 
-<Button
-  type="button"
-  variant="outline"
-  className="flex items-center gap-2 w-full justify-center"
-  onClick={() => {
-    append({ 
-      name: "", 
-      description: "", 
-      weight: 3,
-      is_disqualifying: false,
-      exclude_from_score: false,
-      instruction: "",
-      subcriteria: [],
-    });
-    setLastAddedIndex(fields.length);
-  }}
->
-  + Dodaj nowe kryterium
-</Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex items-center gap-2 w-full justify-center"
+                onClick={() => {
+                  append({ 
+                    name: "", 
+                    description: "", 
+                    weight: 3,
+                    is_disqualifying: false,
+                    exclude_from_score: false,
+                    instruction: "",
+                    subcriteria: [],
+                    keywords: "",
+                  });
+                  setLastAddedIndex(fields.length);
+                }}
+              >
+                + Dodaj nowe kryterium
+              </Button>
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 "use client"
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { User, Assistant, Conversation, DashboardState, Organization } from '../types';
+import { assignUsersToAssistant as apiAssign } from '@/utils/assistantActions';
 
 const STORAGE_KEY = 'dashboard_state';
 
@@ -24,6 +25,7 @@ interface DashboardContextType extends DashboardState {
   setCurrentConversation: (conversation: Conversation | null) => void;
   setConversationLoading: (loading: boolean) => void;
   setAssistants: (assistants: Assistant[]) => void;
+  assignUsersToAssistant: (assistantId: string, userIds: string[]) => Promise<Assistant>;
   reset: () => void;
 }
 
@@ -84,6 +86,34 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+ const assignUsersToAssistant = useCallback(
+  async (assistantId: string, newUserIds: string[]): Promise<Assistant> => {
+    // 1) find the assistant in state
+    const existing = state.assistants.find(a => a._id === assistantId);
+    if (!existing) {
+      throw new Error(`Assistant with id ${assistantId} not found`);
+    }
+
+    // 2) call the API helper
+    const updated = await apiAssign(existing, newUserIds);
+
+    // 3) merge it back into React state
+    setState(prev => ({
+      ...prev,
+      assistants: prev.assistants.map(a =>
+        a._id === assistantId ? updated : a
+      ),
+      currentAssistant:
+        prev.currentAssistant?._id === assistantId
+          ? updated
+          : prev.currentAssistant,
+    }));
+
+    return updated;
+  },
+  [state.assistants]
+);
+
   return (
     <DashboardContext.Provider
       value={{
@@ -94,6 +124,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         setCurrentConversation,
         setConversationLoading,
         setAssistants,
+        assignUsersToAssistant,
         reset,
       }}
     >

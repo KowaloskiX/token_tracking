@@ -435,7 +435,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                 shared_with: [],
                 temperature: 0.6,
                 pinecone_config: updatedResult.pinecone_config,
-                tender_pinecone_id: updatedResult.tender_pinecone_id
+                tender_pinecone_id: updatedResult.tender_pinecone_id,
+                assigned_users: []
             };
         
             const assistant = await createAssistant(assistantData);
@@ -463,7 +464,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
             };
     
             const conversation = await createConversation(conversationData);
-            window.open(`/dashboard/chat/${conversation._id}`, '_blank');
+            window.open(`/dashboard/tenders/chat/${conversation._id}`, '_blank');
     
         } catch (error) {
             console.error('Error creating assistant or conversation:', error);

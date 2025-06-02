@@ -46,6 +46,7 @@ const Tenders = () => {
               exclude_from_score: criterion.exclude_from_score || false,
               instruction: criterion.instruction || "",
               subcriteria: criterion.subcriteria || [],
+              keywords: criterion.keywords || undefined,
             })),
           };
       

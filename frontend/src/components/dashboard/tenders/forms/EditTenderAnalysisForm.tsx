@@ -7,7 +7,10 @@ import {
   Sparkles, 
   Lightbulb, 
   Info,
-  FileText
+  FileText,
+  UserPlus,
+  Loader2,
+  KeyIcon
 } from "lucide-react";
 import { 
   HoverCard,
@@ -39,10 +42,12 @@ import {
   Check,
   Share2,
   X,
-  Trash2
+  Trash2,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 import { TenderAnalysis } from "@/types/tenders";
-import { SOURCE_CONFIG, CRITERIA_CONFIG } from "@/app/constants/tenders";
+import { POLISH_SOURCES, TED_SOURCES, CRITERIA_CONFIG } from "@/app/constants/tenders";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
@@ -55,7 +60,11 @@ import {
 } from "@/components/ui/command";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
-
+import { useTender } from '@/context/TenderContext';
+import { AssignUsersModal } from "../AssignUsersModal";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { QuestionMarkIcon } from "@radix-ui/react-icons";
 const criteriaSchema = z.object({
   name: z.string().min(1, "Kryterium jest wymagane"),
   description: z.string(),
@@ -64,6 +73,7 @@ const criteriaSchema = z.object({
   exclude_from_score: z.boolean().default(false),
   instruction: z.string().optional(),
   subcriteria: z.array(z.string()).optional(),
+  keywords: z.string().optional(),
 });
 
 const formSchema = z.object({
@@ -74,7 +84,15 @@ const formSchema = z.object({
   criteria: z.array(criteriaSchema).min(1, "Co najmniej jedno kryterium jest wymagane"),
 });
 
-type FormData = z.infer<typeof formSchema>;
+type FormData = z.infer<typeof formSchema>& { assigned_users: string[] };
+
+type OrgMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isCurrentUser: boolean;
+};
 
 interface Props {
   analysis: TenderAnalysis;
@@ -82,18 +100,28 @@ interface Props {
   isLoading?: boolean;
   onShareToggle?: () => Promise<void>;
   showShareButton?: boolean;
-  isShared?: boolean;
 }
 
-export function EditTenderAnalysisForm({
-  analysis,
-  onSubmit,
-  isLoading = false,
-  onShareToggle,
-  showShareButton = false,
-  isShared = false,
-}: Props) {
+export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, onShareToggle, showShareButton = false }: Props) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const { assignUsers } = useTender();
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [assignUsersOpen, setAssignUsersOpen] = useState(false);
+  // show/hide the inline assignment section
+  const [showAssignees, setShowAssignees] = useState(false);
+  // fetched org members
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  // local selection
+ 
+  const [isAssigneesLoading, setIsAssigneesLoading] = useState(false);
+
+
+  // Guard assigned_users to never be undefined
+  const assignedUsers: string[] = Array.isArray(analysis.assigned_users) ? analysis.assigned_users : [];
+
+  // Determine if this analysis is shared (excludes owner)
+  const isShared = assignedUsers.some(id => id !== analysis.user_id);
+  const [tedExpanded, setTedExpanded] = useState(false);
 
   const toggleSection = (criteriaIndex: number) => {
     setExpandedSections(prev => ({
@@ -102,7 +130,7 @@ export function EditTenderAnalysisForm({
     }));
   };
 
-  // Use the analysis criteria if available; otherwise, fall back to default values.
+
   const defaultCriteria =
   analysis.criteria.length > 0
     ? analysis.criteria.map((c) => ({
@@ -113,6 +141,7 @@ export function EditTenderAnalysisForm({
         exclude_from_score: c.exclude_from_score || false,
         instruction: c.instruction || "",
         subcriteria: c.subcriteria || [],
+        keywords: c.keywords || "",
       }))
     : CRITERIA_CONFIG.map((c) => ({
         name: c.name,
@@ -122,6 +151,7 @@ export function EditTenderAnalysisForm({
         exclude_from_score: false,
         instruction: "",
         subcriteria: [],
+        keywords: "",
       }));
 
   const form = useForm<FormData>({
@@ -140,13 +170,27 @@ export function EditTenderAnalysisForm({
     name: "criteria",
   });
   
-  // Create a ref for the latest added criteria input
   const newCriteriaRef = useRef<HTMLInputElement | null>(null);
-  
-  // Track the last added criteria index
   const [lastAddedIndex, setLastAddedIndex] = useState<number | null>(null);
-  
-  // Effect to focus on newly added criteria's name field
+  useEffect(() => {
+    if (!showAssignees) return;
+    (async () => {
+      setIsAssigneesLoading(true);
+      try {
+        const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`, {
+          headers:{ Authorization:`Bearer ${localStorage.getItem('token')}` }
+        });
+        const { members } = await resp.json();
+        setOrgMembers(members || []);
+      } catch {
+        // handle error
+      } finally {
+        setIsAssigneesLoading(false);
+      }
+    })();
+  }, [showAssignees]);
+
+
   useEffect(() => {
     if (lastAddedIndex !== null && newCriteriaRef.current) {
       newCriteriaRef.current.focus();
@@ -155,39 +199,149 @@ export function EditTenderAnalysisForm({
   }, [lastAddedIndex]);
 
   async function handleSubmit(values: FormData) {
-    try {
-      await onSubmit(values);
-    } catch (error) {
-      console.error("Submission error:", error);
-    }
+  try {
+    // include selected users (assigned users) in the payload
+    const payload = {
+      ...values,
+      assigned_users: selectedUsers,
+    };
+    await onSubmit(payload);
+  } catch (error) {
+    console.error("Submission error:", error);
   }
+}
 
+  // Updated share-toggle handler now using guarded assignedUsers
+  const handleShareToggle = async () => {
+    if (!analysis._id) return;
+    setIsShareLoading(true);
+
+    try {
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const { members } = await resp.json();
+      const orgIds = members.map((m: any) => m.id);
+
+      // build new list using assignedUsers
+      const newAssigned = isShared
+        ? assignedUsers.filter(id => !orgIds.includes(id))
+        : Array.from(new Set([...assignedUsers, ...orgIds]));
+
+      await assignUsers(analysis._id, newAssigned);
+      await onShareToggle?.();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsShareLoading(false);
+    }
+  };
+ const [selectedUsers, setSelectedUsers] = useState<string[]>(assignedUsers);
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="relative">
-        {showShareButton && onShareToggle && (
-          <div className="mb-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onShareToggle}
-              className="flex items-center gap-2 w-full justify-center"
-            >
-              {isShared ? (
-                <>
-                  <X className="w-4 h-4" />
-                  Przestań udostępniać w organizacji
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-4 h-4" />
-                  Udostępnij w organizacji
-                </>
-              )}
-            </Button>
-          </div>
-        )}
+      <input
+        type="hidden"
+        {...form.register("assigned_users")}
+        value={selectedUsers.join(",")}
+      />
+
+        {showShareButton && (
+  <div className="mb-4 space-y-2">
+     <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleShareToggle}
+      disabled={isShareLoading}
+      className="flex items-center gap-2 w-full justify-center"
+    >
+      {isShareLoading
+        ? isShared
+          ? "Anulowanie udostępniania..."
+          : "Udostępnianie..."
+        : isShared
+        ? (
+            <>
+              <X className="w-4 h-4" />
+              Przestań udostępniać w organizacji
+            </>
+          )
+        : (
+            <>
+              <Share2 className="w-4 h-4" />
+              Udostępnij w organizacji
+            </>
+          )
+      }
+    </Button>
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => setShowAssignees(v => !v)}
+      className="flex items-center gap-2 w-full justify-center"
+    >
+      <UserPlus className="w-4 h-4" />
+      {showAssignees ? 'Ukryj przypisywanie' : 'Przypisz użytkowników'}
+    </Button>
+
+    {showAssignees && (
+      <div className="border p-4 rounded-md bg-muted/50">
+        {isAssigneesLoading
+          ? <div className="text-center py-6"><Loader2 className="animate-spin mx-auto"/></div>
+          : orgMembers.length === 0
+            ? <p className="text-sm text-muted-foreground">Brak użytkowników</p>
+            : (
+              <>
+              <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
+                <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-muted-foreground">
+                  Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej analizy i jej wyników. Posiadacz analizy zawsze ma dostęp.
+                </div>
+              </div>
+              <ScrollArea className="max-h-52">
+                {orgMembers.map(m => {
+                  const isOwner = m.id === analysis.user_id;
+                  const isSel   = selectedUsers.includes(m.id);
+                  return (
+                    <div key={m.id} className="flex items-center space-x-2 py-2">
+                      <Checkbox
+                        checked={isSel || isOwner}
+                        disabled={isOwner}
+                        onCheckedChange={() => {
+                          if (isOwner) return;
+                          const next = isSel
+                            ? selectedUsers.filter(u => u !== m.id)
+                            : [...selectedUsers, m.id];
+
+                          // update your local state
+                          setSelectedUsers(next);
+
+                          // **also** tell RHF about it
+                          form.setValue("assigned_users", next, {
+                            shouldValidate: true,
+                            shouldDirty:   true,
+                          });
+                        }}
+                      />
+                        <Label className="flex-1">
+                        {m.name} <span className="text-xs text-muted-foreground">({m.email})</span>
+                        {isOwner && <Badge className="ml-2 text-xs">Właściciel</Badge>}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </ScrollArea>
+              </>
+            )
+        }
+        <div className="mt-4 flex justify-end space-x-2">
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
         <div className="p-6 space-y-6">
           <div className="space-y-4">
@@ -214,12 +368,22 @@ export function EditTenderAnalysisForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Opis firmy
+                    <Search className="h-4 w-4" />
+                    Jakie przetargi chcesz wyszukiwać?
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </Button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
+                        <p>Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.</p>
+                      </HoverCardContent>
+                    </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Opisz swoją firmę tak, aby AI wiedziało co może Cię interesować..."
+                      placeholder="Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje..."
                       className="min-h-[100px]"
                       {...field}
                     />
@@ -235,8 +399,18 @@ export function EditTenderAnalysisForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
-                    <Search className="h-4 w-4" />
-                    Fraza wyszukiwania
+                    <KeyIcon className="h-4 w-4" />
+                    Słowa kluczowe
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </Button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
+                        <p>Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. <br />AI będzie używało tych informacji do wyszukiwania przetargów.</p>
+                      </HoverCardContent>
+                    </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Input placeholder="Np. Budowa infrastruktury drogowej" {...field} />
@@ -251,6 +425,9 @@ export function EditTenderAnalysisForm({
               name="sources"
               render={({ field }) => {
                 const selectedSources = field.value || [];
+                const selectedTedCount = Object.keys(TED_SOURCES).filter(id => selectedSources.includes(id)).length;
+                const totalTedCount = Object.keys(TED_SOURCES).length;
+                
                 return (
                   <FormItem>
                     <FormLabel className="flex items-center gap-2">
@@ -274,23 +451,78 @@ export function EditTenderAnalysisForm({
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
-                      <PopoverContent width="w-full" className="p-0" align="start">
+                      <PopoverContent className="w-full p-0" align="start">
                         <Command>
                           <CommandInput placeholder="Szukaj źródła..." />
                           <CommandList>
                             <CommandEmpty>Nie znaleziono źródła.</CommandEmpty>
-                            <CommandGroup heading="Dostępne źródła">
-                              {Object.entries(SOURCE_CONFIG).map(([id, source]) => {
-                                const isSelected = selectedSources.includes(id);
+                            <CommandGroup>
+                              {Object.entries(POLISH_SOURCES).map(([sourceId, source]) => {
+                                const isSelected = selectedSources.includes(sourceId);
                                 return (
                                   <CommandItem
-                                    key={id}
+                                    key={sourceId}
                                     onSelect={() => {
                                       const newValue = isSelected
-                                        ? selectedSources.filter((value) => value !== id)
-                                        : [...selectedSources, id];
+                                        ? selectedSources.filter((value) => value !== sourceId)
+                                        : [...selectedSources, sourceId];
                                       field.onChange(newValue);
                                     }}
+                                  >
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <img 
+                                        src={source.icon} 
+                                        alt={source.label}
+                                        className="h-4 w-4 object-contain"
+                                      />
+                                      <span>{source.label}</span>
+                                    </div>
+                                    <Check
+                                      className={cn(
+                                        "ml-auto h-4 w-4",
+                                        isSelected ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                  </CommandItem>
+                                );
+                              })}
+                              
+                              <CommandItem
+                                onSelect={() => setTedExpanded(!tedExpanded)}
+                                className="cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2 flex-1">
+                                  {tedExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                  <img 
+                                    src="/images/tender_sources/ted_logo.png" 
+                                    alt="TED Europa"
+                                    className="h-4 w-4 object-contain"
+                                  />
+                                  <span>TED Europa</span>
+                                  {selectedTedCount > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ({selectedTedCount}/{totalTedCount})
+                                    </span>
+                                  )}
+                                </div>
+                              </CommandItem>
+                              
+                              {tedExpanded && Object.entries(TED_SOURCES).map(([sourceId, source]) => {
+                                const isSelected = selectedSources.includes(sourceId);
+                                return (
+                                  <CommandItem
+                                    key={sourceId}
+                                    onSelect={() => {
+                                      const newValue = isSelected
+                                        ? selectedSources.filter((value) => value !== sourceId)
+                                        : [...selectedSources, sourceId];
+                                      field.onChange(newValue);
+                                    }}
+                                    className="pl-8"
                                   >
                                     <div className="flex items-center gap-2 flex-1">
                                       <img 
@@ -375,7 +607,6 @@ export function EditTenderAnalysisForm({
                     )}
                   />
 
-                  {/* Weight slider with animation */}
                   <div className={`transition-all duration-300 ease-in-out ${!form.watch(`criteria.${index}.exclude_from_score`) ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
                     <FormField
                       control={form.control}
@@ -402,7 +633,6 @@ export function EditTenderAnalysisForm({
                     />
                   </div>
 
-                  {/* Add new checkbox options */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     <FormField
                       control={form.control}
@@ -516,6 +746,42 @@ export function EditTenderAnalysisForm({
                         </div>
 
                         <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                              Słowa kluczowe
+                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
+                            </FormLabel>
+                            <HoverCard>
+                              <HoverCardTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                                  <HelpCircle className="h-3.5 w-3.5" />
+                                </Button>
+                              </HoverCardTrigger>
+                              <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
+                                <p>Wprowadź słowa kluczowe oddzielone przecinkami, np. &quot;certyfikacja, ISO, budżet&quot;</p>
+                              </HoverCardContent>
+                            </HoverCard>
+                          </div>
+
+                          <FormField
+                            control={form.control}
+                            name={`criteria.${index}.keywords`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Textarea
+                                    placeholder="Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'"
+                                    className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
+                                    {...field}
+                                    value={field.value || ''}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                               Dodatkowe zapytania
@@ -599,6 +865,7 @@ export function EditTenderAnalysisForm({
                     exclude_from_score: false,
                     instruction: "",
                     subcriteria: [],
+                    keywords: "",
                   });
                   setLastAddedIndex(fields.length);
                 }}

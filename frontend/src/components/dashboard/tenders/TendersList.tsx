@@ -144,7 +144,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [lastKnownPage, setLastKnownPage] = useState(1);
-  const [pageBeforeSearch, setPageBeforeSearch] = useState<number | null>(null);
+  const [includeHistorical, setIncludeHistorical] = useState(false);
   
   const updateCurrentPage = useCallback((newPage: number) => {
     setCurrentPage(newPage);
@@ -170,7 +170,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     if (deadlineStr.includes('-')) { // ISO-like format (YYYY-MM-DD or YYYY-MM-DD HH:MM...)
       const isoStr = deadlineStr.includes(' ') ? deadlineStr.replace(' ', 'T') : deadlineStr;
       deadline = new Date(isoStr);
-    } else if (deadlineStr.includes('.')) { // DD.MM.YYYY format
+    } else if (deadlineStr.includes('.')) {
       const parts = deadlineStr.split('.');
       if (parts.length !== 3 || parts.some(p => isNaN(parseInt(p)))) {
         return NaN; // Invalid DD.MM.YYYY format
@@ -249,8 +249,9 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     let isCancelled = false;
     const fetchPage = async (page: number, limit: number) => {
       const token = localStorage.getItem("token") || "";
+      const historicalParam = includeHistorical ? "&include_historical=true" : "";
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}`,
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -311,6 +312,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         console.error("Error loading all pages:", err);
         if (!isCancelled) {
           setAllResults([]);
+         router.replace("/dashboard/tenders/");
         }
       } finally {
         if (!isCancelled) {
@@ -325,7 +327,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       isCancelled = true;
       setIsLoading(false);
     };
-  }, [selectedAnalysis?._id, setAllResults]);
+  }, [selectedAnalysis?._id, setAllResults, includeHistorical]);
 
 
   // Restore page when drawer closes
@@ -958,8 +960,6 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       // **directly** setCurrentPage—this does NOT rewrite the URL
       setCurrentPage(toUse);
       initialPageAppliedRef.current = true;
-      // Set this so that the filter change useEffect can start working
-      setInitialLoadComplete(true);
     }
   }, [isLoading, filteredResults.length]);
   useEffect(() => {
@@ -991,30 +991,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       }
       updateCurrentPage(1);
     }
-  }, [filters, selectedDate, dateFilterType, updateCurrentPage, currentPage]);
-
-  // Adjust current page if it's out of bounds after filtering
-  useEffect(() => {
-    if (!isLoading && totalPages > 0 && currentPage > totalPages) {
-      updateCurrentPage(totalPages);
-    }
-  }, [isLoading, totalPages, currentPage, updateCurrentPage]);
-
-  // Handle search page restoration
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      // Search started - store current page if we haven't already
-      if (pageBeforeSearch === null) {
-        setPageBeforeSearch(currentPage);
-      }
-    } else {
-      // Search cleared - restore original page if we have one stored
-      if (pageBeforeSearch !== null) {
-        updateCurrentPage(pageBeforeSearch);
-        setPageBeforeSearch(null);
-      }
-    }
-  }, [searchQuery, currentPage, pageBeforeSearch, updateCurrentPage]);
+  }, [filters, searchQuery, selectedDate, dateFilterType, updateCurrentPage, currentPage]);
 
   // Listen for URL changes (browser back/forward) and update page accordingly
   useEffect(() => {
@@ -1044,7 +1021,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       }
       updateCurrentPage(1);
     }
-  }, [filters, selectedDate, dateFilterType, initialLoadComplete]);
+  }, [filters, searchQuery, selectedDate, dateFilterType, initialLoadComplete]);
   function useNavigateOnLoad(
     isLoading: boolean,
     targetPage: number,
@@ -1121,28 +1098,32 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                 <CardTitle className="text-xl sm:text-2xl leading-tight">{selectedAnalysis?.name}</CardTitle>
                 {selectedAnalysis && (
                   <Badge 
-                    variant={selectedAnalysis.org_id ? "default" : "secondary"}
+                    variant={(selectedAnalysis.assigned_users?.length ?? 0) > 1 ? "default" : "secondary"}
                     className="text-xs font-medium ml-2"
                   >
-                    {selectedAnalysis.org_id ? "Udostępniane" : "Prywatne"}
+                    {(selectedAnalysis.assigned_users?.length ?? 0) > 1 ? "Udostępniane" : "Prywatne"}
                   </Badge>
                 )}
               </div>
               <CardDescription className="mt-1">
-                {selectedAnalysis?.search_phrase ? (
-                  <>
-                    Wyniki dla frazy:{" "}
-                    {selectedAnalysis.search_phrase.length > 50
-                      ? `${selectedAnalysis.search_phrase.slice(0, 50)}...`
-                      : selectedAnalysis.search_phrase}
-                    {" — "}
-                  </>
-                ) : null}
                 {isLoading
                   ? `Wczytywanie ${totalFetched}${totalTendersCount !== null ? ` z ${totalTendersCount}` : ''} przetargów...`
-                  : `Wczytano ${allResults?.length || 0} przetargów.`
+                  : `Wczytano ${allResults?.length || 0} przetargów${includeHistorical ? ' (w tym historycznych)' : ''}.`
                 }
               </CardDescription>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button
+                variant={includeHistorical ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIncludeHistorical(!includeHistorical)}
+                disabled={isLoading}
+                className="whitespace-nowrap"
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                {includeHistorical ? "Ukryj historyczne" : "Wczytaj historyczne"}
+              </Button>
             </div>
           </div>
           
@@ -1165,24 +1146,29 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
             <Table className="w-full table-fixed">
               <TableHeader className="bg-white/20 shadow">
                 <TableRow>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[7%]" : "w-[5%]")}>Źródło</TableHead>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[33%]" : "w-[25%]")}>Zamówienie</TableHead>
-                  {tableWidth > 700 && <TableHead className="text-xs w-[15%]">Zamawiający</TableHead>}
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[22%]" : "w-[20%]")}>
-                    <div className="flex justify-between items-center pr-4">
-                      <p>Data publikacji</p>
-                      <p>Termin zgłoszenia</p>
-                    </div>
-                  </TableHead>
-                  {tableWidth > 700 && <TableHead className="text-xs w-[10%]">Status</TableHead>}
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[5%]")}>Źródło</TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[45%]" : "w-[25%]")}>Zamówienie</TableHead>
+                  {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">Zamawiający</TableHead>}
+                  {tableWidth >= 700 && (
+                    <TableHead className="text-xs w-[20%]">
+                      <div className="flex justify-between items-center pr-4">
+                        <p>Data publikacji</p>
+                        <p>Termin zgłoszenia</p>
+                      </div>
+                    </TableHead>
+                  )}
+                  {tableWidth < 700 && (
+                    <TableHead className="text-xs w-[20%]">Termin zgłoszenia</TableHead>
+                  )}
+                  {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">Status</TableHead>}
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>Relewantność</TableHead>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[7%]" : "w-[5%]")}></TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[5%]" : "w-[5%]")}></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={tableWidth > 700 ? 7 : 5} className="h-[500px]">
+                    <TableCell colSpan={tableWidth >= 700 ? 7 : 5} className="h-[500px]">
                       <div className="flex flex-col w-full h-full items-center justify-center space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
                         <p className="text-sm text-muted-foreground">
@@ -1201,7 +1187,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                   </TableRow>
                 ) : currentResults.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={tableWidth > 700 ? 7 : 5} className="text-center text-muted-foreground py-20">
+                    <TableCell colSpan={tableWidth >= 700 ? 7 : 5} className="text-center text-muted-foreground py-20">
                       {allResults.length > 0 ?
                         "Brak przetargów spełniających wybrane kryteria filtrowania." : 
                        selectedAnalysis ?
@@ -1263,82 +1249,112 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                         <TableCell>
                           <div className="flex flex-col">
                             <div className="flex items-center">
-                              {truncateText(result.tender_metadata.name, 85)}
+                              {truncateText(result.tender_metadata.name, tableWidth < 700 ? 60 : 85)}
                             </div>
                             <div className="text-xs text-foreground/50 font-medium mt-0.5 flex gap-2 items-center">
                               {voivodeship !== "-" && <span>{truncateText(voivodeship, 25)}</span>}
                               <span>{"#" + result.order_number}</span>
-                              </div>
-                          </div>
-                          
-                        </TableCell>
-                        {tableWidth > 700 && (
-                          <TableCell>{truncateText(result.tender_metadata.organization, 25)}</TableCell>
-                        )}
-                        <TableCell>
-                          <div className="flex flex-col w-full">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
-                                {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
-                              </span>
-                              
-                              <div className="w-24 sm:w-28 bg-secondary-hover rounded-full h-2">
-                                <div
-                                  className={`h-2 rounded-full ${
-                                    !result.tender_metadata.submission_deadline || 
-                                    result.tender_metadata.submission_deadline.includes('NaN') ? "bg-gray-400" :
-                                    daysRemaining < 0 ? "bg-gray-400" :
-                                    daysRemaining <= 3 ? "bg-red-600 opacity-70" :
-                                    daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
-                                    daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
-                                    "bg-green-600 opacity-70"
-                                  }`}
-                                  style={{
-                                    width: `${
-                                      !result.tender_metadata.submission_deadline || 
-                                      result.tender_metadata.submission_deadline.includes('NaN') ? "100" :
-                                      calculateProgressPercentage(result.created_at, result.tender_metadata.submission_deadline)
-                                    }%`
-                                  }}
-                                ></div>
-                              </div>
-                              
-                              <div className="flex items-center">
-                                <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
-                                  {!result.tender_metadata.submission_deadline || 
-                                  result.tender_metadata.submission_deadline.includes('NaN') ? 
-                                    "-" : formatDate(result.tender_metadata.submission_deadline)}
-                                </span>
-                                <Badge className="ml-1 text-xs px-1 py-0" variant="outline">
-                                  <span className={`text-xs ${
-                                    !result.tender_metadata.submission_deadline || 
-                                    result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
-                                    daysRemaining < 0 ? "text-gray-600 opacity-70" :
-                                    daysRemaining <= 3 ? "text-red-600 opacity-70" :
-                                    daysRemaining <= 10 ? "text-amber-600 opacity-70" :
-                                    daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
-                                    "text-green-600 opacity-70"
-                                  }`}>
-                                    {!result.tender_metadata.submission_deadline || 
-                                    result.tender_metadata.submission_deadline.includes('NaN') || 
-                                    isNaN(daysRemaining) ? 
-                                      '-' : 
-                                      daysRemaining < 0 ? 
-                                        'Zak.' : 
-                                        daysRemaining === 0 ? 
-                                          'Dziś' : 
-                                          daysRemaining === 1 ? 
-                                            '1d' : 
-                                            `${daysRemaining}d`}
-                                  </span>
-                                </Badge>
-                              </div>
                             </div>
                           </div>
                         </TableCell>
-                        {tableWidth > 700 && <TableCell>{getStatusBadge(result)}</TableCell>}
+                        {tableWidth >= 700 && (
+                          <TableCell>{truncateText(result.tender_metadata.organization, 25)}</TableCell>
+                        )}
+                        {tableWidth >= 700 && (
+                          <TableCell>
+                            <div className="flex flex-col w-full">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
+                                  {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
+                                </span>
+                                
+                                <div className="w-24 sm:w-28 bg-secondary-hover rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full ${
+                                      !result.tender_metadata.submission_deadline || 
+                                      result.tender_metadata.submission_deadline.includes('NaN') ? "bg-gray-400" :
+                                      daysRemaining < 0 ? "bg-gray-400" :
+                                      daysRemaining <= 3 ? "bg-red-600 opacity-70" :
+                                      daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
+                                      daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
+                                      "bg-green-600 opacity-70"
+                                    }`}
+                                    style={{
+                                      width: `${
+                                        !result.tender_metadata.submission_deadline || 
+                                        result.tender_metadata.submission_deadline.includes('NaN') ? "100" :
+                                        calculateProgressPercentage(result.created_at, result.tender_metadata.submission_deadline)
+                                      }%`
+                                    }}
+                                  ></div>
+                                </div>
+                                
+                                <div className="flex items-center">
+                                  <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
+                                    {!result.tender_metadata.submission_deadline || 
+                                    result.tender_metadata.submission_deadline.includes('NaN') ? 
+                                      "-" : formatDate(result.tender_metadata.submission_deadline)}
+                                  </span>
+                                  <Badge className="ml-1 text-xs px-1 py-0" variant="outline">
+                                    <span className={`text-xs ${
+                                      !result.tender_metadata.submission_deadline || 
+                                      result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
+                                      daysRemaining < 0 ? "text-gray-600 opacity-70" :
+                                      daysRemaining <= 3 ? "text-red-600 opacity-70" :
+                                      daysRemaining <= 10 ? "text-amber-600 opacity-70" :
+                                      daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
+                                      "text-green-600 opacity-70"
+                                    }`}>
+                                      {!result.tender_metadata.submission_deadline || 
+                                      result.tender_metadata.submission_deadline.includes('NaN') || 
+                                      isNaN(daysRemaining) ? 
+                                        '-' : 
+                                        daysRemaining < 0 ? 
+                                          'Zak.' : 
+                                          daysRemaining === 0 ? 
+                                            'Dziś' : 
+                                            daysRemaining === 1 ? 
+                                              '1d' : 
+                                              `${daysRemaining}d`}
+                                    </span>
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        )}
+                        {tableWidth < 700 && (
+                          <TableCell>
+                            <div className="flex items-center justify-start">
+                              <Badge className="text-xs px-2 py-1" variant="outline">
+                                <span className={`text-xs font-medium ${
+                                  !result.tender_metadata.submission_deadline || 
+                                  result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
+                                  daysRemaining < 0 ? "text-gray-600 opacity-70" :
+                                  daysRemaining <= 3 ? "text-red-600 opacity-70" :
+                                  daysRemaining <= 10 ? "text-amber-600 opacity-70" :
+                                  daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
+                                  "text-green-600 opacity-70"
+                                }`}>
+                                  {!result.tender_metadata.submission_deadline || 
+                                  result.tender_metadata.submission_deadline.includes('NaN') || 
+                                  isNaN(daysRemaining) ? 
+                                    '-' : 
+                                    daysRemaining < 0 ? 
+                                      'Zakończony' : 
+                                      daysRemaining === 0 ? 
+                                        'Dziś' : 
+                                        daysRemaining === 1 ? 
+                                          '1 dzień' : 
+                                          `${daysRemaining} dni`}
+                                </span>
+                              </Badge>
+                            </div>
+                          </TableCell>
+                        )}
+                        {tableWidth >= 700 && <TableCell>{getStatusBadge(result)}</TableCell>}
                         <TableCell><ScoreIndicator score={result.tender_score} /></TableCell>
-                        <TableCell>
+                        <TableCell className="p-0">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>

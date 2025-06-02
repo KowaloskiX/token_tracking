@@ -403,7 +403,7 @@ interface UploadMemoryPopupProps {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              Wykryto duży zbiór danych. Podstawowy asystent może generować nieoczekiwane odpowiedzi podczas analizy.
+              Wykryto duży zbiór danych. Wgranie tego pliku chwilę zajmie, a podstawowy asystent może generować nieoczekiwane odpowiedzi.
             </motion.p>
             <motion.p
               initial={{ opacity: 0, y: 10 }}

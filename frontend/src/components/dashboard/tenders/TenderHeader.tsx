@@ -190,7 +190,6 @@ export default function TenderHeader() {
                 isLoading={false}
                 onShareToggle={handleShareToggle}
                 showShareButton={!!user?.org_id}
-                isShared={!!selectedAnalysis.org_id}
               />
             </div>
           </div>

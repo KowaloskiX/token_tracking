@@ -15,6 +15,43 @@ import CreateAssistantForm from '@/components/dashboard/forms/CreateAssistantFor
 import { useRouter } from 'next/navigation';
 import { DeletePopup } from '../popup/DeletePopup';
 import { checkOrCreateConversation } from "@/utils/conversationActions";
+import { Users } from 'lucide-react';
+import AssignUsersToAssistantModal from '@/components/dashboard/tenders/AssignUsersToAssistantModal';
+let memberIds: string[] | undefined;
+
+export async function getMemberIds(): Promise<string[]> {
+  if (memberIds) return memberIds;          // already cached
+
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No auth token in localStorage');
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+
+  // ── Accept either shape ────────────────────────────────────────────────
+  // A. { members: [ { id } , … ] }
+  // B. [ { id } , … ]
+  //
+  type Member = { id: string };
+  type Wrapped = { members?: Member[] };
+
+  const json = (await res.json()) as Member[] | Wrapped;
+
+  const list: Member[] = Array.isArray(json)
+    ? json
+    : json.members ?? [];        // fallback to empty array
+
+  memberIds = list.map((m) => m.id);  // guaranteed string[]
+  return memberIds;
+}
 
 type SortType = 'name' | 'date' | null;
 type SortDirection = 'asc' | 'desc';
@@ -41,9 +78,23 @@ const AssistantGrid = () => {
     isLoading: boolean;
   }>({ isOpen: false, assistant: null, isLoading: false });
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assistantForAssign, setAssistantForAssign] = useState<Assistant | null>(null);
+  const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
+
   const { user, setCurrentAssistant, setCurrentConversation } = useDashboard();
   const router = useRouter();
-
+  // Utility to fetch org members (you can cache this):
+  async function fetchMemberIds(): Promise<string[]> {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    // assume data.members = [{ id: '...' }, ...]
+    return (data.members ?? []).map((m: any) => m.id);
+  }
   useEffect(() => {
     const fetchAssistants = async () => {
       try {
@@ -174,29 +225,31 @@ const AssistantGrid = () => {
     }
   };
 
-  const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    try {
-      // If the assistant is already shared, remove the org_id; otherwise, add the user's org_id
-      const updateData = {
-        org_id: assistant.org_id ? null : user?.org_id || null
-      };
-      
-      // Update the assistant in the backend
-      await updateAssistant(assistant, updateData);
-      // Update local state to reflect the change
-      setAssistants(prev => prev.map(a => {
-        if (a._id === assistant._id) {
-          const newOrgId = assistant.org_id ? undefined : user?.org_id || undefined;
-          return { ...a, org_id: newOrgId };
-        }
-        return a;
-      }));
-    } catch (err) {
-      console.error('Error toggling share status:', err);
-    }
+const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
+  e.stopPropagation();
+  const memberIds = await getMemberIds();
+  const isShared = Boolean(assistant.org_id);
+
+  const updateData: Partial<Assistant> = {
+    org_id:    isShared ? undefined : user?.org_id ?? undefined,
+    assigned_users: isShared ? [] : memberIds,
   };
+
+  try {
+    // pass the _id and the payload
+    await updateAssistant(assistant, updateData);
+
+    // optimistically update local state
+    setAssistants(prev =>
+      prev.map(a =>
+        a._id === assistant._id ? { ...a, ...updateData } : a
+      )
+    );
+  } catch (err) {
+    console.error('Error toggling share status:', err);
+  }
+};
+
 
   if (loading) {
     return (
@@ -291,6 +344,7 @@ const AssistantGrid = () => {
                         <PanelsTopLeft className="w-4 h-4 text-primary" />
                       )}
                     </div>
+                    {(assistant.owner_id === user?._id || user?.role === 'admin') && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                         <button className="p-1 hover:bg-secondary rounded-md">
@@ -303,7 +357,7 @@ const AssistantGrid = () => {
                             className="focus:bg-secondary"
                             onClick={(e) => handleShareToggle(assistant, e)}
                           >
-                            {assistant.org_id ? (
+                            {(assistant.assigned_users?.length ?? 0) > 0 ? (
                               <>
                                 <X className="w-4 h-4 mr-2" />
                                 Przestań udostępniać
@@ -316,6 +370,14 @@ const AssistantGrid = () => {
                             )}
                           </DropdownMenuItem>
                         )}
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setAssistantForAssign(assistant);
+                          setAssignModalOpen(true);
+                        }}>
+                          <Users className="w-4 h-4 mr-2" />
+                          Przypisz użytkowników
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600 focus:text-red-600 focus:bg-secondary"
                           onClick={(e) => handleDeleteClick(assistant, e)}
@@ -325,6 +387,7 @@ const AssistantGrid = () => {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    )}
                   </div>
                   <CardTitle className="text-sm font-semibold truncate relative group">
                     {editingId === assistant._id ? (
@@ -364,11 +427,11 @@ const AssistantGrid = () => {
                     <p className="text-xs text-foreground">
                       <span className="hidden sm:block">Stworzono</span> {formatDate(assistant.created_at)}
                     </p>
-                    <Badge 
-                      variant={assistant.org_id ? "default" : "secondary"}
+                    <Badge
+                      variant={(assistant.assigned_users?.length ?? 0) > 0 ? "default" : "secondary"}
                       className="text-xs font-medium"
                     >
-                      {assistant.org_id ? "Udostępnione" : "Prywatne"}
+                      {(assistant.assigned_users?.length ?? 0) > 0 ? "Udostępnione" : "Prywatne"}
                     </Badge>
                   </div>
                 </CardContent>
@@ -391,6 +454,30 @@ const AssistantGrid = () => {
         description="Czy na pewno chcesz usunąć ten projekt? To usunie projekt, wszystkie konwersacje i załączniki. Ta akcja nie może zostać cofnięta."
         isLoading={deleteDialog.isLoading}
       />
+     {assistantForAssign && (
+     <AssignUsersToAssistantModal
+       assistant={assistantForAssign}
+       open={assignModalOpen}
+       onOpenChange={(o) => {
+         setAssignModalOpen(o);
+         if (!o) setAssistantForAssign(null);
+       }}
+       onAssignmentsChange={(newIds) => {
+         // update the main list
+         setAssistants(prev =>
+           prev.map(a =>
+             a._id === assistantForAssign._id
+               ? { ...a, assigned_users: newIds }
+               : a
+           )
+         );
+         // also patch the “currently editing” object
+         setAssistantForAssign(a =>
+           a ? { ...a, assigned_users: newIds } : null
+         );
+       }}
+     />
+   )}
     </>
   );
 };

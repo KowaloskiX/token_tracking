@@ -13,6 +13,7 @@ export interface Assistant {
     temperature?: number;
     openai_assistant_id?: string;
     created_at?: Date;
+    assigned_users: any;
     pinecone_config?: {
       index_name: string;
       namespace: string;

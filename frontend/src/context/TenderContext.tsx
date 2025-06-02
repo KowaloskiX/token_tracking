@@ -59,6 +59,7 @@ interface TenderContextType {
     criteria: AnalysisCriteria[];
   }) => Promise<void>;
   updateAnalysis: (id: string, data: Partial<TenderAnalysis>) => Promise<void>;
+  assignUsers: (id: string, newUserIds: string[]) => Promise<void>;
   deleteAnalysis: (id: string) => Promise<void>;
   fetchAnalyses: () => Promise<void>;
   fetchAnalysisById: (id: string) => Promise<void>;
@@ -206,6 +207,34 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
   }, []);
+      /**
+     * Assign a new list of users to an analysis.
+     * This will update both the sidebar list and whatever
+     * analysis is currently open in the drawer.
+     */
+    const assignUsers = useCallback(
+      async (id: string, newUserIds: string[]) => {
+        setIsLoading(true);
+        try {
+          const resp = await fetch(`${serverUrl}/tender-analysis/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ assigned_users: newUserIds }),
+          });
+          if (!resp.ok) throw new Error('Failed to assign users');
+          const updated = await resp.json() as TenderAnalysis;
+          // use the existing helper to keep everything in sync
+          await updateAnalysis(id, { assigned_users: updated.assigned_users });
+        } catch (err) {
+          handleError(err);
+          throw err;
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      [updateAnalysis]
+    );
+
 
   const deleteAnalysis = useCallback(async (id: string) => {
     try {
@@ -503,6 +532,13 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Fetch full analysis data if we only have the ID from storage
+  useEffect(() => {
+    if (state.selectedAnalysis?._id && !state.selectedAnalysis?.name) {
+      fetchAnalysisById(state.selectedAnalysis._id);
+    }
+  }, [state.selectedAnalysis?._id, fetchAnalysisById]);
+
   const value: TenderContextType = {
     analyses: state.analyses,
     selectedAnalysis: state.selectedAnalysis,
@@ -515,6 +551,7 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
 
     createAnalysis,
     updateAnalysis,
+    assignUsers,
     deleteAnalysis,
     fetchAnalyses,
     fetchAnalysisById,

@@ -46,7 +46,6 @@ interface KanbanContextType extends KanbanState {
   updateColumnAction: (boardId: string, columnId: string, columnData: Partial<KanbanColumn>) => Promise<KanbanColumn>;
   deleteColumnAction: (boardId: string, columnId: string) => Promise<void>;
   fetchColumns: (boardId: string) => Promise<KanbanColumn[] | null>;
-
   createTenderItemAction: (
     boardId: string,
     columnId: string,
@@ -70,6 +69,8 @@ interface KanbanContextType extends KanbanState {
     targetColumnId: string
   ) => Promise<void>;
   fetchTenderItems: (boardId: string, columnId: string) => Promise<KanbanTenderItem[] | null>;
+
+  assignUsersToBoard: (boardId: string, userIds: string[]) => Promise<KanbanBoard>;
 
   setSelectedBoard: (board: KanbanBoard | null) => void;
   clearError: () => void;
@@ -116,6 +117,7 @@ export function KanbanProvider({ children }: { children: React.ReactNode }) {
     setError(message);
     setIsLoading(false);
   };
+  
 
   const fetchAllBoards = useCallback(async () => {
     try {
@@ -687,6 +689,34 @@ export function KanbanProvider({ children }: { children: React.ReactNode }) {
     },
     [fetchBoardById]
   );
+  const assignUsersToBoard = useCallback(
+  async (boardId: string, newUserIds: string[]): Promise<KanbanBoard> => {
+    setIsLoading(true);
+    try {
+      // PUT /boards/:id with a minimal payload
+      const updated = await updateBoard(boardId, { assigned_users: newUserIds });
+
+      // keep local state in sync (same helper you use everywhere)
+      setState(prev => ({
+        ...prev,
+        boards: prev.boards.map(b => (b.id === boardId ? updated : b)),
+        selectedBoard:
+          prev.selectedBoard?.id === boardId ? updated : prev.selectedBoard,
+      }));
+
+      return updated;
+    } catch (err) {
+      handleError(err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  []
+);
+
+
+
 
   const value: KanbanContextType = {
     ...state,
@@ -709,6 +739,7 @@ export function KanbanProvider({ children }: { children: React.ReactNode }) {
     setSelectedBoard,
     clearError,
     reset,
+    assignUsersToBoard,
   };
 
   return <KanbanContext.Provider value={value}>{children}</KanbanContext.Provider>;

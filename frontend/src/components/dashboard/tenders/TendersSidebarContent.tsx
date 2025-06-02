@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Loader2, AlertCircle, Search, MessageSquare, Settings, ChevronDown, Kanban, KanbanSquare } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Search, MessageSquare, Settings, ChevronDown, Kanban, KanbanSquare, CircleArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { 
   SidebarGroup, 
@@ -85,6 +85,7 @@ export function TendersSidebarContent() {
           exclude_from_score: criterion.exclude_from_score,
           instruction: criterion.instruction,
           subcriteria: criterion.subcriteria,
+          keywords: criterion.keywords,
         }))
       };
   
@@ -190,6 +191,10 @@ export function TendersSidebarContent() {
               </CollapsibleTrigger>
               
               <CollapsibleContent>
+              <SidebarMenuButton onClick={() => {
+                  router.push('/dashboard/tenders/chat');
+                  setActiveTab('analyze');
+                }}><CircleArrowLeft/>Wróć do projektów</SidebarMenuButton>
                 <div className="pl-6 pr-2 pt-2">
                   <ConversationsHistory />
                 </div>

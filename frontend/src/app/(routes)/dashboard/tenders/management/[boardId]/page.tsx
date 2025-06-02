@@ -30,6 +30,11 @@ export default function BoardManagementPage() {
     clearError
   } = useKanban();
   
+  // Determine ownership/admin rights
+  const isOwner = selectedBoard?.user_id === user?._id;
+  const isAdmin = user?.role === "admin";
+  const canManage = isOwner || isAdmin;
+  
   const [selectedTenderResult, setSelectedTenderResult] = useState<TenderAnalysisResult | null>(null);
   const drawerRef = useRef<{ setVisibility: (value: boolean) => void }>(null);
   const [isFetchingTender, setIsFetchingTender] = useState<boolean>(false);
@@ -198,30 +203,33 @@ export default function BoardManagementPage() {
                 </Button>
               </h1>
             )}
-            <DeleteBoardDialog
-              boardId={selectedBoard.id}
-              boardName={selectedBoard.name}
-              onDeleted={async () => {
+            {/* Only show delete if owner or admin */}
+            {canManage && (
+              <DeleteBoardDialog
+                boardId={selectedBoard.id}
+                boardName={selectedBoard.name}
+                onDeleted={async () => {
                 // Store the current ID to compare after refresh
-                const currentBoardId = selectedBoard.id;
+                  const currentBoardId = selectedBoard.id;
                 
                 // Get fresh boards data directly
-                const freshBoards = await getBoards();
+                  const freshBoards = await getBoards();
                 
-                if (freshBoards.length > 0) {
-                  const otherBoard = freshBoards.find(b => b.id !== currentBoardId);
-                  if (otherBoard) {
-                    router.push(`/dashboard/tenders/management/${otherBoard.id}`);
+                  if (freshBoards.length > 0) {
+                    const otherBoard = freshBoards.find(b => b.id !== currentBoardId);
+                    if (otherBoard) {
+                      router.push(`/dashboard/tenders/management/${otherBoard.id}`);
+                    } else {
+                      router.push(`/dashboard/tenders/management/${freshBoards[0].id}`);
+                    }
                   } else {
-                    router.push(`/dashboard/tenders/management/${freshBoards[0].id}`);
-                  }
-                } else {
-                  router.push('/dashboard/tenders/management');
+                    router.push('/dashboard/tenders/management');
                   // Wait for navigation to complete
-                  setTimeout(() => setShowNewBoardDialog(true), 100);
-                }
-              }}
-            />
+                    setTimeout(() => setShowNewBoardDialog(true), 100);
+                  }
+                }}
+              />
+            )}
           </>
         ) : (
           <h1 className="text-xl font-semibold">Board Management</h1>

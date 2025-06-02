@@ -9,6 +9,7 @@ export interface AnalysisCriteria {
   exclude_from_score?: boolean;
   instruction?: string;
   subcriteria?: string[];
+  keywords?: string;
 }
 export interface TenderMetadata {
   name: string;
@@ -55,7 +56,7 @@ export interface TenderAnalysisResult {
   status: 'inactive' | 'active' | 'archived';
   updated_at: string;
   created_at: string;
-  opened_at: string
+  opened_at: string;
   order_number: string;
 }
 
@@ -71,6 +72,7 @@ export interface TenderAnalysis {
   last_run?: string;
   created_at: string;
   updated_at: string;
+  assigned_users?: string[]; // Add this field
 }
 
 // Request/Response types for API operations

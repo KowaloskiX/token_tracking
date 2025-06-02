@@ -57,9 +57,8 @@ export const uploadFile = async (
     formData.append('assistant_id', assistantId);
   }
 
-  // Determine if this is an Excel file
-  const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
-  const endpoint = isExcel ? 'excel-upload-json' : '';
+  // Always use the standard endpoint – backend now handles Excel natively.
+  const endpoint = "";
 
   const response = await fetch(`${serverUrl}/files/${endpoint}`, {
     method: 'POST',

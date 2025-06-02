@@ -14,7 +14,9 @@ import {
   MessageSquare, 
   MessageSquarePlus,
   MoreHorizontal,
-  Loader2
+  Loader2,
+  Bot,
+  PanelsTopLeft
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -40,6 +42,64 @@ import { DeletePopup } from '../../popup/DeletePopup';
 import { usePathname } from 'next/navigation';
 
 import Link from 'next/link'; // Import Link
+
+function AssistantHeader({ 
+  assistant, 
+  isExpanded, 
+  onToggleExpanded, 
+  children 
+}: { 
+  assistant: any; 
+  isExpanded: boolean; 
+  onToggleExpanded: () => void; 
+  children: React.ReactNode; 
+}) {
+  if (!assistant) return null;
+
+  return (
+    <div className="w-full">
+      <div className="rounded-lg bg-sidebar-accent/50 border border-sidebar-border overflow-hidden">
+        {/* Assistant Header */}
+        <div className="flex items-center gap-3 p-3">
+          <div className="flex-shrink-0">
+            <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+              <PanelsTopLeft className="w-4 h-4 text-primary" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-sidebar-foreground truncate">
+              {assistant.name}
+            </div>
+          </div>
+        </div>
+
+        {/* Conversations Section */}
+        <div className="border-t border-sidebar-border/50">
+          <Collapsible
+            open={isExpanded}
+            onOpenChange={onToggleExpanded}
+            className="group/collapsible w-full"
+          >
+            <CollapsibleTrigger asChild className="w-full">
+              <div className="w-full">
+                <SidebarMenuButton tooltip="Conversations" className="w-full rounded-none hover:bg-sidebar-accent/70">
+                  <MessageSquare className="shrink-0 text-sidebar-foreground" />
+                  <span className="flex-1 truncate min-w-0">Konwersacje</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-sidebar-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                </SidebarMenuButton>
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="w-full">
+              <div className="bg-sidebar-accent/20">
+                {children}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ConversationItem({ 
   conversation, 
@@ -319,75 +379,64 @@ export function ConversationsHistory() {
 
   return (
     <div className="w-full flex flex-col">
-      <Collapsible
-        open={isExpanded}
-        onOpenChange={setIsExpanded}
-        className="group/collapsible w-full"
+      <AssistantHeader 
+        assistant={currentAssistant}
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
       >
-        <CollapsibleTrigger asChild className="w-full">
-          <div className="w-full">
-            <SidebarMenuButton tooltip="Conversations" className="w-full">
-              <MessageSquare className="shrink-0 text-sidebar-foreground" />
-              <span className="flex-1 truncate min-w-0">Conversations</span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-sidebar-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+        <SidebarMenuSub className="w-full">
+          <SidebarMenuSubItem className="w-full">
+            <SidebarMenuButton 
+              className="w-full text-sidebar-foreground"
+              onClick={handleNewConversation}
+              disabled={isCreatingConversation}
+            >
+              {isCreatingConversation ? (
+                <Loader2 className="shrink-0 text-sidebar-foreground h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquarePlus className="shrink-0 text-sidebar-foreground" />
+              )}
+              <span className="flex-1 truncate min-w-0">
+                {isCreatingConversation ? 'Rozpoczynanie...' : 'Nowa konwersacja'}
+              </span>
             </SidebarMenuButton>
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="w-full">
-          <SidebarMenuSub className="w-full">
+          </SidebarMenuSubItem>
+
+          <SidebarGroup className="w-full">
+            <SidebarMenu className="w-full space-y-1">
+              {conversations.map((conversation) => (
+                <SidebarMenuItem key={conversation._id} className="w-full cursor-pointer">
+                  <ConversationItem 
+                    conversation={conversation}
+                    onSelect={handleSelectConversation}
+                    onDelete={handleDeleteConversation}
+                    isDeleting={deletingConversations.has(conversation._id)}
+                  />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+
+          {pagination?.has_next && (
             <SidebarMenuSubItem className="w-full">
               <SidebarMenuButton 
-                className="w-full text-sidebar-foreground"
-                onClick={handleNewConversation}
-                disabled={isCreatingConversation}
+                className="w-full text-sidebar-foreground/70"
+                onClick={handleLoadMore}
+                disabled={isLoading}
               >
-                {isCreatingConversation ? (
+                {isLoading ? (
                   <Loader2 className="shrink-0 text-sidebar-foreground h-4 w-4 animate-spin" />
                 ) : (
-                  <MessageSquarePlus className="shrink-0 text-sidebar-foreground" />
+                  <MessageSquare className="shrink-0 text-sidebar-foreground/70" />
                 )}
                 <span className="flex-1 truncate min-w-0">
-                  {isCreatingConversation ? 'Rozpoczynanie...' : 'Nowa konwersacja'}
+                  {isLoading ? 'Loading...' : 'Load More'}
                 </span>
               </SidebarMenuButton>
             </SidebarMenuSubItem>
-
-            <SidebarGroup className="w-full">
-              <SidebarMenu className="w-full space-y-1">
-                {conversations.map((conversation) => (
-                  <SidebarMenuItem key={conversation._id} className="w-full cursor-pointer">
-                    <ConversationItem 
-                      conversation={conversation}
-                      onSelect={handleSelectConversation}
-                      onDelete={handleDeleteConversation}
-                      isDeleting={deletingConversations.has(conversation._id)}
-                    />
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroup>
-
-            {pagination?.has_next && (
-              <SidebarMenuSubItem className="w-full">
-                <SidebarMenuButton 
-                  className="w-full text-sidebar-foreground/70"
-                  onClick={handleLoadMore}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="shrink-0 text-sidebar-foreground h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageSquare className="shrink-0 text-sidebar-foreground/70" />
-                  )}
-                  <span className="flex-1 truncate min-w-0">
-                    {isLoading ? 'Loading...' : 'Load More'}
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuSubItem>
-            )}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </Collapsible>
+          )}
+        </SidebarMenuSub>
+      </AssistantHeader>
     </div>
   );
 }

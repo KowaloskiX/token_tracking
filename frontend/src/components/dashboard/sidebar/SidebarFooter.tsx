@@ -189,7 +189,6 @@ const SidebarFooterComponent = () => {
               <SidebarMenuButton
                 size="lg"
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
-                onClick={() => router.push('/dashboard/settings')}
               >
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarFallback className="rounded-lg bg-sidebar-accent text-primary">

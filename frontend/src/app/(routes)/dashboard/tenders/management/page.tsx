@@ -18,6 +18,9 @@ import {
   Proportions,
   Loader2,
   Settings2,
+  Users,
+  Share2,
+  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,27 +32,65 @@ import { NewBoardDialog } from "@/components/dashboard/tenders/kanban/NewBoardDi
 import { DeleteBoardDialog } from "@/components/dashboard/tenders/kanban/DeleteBoardDialog";
 import { useKanban } from "@/context/KanbanContext";
 import { Badge } from "@/components/ui/badge";
-import { Share2, X } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
-
+import { AssignUsersToBoardModal } from "@/components/dashboard/tenders/kanban/AssignUsersToBoardModal";
+import { KanbanBoard } from "@/types/kanban";
 type SortType = "name" | "date" | null;
 type SortDirection = "asc" | "desc";
+let memberIds: string[] | undefined;
+
+async function getMemberIds(): Promise<string[]> {
+  if (memberIds) return memberIds;          // already cached
+
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No auth token in localStorage');
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+
+  // ── Accept either shape ────────────────────────────────────────────────
+  // A. { members: [ { id } , … ] }
+  // B. [ { id } , … ]
+  //
+  type Member = { id: string };
+  type Wrapped = { members?: Member[] };
+
+  const json = (await res.json()) as Member[] | Wrapped;
+
+  const list: Member[] = Array.isArray(json)
+    ? json
+    : json.members ?? [];        // fallback to empty array
+
+  memberIds = list.map((m) => m.id);  // guaranteed string[]
+  return memberIds;
+}
 
 export default function BoardManagementHome() {
   const { user } = useDashboard();
   const { boards, isLoading, updateBoardAction, deleteBoardAction, fetchAllBoards } =
     useKanban();
   const router = useRouter();
-
+  // state to control our "assign users" modal
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [boardForAssign, setBoardForAssign] = useState<null | typeof boards[0]>(null);
   const [showNewBoardDialog, setShowNewBoardDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{
     type: SortType;
     direction: SortDirection;
   }>({
-    type: "date",
-    direction: "desc",
+      type: "date",
+      direction: "desc",
   });
 
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -121,20 +162,64 @@ export default function BoardManagementHome() {
     router.push(`/dashboard/tenders/management/${boardId}`);
   };
 
-  const handleShareToggle = async (board: any, e: React.MouseEvent) => {
-    e.stopPropagation();
+ const handleShareToggle = async (board: KanbanBoard, e: React.MouseEvent) => {
+  e.stopPropagation();
 
-    try {
-      const updateData = {
-        org_id: board.org_id ? "" : user?.org_id || "",
-      };
+  const memberIds = await getMemberIds();   // ← typo fixed ("member", not "membar")
 
-      await updateBoardAction(board.id, updateData);
-      fetchAllBoards();
-    } catch (err) {
-      console.error("Error toggling share status:", err);
+  try {
+    const updateData: Partial<KanbanBoard> = {
+      // If the board is already shared, clear org_id; otherwise set the user's org
+      org_id: board.org_id ? undefined : user?.org_id,
+
+      // If un-sharing, give an empty array (or undefined); else pass memberIds
+      assigned_users: board.org_id ? [] : memberIds,
+    };
+
+    await updateBoardAction(board.id, updateData);
+    fetchAllBoards();
+  } catch (err) {
+    console.error('Error toggling share status:', err);
+  }
+};
+
+
+const handleAssignClick = async (
+  e: React.MouseEvent<HTMLDivElement, MouseEvent>,
+  board: KanbanBoard
+) => {
+  e.stopPropagation();                 // ← keep the click from bubbling
+
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(
+      // ♦️  use the board's id so it works for any board
+      `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/boards/${board.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
     }
-  };
+
+    const boardDetails = await res.json();
+    // assuming the API sends   { …, assigned_users: [ … ] }
+    setAssignedUsers(boardDetails.assigned_users ?? boardDetails)
+  } catch (err) {
+    console.error("Error fetching assigned users:", err);
+  }
+
+  // 🔄 keep your existing UI behaviour
+  setBoardForAssign(board);
+  setAssignModalOpen(true);
+  
+};
+
 
   if (isLoading) {
     return (
@@ -200,118 +285,148 @@ export default function BoardManagementHome() {
             </div>
           </Card>
 
-          {sortedBoards.map((board) => (
-            <Card
-              key={board.id}
-              onClick={() => openBoard(board.id)}
-              className="group cursor-pointer bg-white/40 transition-all duration-300 hover:scale-102 hover:shadow-md py-2 rounded-xl"
-            >
-              <CardHeader className="p-3 pb-2 space-y-0">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 bg-secondary rounded-md group-hover:bg-secondary-hover transition-colors">
-                    <Proportions className="w-4 h-4 text-primary" />
+          {/* Existing boards */}
+          {sortedBoards.map((board) => {
+            // -----------------------------------------
+            // Visibility: show menu only if owner/admin
+            // -----------------------------------------
+            const isOwner = board.user_id === user?._id; // 🔄  adjust if your schema uses another prop (e.g. board.user_id)
+            const isAdmin = user?.role === "admin";
+            const canManage = isOwner || isAdmin;
+
+            return (
+              <Card
+                key={board.id}
+                onClick={() => openBoard(board.id)}
+                className="group cursor-pointer bg-white/40 transition-all duration-300 hover:scale-102 hover:shadow-md py-2 rounded-xl"
+              >
+                <CardHeader className="p-3 pb-2 space-y-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="p-2 bg-secondary rounded-md group-hover:bg-secondary-hover transition-colors">
+                      <Proportions className="w-4 h-4 text-primary" />
+                    </div>
+
+                    {/* Dropdown menu — visible only to owner or admin */}
+                    {canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          asChild
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button className="p-1 hover:bg-secondary rounded-md">
+                            <MoreHorizontal className="w-4 h-4 text-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {/* Assign users */}
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBoardForAssign(board);
+                              setAssignModalOpen(true);
+                              handleAssignClick(e, board);
+                            }}
+                          >
+                            <Users className="w-4 h-4 mr-2" />
+                            Przypisz użytkowników
+                          </DropdownMenuItem>
+                          {user?.org_id && (
+                            <DropdownMenuItem
+                              className="focus:bg-secondary"
+                              onClick={(e) => handleShareToggle(board, e)}
+                            >
+                              {board.org_id ? (
+                                <>
+                                  <X className="w-4 h-4 mr-2" />
+                                  Przestań udostępniać
+                                </>
+                              ) : (
+                                <>
+                                  <Share2 className="w-4 h-4 mr-2" />
+                                  Udostępnij w organizacji
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* Delete */}
+                          <DeleteBoardDialog
+                            boardId={board.id}
+                            boardName={board.name}
+                            onDeleted={() => fetchAllBoards()}
+                          >
+                            <DropdownMenuItem
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              className="text-red-600 focus:text-red-600 focus:bg-secondary"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Usuń
+                            </DropdownMenuItem>
+                          </DeleteBoardDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      asChild
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button className="p-1 hover:bg-secondary rounded-md">
-                        <MoreHorizontal className="w-4 h-4 text-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {user?.org_id && (
-                        <DropdownMenuItem
-                          className="focus:bg-secondary"
-                          onClick={(e) => handleShareToggle(board, e)}
-                        >
-                          {board.org_id ? (
-                            <>
-                              <X className="w-4 h-4 mr-2" />
-                              Przestań udostępniać
-                            </>
-                          ) : (
-                            <>
-                              <Share2 className="w-4 h-4 mr-2" />
-                              Udostępnij w organizacji
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                      )}
-                      <DeleteBoardDialog
-                        boardId={board.id}
-                        boardName={board.name}
-                        onDeleted={() => {
-                          // Just refresh the boards list
-                          fetchAllBoards();
-                        }}
-                      >
-                        <DropdownMenuItem
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => e.stopPropagation()}
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          className="text-red-600 focus:text-red-600 focus:bg-secondary"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Usuń
-                        </DropdownMenuItem>
-                      </DeleteBoardDialog>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                  {/* Board title */}
+                  <CardTitle className="text-sm font-semibold truncate relative group">
+                    {editingId === board.id ? (
+                      <input
+                        ref={editInputRef}
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => handleNameSave(board.id)}
+                        onKeyDown={(e) => handleKeyDown(e, board.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-primary rounded px-1"
+                      />
+                    ) : (
+                      <>
+                        {board.name}
+                        {canManage && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNameEdit(board.id, board.name);
+                            }}
+                            className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil className="w-3 h-3 text-neutral-400 hover:text-primary ml-1" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
 
-                <CardTitle className="text-sm font-semibold truncate relative group">
-                  {editingId === board.id ? (
-                    <input
-                      ref={editInputRef}
-                      type="text"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onBlur={() => handleNameSave(board.id)}
-                      onKeyDown={(e) => handleKeyDown(e, board.id)}
-                      className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-primary rounded px-1"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <>
-                      {board.name}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNameEdit(board.id, board.name);
-                        }}
-                        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Pencil className="w-3 h-3 text-neutral-400 hover:text-primary ml-1" />
-                      </button>
-                    </>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 pt-0 relative">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-foreground">
+                {/* Card content */}
+                <CardContent className="p-3 pt-0 relative">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-foreground">
                     <span className="hidden sm:inline">Utworzono</span>{" "}
                     {formatDate(board.created_at)}
-                  </p>
-                  <Badge
-                    variant={board.org_id ? "default" : "secondary"}
-                    className="text-xs font-medium"
-                  >
-                    {board.org_id ? "Udostępnione" : "Prywatne"}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    </p>
+                    <Badge
+                      variant={board.org_id ? "default" : "secondary"}
+                      className="text-xs font-medium"
+                    >
+                      {board.org_id ? "Udostępnione" : "Prywatne"}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
 
+      {/* Dialogs & modals */}
       <NewBoardDialog
         open={showNewBoardDialog}
         onOpenChange={(open) => {
@@ -319,6 +434,21 @@ export default function BoardManagementHome() {
           if (!open) fetchAllBoards();
         }}
       />
+
+      {boardForAssign && (
+        <AssignUsersToBoardModal
+          board={boardForAssign}
+          open={assignModalOpen}
+          initialSelectedUsers={assignedUsers}
+          onOpenChange={(open) => {
+            setAssignModalOpen(open);
+            if (!open) {
+              setBoardForAssign(null);
+              fetchAllBoards();
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

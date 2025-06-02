@@ -17,6 +17,7 @@ export interface AssistantUpdateData {
     tools?: AssistantTool[];
     temperature?: number;
     org_id?: string | null; // Add org_id field
+    assigned_users?: string[];
   }
 
 export const updateAssistant = async (
@@ -80,3 +81,9 @@ export const getUserAssistants = async (ownerId: string, orgId?: string): Promis
       throw error;
     }
   }
+  export const assignUsersToAssistant = async (
+    assistant: Assistant,
+    userIds: string[]
+  ): Promise<Assistant> => {
+    return updateAssistant(assistant, { assigned_users: userIds });
+  };

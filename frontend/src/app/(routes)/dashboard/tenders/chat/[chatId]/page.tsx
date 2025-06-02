@@ -68,7 +68,8 @@ export default function Dashboard() {
                 owner_id: user._id,
                 description: "Nowy projekt",
                 temperature: 0.7,
-                pinecone_config: DEFAULT_PINECONE_CONFIG
+                pinecone_config: DEFAULT_PINECONE_CONFIG,
+                assigned_users: []
               });
               setAssistants([targetAssistant]);
               setCurrentAssistant(targetAssistant);

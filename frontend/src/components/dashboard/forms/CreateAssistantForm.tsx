@@ -35,7 +35,8 @@ const CreateAssistantForm = ({ open, onOpenChange }: { open: boolean; onOpenChan
           temperature: 0.6,
           shared_with: [],
           icon: '',
-          pinecone_config: DEFAULT_PINECONE_CONFIG
+          pinecone_config: DEFAULT_PINECONE_CONFIG,
+          assigned_users: []
         };
         
         const newAssistant = await createAssistant(assistantData);
