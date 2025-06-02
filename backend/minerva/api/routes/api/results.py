@@ -253,11 +253,11 @@ async def get_result_files(
                 detail="Result not found or access denied"
             )
         
-        # Fetch the result with files
+        # Fetch the result with files - FIXED field names
         projection = {
             "uploaded_files.filename": 1,
             "uploaded_files.blob_url": 1,
-            "uploaded_files.file_size": 1
+            "uploaded_files.bytes": 1,  # CHANGED: Use 'bytes' instead of 'file_size'
         }
         
         if include_preview:
@@ -279,11 +279,13 @@ async def get_result_files(
             file_info = FileInfo(
                 filename=file_doc.get("filename", ""),
                 blob_url=file_doc.get("blob_url"),
-                file_size=file_doc.get("file_size")
+                file_size=file_doc.get("bytes")  # CHANGED: Use 'bytes' field
             )
             
             if include_preview:
-                file_info.content_preview = file_doc.get("preview_chars", "")[:500]
+                preview_text = file_doc.get("preview_chars", "")
+                if preview_text:
+                    file_info.content_preview = preview_text[:500]
             
             files.append(file_info)
         
