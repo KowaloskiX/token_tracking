@@ -18,14 +18,13 @@ import {
     FileText,
     Search,
     Download,
-    BookOpen,        // NEW – nicer icon
+    BookOpen,
 } from "lucide-react";
-// import Navbar from "@/components/landing/Navbar";  // REMOVED
 import Footer from "@/components/landing/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import SyntaxHighlighter from "react-syntax-highlighter";               // NEW – colour-coded code blocks
-import { atomOneDark } from "react-syntax-highlighter/dist/cjs/styles/hljs"; // NEW
+import SyntaxHighlighter from "react-syntax-highlighter";
+import { atomOneDark } from "react-syntax-highlighter/dist/cjs/styles/hljs";
 
 const ApiDocsPage = () => {
     const [selectedEndpoint, setSelectedEndpoint] = useState("results");
@@ -48,47 +47,100 @@ const ApiDocsPage = () => {
             id: "results",
             method: "POST",
             path: "/api/results",
-            title: "Pobierz wyniki analizy",
+            title: "Lista wyników",
             description:
-                "Pobiera listę wyników analizy przetargów dla określonej analizy.",
+                "Zwraca listę wyników analizy przetargów z podstawowymi informacjami (nazwa, organizacja, termin składania ofert).",
+            detailedDescription: "Ten endpoint pozwala na pobieranie spaginowanych wyników analizy przetargów. Możesz filtrować wyniki według daty, ograniczać liczbę zwracanych elementów oraz kontrolować czy uwzględnić wyniki historyczne.",
             icon: <Search className="w-4 h-4" />,
+            useCase: "Używaj do wyświetlania tabeli wyników i filtrowania po dacie.",
             requestBodyExample: `{
-  "analysis_id": "64f5a8b9c1d2e3f4a5b6c7d8",
-  "date_from": "2025-01-01",
-  "date_to": "2025-06-01",
-  "limit": 100,
-  "offset": 0,
-  "include_historical": true
-}`, // NEW – "example input to be placed in the body"
+  "analysis_id": "string",
+  "date_from": "YYYY-MM-DD",
+  "date_to": "YYYY-MM-DD",
+  "limit": "number",
+  "offset": "number",
+  "include_historical": "boolean"
+}`,
             response: {
                 results: "Array<TenderResult>",
                 total: "number",
                 has_more: "boolean",
             },
+            responseExample: `{
+  "results": [
+    {
+      "_id": "60f5a8b9c1d2e3f4a5b6c7d8",
+      "tender_name": "Dostawa sprzętu komputerowego dla szkół podstawowych",
+      "organization": "Gmina Przykładowa",
+      "tender_url": "https://ezamowienia.gov.pl/mp-client/search/list/ocds-123456",
+      "tender_score": 0.85,
+      "status": "active",
+      "submission_deadline": "2025-07-15 14:00",
+      "location": null,
+      "created_at": "2025-06-01T10:30:00.427000",
+      "opened_at": "2025-06-02T08:15:22.123000"
+    }
+  ],
+  "total": 45,
+  "has_more": true
+}`,
         },
         {
             id: "criteria",
             method: "GET",
             path: "/api/results/{result_id}/criteria",
-            title: "Pobierz kryteria wyniku",
+            title: "Kryteria oceny",
             description:
-                "Pobiera szczegółową analizę kryteriów dla konkretnego wyniku przetargu.",
+                "Szczegółowa analiza spełnienia kryteriów dla konkretnego przetargu z oceną punktową.",
+            detailedDescription: "Pobiera kompletną analizę tego, jak dany przetarg został oceniony według zdefiniowanych kryteriów. Każde kryterium zawiera ocenę punktową, poziom pewności AI, uzasadnienie oraz informację czy jest dyskwalifikujące. Dane te pozwalają zrozumieć dlaczego przetarg otrzymał konkretną ocenę.",
             icon: <FileText className="w-4 h-4" />,
+            useCase: "Używaj do wyświetlania szczegółowej analizy dlaczego dany przetarg otrzymał konkretną ocenę.",
             response: {
                 result_id: "string",
                 criteria_analysis: "Array<CriteriaItem>",
                 tender_score: "number",
                 created_at: "string",
             },
+            responseExample: `{
+  "result_id": "60f5a8b9c1d2e3f4a5b6c7d8",
+  "criteria_analysis": [
+    {
+      "criteria": "Czy wartość kontraktu przekracza 500000 zł?",
+      "analysis": {
+        "summary": "Wartość szacunkowa zamówienia wynosi 1200000 zł",
+        "confidence": "HIGH",
+        "criteria_met": true,
+        "weight": 5
+      },
+      "exclude_from_score": false,
+      "is_disqualifying": false
+    },
+    {
+      "criteria": "Czy lokalizacja jest w promieniu 100km?",
+      "analysis": {
+        "summary": "Gdańsk - odległość około 80km od naszej siedziby",
+        "confidence": "MEDIUM",
+        "criteria_met": true,
+        "weight": 4
+      },
+      "exclude_from_score": false,
+      "is_disqualifying": false
+    }
+  ],
+  "tender_score": 0.85,
+  "created_at": "2025-06-01T10:30:00.427000"
+}`,
         },
         {
             id: "files",
             method: "GET",
             path: "/api/results/{result_id}/files",
-            title: "Pobierz pliki wyniku",
+            title: "Pliki przetargu",
             description:
-                "Pobiera informacje o plikach związanych z konkretnym wynikiem przetargu.",
+                "Lista dokumentów związanych z przetargiem (SIWZ, specyfikacje, załączniki) z opcją podglądu.",
+            detailedDescription: "Zwraca kompletną listę wszystkich dokumentów pobranych dla danego przetargu. Każdy plik zawiera link do pobrania, rozmiar, oraz opcjonalny podgląd pierwszych fragmentów treści. Dokumenty są automatycznie pobierane i analizowane podczas procesu oceny przetargu.",
             icon: <Download className="w-4 h-4" />,
+            useCase: "Używaj do wyświetlania listy dokumentów do pobrania i ich podglądu.",
             queryParams: {
                 include_preview: "boolean (opcjonalne)",
             },
@@ -97,6 +149,24 @@ const ApiDocsPage = () => {
                 files: "Array<FileInfo>",
                 total_files: "number",
             },
+            responseExample: `{
+  "result_id": "60f5a8b9c1d2e3f4a5b6c7d8",
+  "files": [
+    {
+      "filename": "SIWZ_dostawa_sprzetu.pdf",
+      "blob_url": "https://blob.vercel-storage.com/example-file-abc123.pdf",
+      "file_size": 1548320,
+      "content_preview": "SPECYFIKACJA ISTOTNYCH WARUNKÓW ZAMÓWIENIA 1. Nazwa zamawiającego: Gmina Przykładowa 2. Przedmiot zamówienia: Dostawa sprzętu komputerowego..."
+    },
+    {
+      "filename": "formularz_oferty.docx",
+      "blob_url": "https://blob.vercel-storage.com/example-form-def456.docx", 
+      "file_size": 245760,
+      "content_preview": "FORMULARZ OFERTY 1. Identyfikacja wykonawcy: Nazwa firmy: ________________ NIP: ________________"
+    }
+  ],
+  "total_files": 2
+}`,
         },
     ];
 
@@ -165,14 +235,12 @@ console.log(data);`;
 
     return (
         <div className="min-h-screen bg-background">
-            {/* <Navbar />   REMOVED */}
-
             {/* Hero */}
             <div className="pt-24 pb-12 bg-background/90 backdrop-blur-sm">
                 <div className="mx-auto max-w-7xl px-6 lg:px-8">
                     <div className="mx-auto max-w-3xl text-center">
                         <div className="flex items-center justify-center mb-4">
-                            <BookOpen className="w-8 h-8 text-primary mr-3" /> {/* NEW icon */}
+                            <BookOpen className="w-8 h-8 text-primary mr-3" />
                             <h1 className="text-4xl tracking-tight text-foreground sm:text-5xl">
                                 Dokumentacja API
                             </h1>
@@ -208,8 +276,6 @@ console.log(data);`;
                                         <span className="ml-2 text-sm">{endpoint.title}</span>
                                     </Button>
                                 ))}
-
-                                {/* Twój klucz API section REMOVED */}
 
                                 <Separator className="my-4" />
                             </CardContent>
@@ -256,7 +322,6 @@ console.log(data);`;
                                                     </CardTitle>
                                                 </div>
                                                 <div className="flex items-center space-x-2">
-                                                    {/* all methods share same colour now -------------- NEW */}
                                                     <Badge variant="default">{endpoint.method}</Badge>
                                                     <code className="bg-secondary px-2 py-1 rounded text-sm">
                                                         {endpoint.path}
@@ -280,7 +345,7 @@ console.log(data);`;
                                                     <div>
                                                         <h4 className="font-medium mb-2">Opis</h4>
                                                         <p className="text-body-text">
-                                                            {endpoint.description}
+                                                            {endpoint.detailedDescription}
                                                         </p>
                                                     </div>
 
@@ -295,6 +360,34 @@ console.log(data);`;
                                                             </code>
                                                         </div>
                                                     </div>
+
+                                                    {endpoint.useCase && (
+                                                        <div>
+                                                            <h4 className="font-medium mb-2">Kiedy używać</h4>
+                                                            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                                                                <p className="text-sm text-blue-800">
+                                                                    {endpoint.useCase}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div>
+                                                        <h4 className="font-medium mb-2">Szybki start</h4>
+                                                        <div className="space-y-2">
+                                                            <p className="text-sm text-body-text">
+                                                                1. Dodaj nagłówek autoryzacji z kluczem API
+                                                            </p>
+                                                            <p className="text-sm text-body-text">
+                                                                2. {endpoint.method === "POST" 
+                                                                    ? "Wyślij dane w body zapytania" 
+                                                                    : "Zastąp {result_id} prawdziwym ID wyniku"}
+                                                            </p>
+                                                            <p className="text-sm text-body-text">
+                                                                3. Otrzymasz dane w formacie JSON
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </TabsContent>
 
                                                 {/* ----------------------------- REQUEST */}
@@ -303,7 +396,6 @@ console.log(data);`;
                                                         <div>
                                                             <h4 className="font-medium mb-3">Request Body</h4>
                                                             <div className="bg-neutral-900 p-4 rounded-lg">
-                                                                {/* blackish background -------------------- NEW */}
                                                                 <SyntaxHighlighter
                                                                     language="json"
                                                                     style={atomOneDark}
@@ -366,7 +458,7 @@ console.log(data);`;
                                                 <TabsContent value="response" className="space-y-4">
                                                     <div>
                                                         <h4 className="font-medium mb-3">
-                                                            Response Format
+                                                            Struktura odpowiedzi
                                                         </h4>
                                                         <div className="bg-neutral-900 p-4 rounded-lg">
                                                             <SyntaxHighlighter
@@ -382,13 +474,32 @@ console.log(data);`;
                                                         </div>
                                                     </div>
 
+                                                    {endpoint.responseExample && (
+                                                        <div>
+                                                            <h4 className="font-medium mb-3">
+                                                                Przykład odpowiedzi
+                                                            </h4>
+                                                            <div className="bg-neutral-900 p-4 rounded-lg">
+                                                                <SyntaxHighlighter
+                                                                    language="json"
+                                                                    style={atomOneDark}
+                                                                    customStyle={{
+                                                                        background: "transparent",
+                                                                        fontSize: "0.8rem",
+                                                                    }}
+                                                                >
+                                                                    {endpoint.responseExample}
+                                                                </SyntaxHighlighter>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     <div>
                                                         <h4 className="font-medium mb-3">
                                                             Status Codes
                                                         </h4>
                                                         <div className="space-y-2">
                                                             <div className="flex items-center space-x-2">
-                                                                {/* Green 200 -------------------------------- NEW */}
                                                                 <Badge className="bg-green-600 text-white">
                                                                     200
                                                                 </Badge>
@@ -481,8 +592,6 @@ console.log(data);`;
                                     </Card>
                                 )
                         )}
-
-                        {/* Rate-limiting card REMOVED */}
                     </div>
                 </div>
             </div>
