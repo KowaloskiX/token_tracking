@@ -1,0 +1,14 @@
+{
+  "dashboard": "Panel główny",
+  "projects": "Projekty",
+  "settings": "Ustawienia",
+  "tenders": "Przetargi",
+  "chat": "Czat",
+  "management": "Zarządzanie",
+  "profile": "Profil",
+  "logout": "Wyloguj",
+  "home": "Strona główna",
+  "about": "O nas",
+  "contact": "Kontakt",
+  "api_docs": "Dokumentacja API"
+}

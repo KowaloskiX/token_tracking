@@ -1,0 +1,26 @@
+{
+  "projects": {
+    "title": "My Projects",
+    "create_new": "Create New",
+    "no_projects": "No projects",
+    "created": "Created",
+    "private": "Private",
+    "shared": "Shared"
+  },
+  "tenders": {
+    "title": "Tenders",
+    "analysis": "Analysis",
+    "results": "Results",
+    "management": "Management"
+  },
+  "chat": {
+    "new_conversation": "New Conversation",
+    "thinking": "Thinking...",
+    "type_message": "Type a message...",
+    "send": "Send"
+  },
+  "sidebar": {
+    "collapse": "Collapse menu",
+    "expand": "Expand menu"
+  }
+}

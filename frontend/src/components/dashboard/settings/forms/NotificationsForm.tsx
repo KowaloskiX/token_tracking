@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useTranslations } from 'next-intl'
 import { useDashboard } from "@/hooks/useDashboard"
 import { updateMarketingConsent } from "@/utils/userActions"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -31,6 +32,9 @@ type NotificationsFormValues = z.infer<typeof notificationsFormSchema>
 
 export function NotificationsForm() {
   const { user, setUser } = useDashboard()
+  const [mounted, setMounted] = useState(false)
+  const t = useTranslations('settings.notifications')
+  
   const form = useForm<NotificationsFormValues>({
     resolver: zodResolver(notificationsFormSchema),
     defaultValues: {
@@ -41,12 +45,16 @@ export function NotificationsForm() {
     },
   })
 
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   async function onSubmit(data: NotificationsFormValues) {
     try {
       if (!user?._id) {
         toast({
-          title: "Błąd",
-          description: "Nie znaleziono użytkownika.",
+          title: t('error'),
+          description: t('user_not_found'),
           variant: "destructive",
         })
         return;
@@ -63,17 +71,25 @@ export function NotificationsForm() {
       }
 
       toast({
-        title: "Sukces",
-        description: "Ustawienia powiadomień zostały zaktualizowane.",
+        title: t('success'),
+        description: t('success_description'),
       })
     } catch (error) {
-      console.error("Błąd aktualizacji powiadomień:", error);
+      console.error("Error updating notifications:", error);
       toast({
-        title: "Błąd",
-        description: "Nie udało się zaktualizować ustawień powiadomień.",
+        title: t('error'),
+        description: t('error_description'),
         variant: "destructive",
       })
     }
+  }
+
+  if (!mounted) {
+    return (
+      <div className="space-y-6">
+        <div className="text-sm text-muted-foreground">Loading...</div>
+      </div>
+    );
   }
 
   return (
@@ -86,9 +102,9 @@ export function NotificationsForm() {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                 <div className="space-y-0.5">
-                  <FormLabel className="text-base">Powiadomienia o koncie</FormLabel>
+                  <FormLabel className="text-base">{t('account_notifications')}</FormLabel>
                   <FormDescription>
-                    Otrzymuj wiadomości email dotyczące aktywności na Twoim koncie.
+                    {t('account_notifications_description')}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -106,9 +122,9 @@ export function NotificationsForm() {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                 <div className="space-y-0.5">
-                  <FormLabel className="text-base">Wiadomości marketingowe</FormLabel>
+                  <FormLabel className="text-base">{t('marketing_emails')}</FormLabel>
                   <FormDescription>
-                    Otrzymuj informacje o nowych produktach, funkcjach i innych nowościach.
+                    {t('marketing_emails_description')}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -126,9 +142,9 @@ export function NotificationsForm() {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                 <div className="space-y-0.5">
-                  <FormLabel className="text-base">Powiadomienia społecznościowe</FormLabel>
+                  <FormLabel className="text-base">{t('social_notifications')}</FormLabel>
                   <FormDescription>
-                    Otrzymuj powiadomienia o zaproszeniach do znajomych, obserwujących i innych aktywnościach.
+                    {t('social_notifications_description')}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -146,9 +162,9 @@ export function NotificationsForm() {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                 <div className="space-y-0.5">
-                  <FormLabel className="text-base">Powiadomienia bezpieczeństwa</FormLabel>
+                  <FormLabel className="text-base">{t('security_notifications')}</FormLabel>
                   <FormDescription>
-                    Otrzymuj ważne powiadomienia dotyczące bezpieczeństwa Twojego konta.
+                    {t('security_notifications_description')}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -165,9 +181,9 @@ export function NotificationsForm() {
         </div>
         <Button 
           type="submit"
-          onClick={() => console.log("Przycisk kliknięty")}
+          onClick={() => console.log("Button clicked")}
         >
-          Aktualizuj powiadomienia
+          {t('update_notifications')}
         </Button>
       </form>
     </Form>

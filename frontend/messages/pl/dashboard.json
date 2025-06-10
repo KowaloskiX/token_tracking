@@ -1,0 +1,26 @@
+{
+  "projects": {
+    "title": "Moje projekty",
+    "create_new": "Stwórz nowy",
+    "no_projects": "Brak projektów",
+    "created": "Stworzono",
+    "private": "Prywatne",
+    "shared": "Udostępnione"
+  },
+  "tenders": {
+    "title": "Przetargi",
+    "analysis": "Analiza",
+    "results": "Wyniki",
+    "management": "Zarządzanie"
+  },
+  "chat": {
+    "new_conversation": "Nowa konwersacja",
+    "thinking": "Myślę...",
+    "type_message": "Napisz wiadomość...",
+    "send": "Wyślij"
+  },
+  "sidebar": {
+    "collapse": "Zwiń menu",
+    "expand": "Rozwiń menu"
+  }
+}

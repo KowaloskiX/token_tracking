@@ -1,26 +1,34 @@
-"use client"; // This directive indicates that the component is a client-side React component.
+"use client";
 
-import { Separator } from "@/components/ui/separator"; // Importing a UI separator component.
-import { CreateInvitationForm } from "@/components/dashboard/settings/forms/CreateInvitationForm"; // Importing the CreateInvitationForm component for inviting new team members.
-import { TeamMembersList } from "@/components/dashboard/settings/forms/TeamMembersList"; // Importing the TeamMembersList component to display the list of team members.
+import { Separator } from "@/components/ui/separator";
+import { CreateInvitationForm } from "@/components/dashboard/settings/forms/CreateInvitationForm";
+import { TeamMembersList } from "@/components/dashboard/settings/forms/TeamMembersList";
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 
 export default function OrganizationPage() {
+  const [mounted, setMounted] = useState(false);
+  const t = useTranslations('settings.pages.organization');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="h-[calc(100vh-128px)] overflow-y-auto scrollbar-hide space-y-6">
-      {/* Header section with title and description */}
       <div>
-        <h3 className="text-lg font-medium">Organizacja</h3> {/* Page title */}
+        <h3 className="text-lg font-medium">
+          {mounted ? t('title') : 'Organizacja'}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Zarządzaj swoim zespołem i zapraszaj nowych członków do współpracy. {/* Page description */}
+          {mounted ? t('description') : 'Zarządzaj swoim zespołem i zapraszaj nowych członków do współpracy.'}
         </p>
       </div>
       
-      <Separator /> {/* Visual separator between the header and the content sections */}
+      <Separator />
       
-      {/* Include the invitation form component for adding new team members */}
       <CreateInvitationForm />
       
-      {/* Include the team members list component to display existing team members */}
       <TeamMembersList />
     </div>
   );

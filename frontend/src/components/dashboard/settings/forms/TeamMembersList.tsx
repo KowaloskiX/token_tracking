@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from 'next-intl';
 import { 
     Table, 
     TableBody, 
@@ -20,9 +21,8 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getOrganizationMembers, updateMemberRole, removeMember, leaveOrganization } from "@/utils/organizationActions";
-import { useRouter } from "next/navigation"; // Import router for navigation after leaving
+import { useRouter } from "next/navigation";
 
-// Type for team member
 interface TeamMember {
     id: string;
     name: string;
@@ -32,46 +32,48 @@ interface TeamMember {
 }
 
 export function TeamMembersList() {
-    const router = useRouter(); // Initialize router
-    // Add an additional state for organization membership
+    const router = useRouter();
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [notInOrganization, setNotInOrganization] = useState(false);  // Add this state
+    const [notInOrganization, setNotInOrganization] = useState(false);
     const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+    const [mounted, setMounted] = useState(false);
     const { toast } = useToast();
     const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
+    const t = useTranslations('settings.organization');
 
-    // Fetch team members when the component mounts
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     useEffect(() => {
         const fetchMembers = async () => {
             try {
                 const data = await getOrganizationMembers();
                 setMembers(data);
                 
-                // Determine if the current user is an admin
                 const currentUser = data.find((member: { isCurrentUser: any; }) => member.isCurrentUser);
                 setIsCurrentUserAdmin(currentUser?.role === "admin");
                 
                 setNotInOrganization(false);
             } catch (err: any) {
-                // Check if this is the specific "not in organization" error
                 if (err.message === "No organization found." || 
                     err.message === "Nie jesteś członkiem żadnej organizacji.") {
                     setNotInOrganization(true);
                 } else {
-                    // Handle other errors
-                    setError(err.message || "Nie udało się pobrać listy członków zespołu");
+                    setError(err.message || "Failed to fetch team members");
                 }
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchMembers();
-    }, []);
+        if (mounted) {
+            fetchMembers();
+        }
+    }, [mounted]);
 
-    // Handle role change for a specific member
     const handleRoleChange = (memberId: string, newRole: string) => {
         setPendingChanges((prev) => ({
             ...prev,
@@ -79,89 +81,84 @@ export function TeamMembersList() {
         }));
     };
 
-    // Save the updated role for a specific member
     const handleSaveRole = async (memberId: string) => {
         if (!pendingChanges[memberId]) return;
         
         try {
-            // Update the member's role via API
             await updateMemberRole(memberId, pendingChanges[memberId]);
             toast({
-                title: "Sukces",
-                description: "Rola użytkownika została zaktualizowana",
+                title: t('invite_success'),
+                description: t('role_updated'),
             });
             
-            // Update the local state with the new role
             setMembers((prev) => prev.map(member => 
                 member.id === memberId 
                     ? { ...member, role: pendingChanges[memberId] } 
                     : member
             ));
             
-            // Remove the pending change for the member
             setPendingChanges((prev) => {
                 const { [memberId]: _, ...rest } = prev;
                 return rest;
             });
         } catch (err: any) {
-            // Handle errors during role update
             toast({
                 variant: "destructive",
-                title: "Błąd",
-                description: err.message || "Nie udało się zaktualizować roli",
+                title: t('invite_error'),
+                description: err.message || t('role_update_error'),
             });
         }
     };
 
-    // Remove a member from the organization
     const handleRemoveMember = async (memberId: string) => {
-        if (!confirm("Czy na pewno chcesz usunąć tego użytkownika z organizacji?")) return;
+        if (!confirm(t('remove_confirmation'))) return;
         
         try {
-            // Remove the member via API
             await removeMember(memberId);
             toast({
-                title: "Sukces",
-                description: "Użytkownik został usunięty z organizacji",
+                title: t('invite_success'),
+                description: t('member_removed'),
             });
             
-            // Update the local state to remove the member
             setMembers((prev) => prev.filter(member => member.id !== memberId));
         } catch (err: any) {
-            // Handle errors during member removal
             toast({
                 variant: "destructive",
-                title: "Błąd",
-                description: err.message || "Nie udało się usunąć użytkownika",
+                title: t('invite_error'),
+                description: err.message || t('member_remove_error'),
             });
         }
     };
 
-    // Add handler for leaving the organization
     const handleLeaveOrganization = async () => {
-        if (!confirm("Czy na pewno chcesz opuścić organizację? Nie będziesz mieć dostępu do zasobów organizacji.")) return;
+        if (!confirm(t('leave_confirmation'))) return;
         
         try {
             await leaveOrganization();
             toast({
-                title: "Sukces",
-                description: "Opuściłeś organizację.",
+                title: t('invite_success'),
+                description: t('left_organization'),
             });
             
-            // Refresh the page to clear org_id and reload the state
-            // router.refresh(); // For Next.js
-            // Alternatively, use window.location.reload() if router.refresh() doesn't work
             window.location.reload();
         } catch (err: any) {
             toast({
                 variant: "destructive",
-                title: "Błąd",
-                description: err.message || "Nie udało się opuścić organizacji",
+                title: t('invite_error'),
+                description: err.message || t('leave_error'),
             });
         }
     };
 
-    // Show a loading spinner while data is being fetched
+    if (!mounted) {
+        return (
+            <div className="bg-card rounded-lg border p-6">
+                <h3 className="text-lg font-medium mb-4">{t('team_members')}</h3>
+                <div className="text-sm text-muted-foreground">{t('loading')}</div>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="flex justify-center items-center p-8">
@@ -170,17 +167,15 @@ export function TeamMembersList() {
         );
     }
 
-    // Show the "not in organization" message with normal styling
     if (notInOrganization) {
         return (
             <div className="bg-card rounded-lg border p-6">
-                <h3 className="text-lg font-medium mb-4">Członkowie zespołu</h3>
-                <p className="text-muted-foreground">Nie jesteś członkiem żadnej organizacji.</p>
+                <h3 className="text-lg font-medium mb-4">{t('team_members')}</h3>
+                <p className="text-muted-foreground">{t('not_in_organization')}</p>
             </div>
         );
     }
 
-    // Show an error message if fetching data failed for other reasons
     if (error) {
         return (
             <div className="bg-destructive/10 p-4 rounded-md flex items-center gap-2 text-destructive">
@@ -192,19 +187,18 @@ export function TeamMembersList() {
 
     return (
         <div className="bg-card rounded-lg border p-6">
-            <h3 className="text-lg font-medium mb-4">Członkowie zespołu</h3>
+            <h3 className="text-lg font-medium mb-4">{t('team_members')}</h3>
             
-            {/* Show a message if there are no team members */}
             {members.length === 0 ? (
-                <p className="text-muted-foreground">Brak członków zespołu.</p>
+                <p className="text-muted-foreground">{t('no_members')}</p>
             ) : (
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Użytkownik</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Rola</TableHead>
-                            <TableHead className="text-right">Akcje</TableHead>
+                            <TableHead>{t('user')}</TableHead>
+                            <TableHead>{t('email')}</TableHead>
+                            <TableHead>{t('role')}</TableHead>
+                            <TableHead className="text-right">{t('actions')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -213,54 +207,50 @@ export function TeamMembersList() {
                                 <TableCell className="font-medium">{member.name}</TableCell>
                                 <TableCell>{member.email}</TableCell>
                                 <TableCell>
-                                    {/* Dropdown to select a role for the member */}
                                     <Select
                                         value={pendingChanges[member.id] || member.role}
                                         onValueChange={(value) => handleRoleChange(member.id, value)}
-                                        disabled={member.isCurrentUser || !isCurrentUserAdmin} // Disable for current user OR if current user isn't admin
+                                        disabled={member.isCurrentUser || !isCurrentUserAdmin}
                                     >
                                         <SelectTrigger className="w-[180px]">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="admin">Administrator</SelectItem>
-                                            <SelectItem value="member">Członek zespołu</SelectItem>
-                                            <SelectItem value="guest">Gość</SelectItem>
+                                            <SelectItem value="admin">{t('roles.admin')}</SelectItem>
+                                            <SelectItem value="member">{t('roles.member')}</SelectItem>
+                                            <SelectItem value="guest">{t('roles.guest')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </TableCell>
                                 <TableCell className="text-right space-x-2">
-                                    {/* Show save button if there are pending changes */}
                                     {pendingChanges[member.id] && isCurrentUserAdmin && (
                                         <Button 
                                             variant="outline" 
                                             size="sm"
                                             onClick={() => handleSaveRole(member.id)}
                                         >
-                                            Zapisz
+                                            {t('save')}
                                         </Button>
                                     )}
                                     
-                                    {/* Show "Opuść" button for current user, "Usuń" button for others */}
                                     {member.isCurrentUser ? (
                                         <Button 
                                             variant="destructive" 
                                             size="sm"
-                                            className="w-20" // Fixed width of 5rem (80px)
+                                            className="w-20"
                                             onClick={handleLeaveOrganization}
                                         >
-                                            Opuść
+                                            {t('leave')}
                                         </Button>
                                     ) : (
-                                        // Only show "Usuń" button if current user is admin
                                         isCurrentUserAdmin && (
                                             <Button 
                                                 variant="destructive" 
                                                 size="sm"
-                                                className="w-20" // Same fixed width
+                                                className="w-20"
                                                 onClick={() => handleRemoveMember(member.id)}
                                             >
-                                                Usuń
+                                                {t('remove')}
                                             </Button>
                                         )
                                     )}

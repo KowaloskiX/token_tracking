@@ -1,0 +1,14 @@
+{
+  "dashboard": "Dashboard",
+  "projects": "Projects",
+  "settings": "Settings",
+  "tenders": "Tenders",
+  "chat": "Chat",
+  "management": "Management",
+  "profile": "Profile",
+  "logout": "Logout",
+  "home": "Home",
+  "about": "About",
+  "contact": "Contact",
+  "api_docs": "API Documentation"
+}

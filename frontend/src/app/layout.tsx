@@ -5,6 +5,8 @@ import { DashboardProvider } from "@/context/DashboardContext";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { satoshi } from "@/app/fonts/fonts";
 import { Toaster } from "@/components/Toaster";
+import { NextIntlClientProvider } from 'next-intl';
+import { getMessages, getLocale } from 'next-intl/server';
 
 export const metadata: Metadata = {
   title: "Asystent AI",
@@ -15,13 +17,17 @@ export const viewport: Viewport = {
   themeColor: "#F5EFE4",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Get the locale and messages for the current request
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="en">
+    <html lang={locale}>
       <head>
         <Script
           id="google-tag-manager"
@@ -80,9 +86,11 @@ export default function RootLayout({
         />
 
         <SpeedInsights />
-        <DashboardProvider>
-          {children}
-        </DashboardProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <DashboardProvider>
+            {children}
+          </DashboardProvider>
+        </NextIntlClientProvider>
 
         <Toaster />
       </body>
