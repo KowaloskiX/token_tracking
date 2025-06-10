@@ -1,8 +1,9 @@
 from datetime import datetime
+import io
 import logging
 from typing import Any, Dict, List, Optional, Union
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from minerva.core.middleware.auth.jwt import get_current_user
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis, TenderToAnalyseDescription
 from minerva.core.models.user import User
@@ -14,8 +15,11 @@ from minerva.tasks.services.tender_file_extraction_service import perform_file_e
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
 from pydantic import BaseModel
 from playwright.async_api import async_playwright
-import json
-from bson import json_util
+from fastapi.responses import JSONResponse
+from PIL import Image
+import torch
+from transformers import pipeline
+from typing import Literal
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -150,3 +154,99 @@ async def get_extraction_results(
             status_code=500,
             detail=f"Error retrieving extraction results: {str(e)}"
         )
+    
+@router.get("/test-ocr")
+async def test_ocr():
+    try:
+        from minerva.core.services.vectorstore.file_content_extract.pdf_extractor import PDFFileExtractor
+        from pathlib import Path
+        
+        results = []
+        extractor = PDFFileExtractor()
+
+        file_paths = [
+            "/workspaces/minerva/backend/temp_downloads/przedmiar.pdf",
+            "/workspaces/minerva/backend/temp_downloads/rzut.pdf"
+        ]
+        
+        for file_path in file_paths:
+            pdf_path = Path(file_path)
+            
+            if not pdf_path.exists():
+                results.append({
+                    "file_path": str(pdf_path),
+                    "status": "error",
+                    "error": "File not found"
+                })
+                continue
+                
+            try:
+                extracted_text = extractor.extract_text_as_string(pdf_path)
+                results.append({
+                    "file_path": str(pdf_path),
+                    "status": "success",
+                    "extracted_text": extracted_text,
+                    "text_length": len(extracted_text)
+                })
+            except Exception as e:
+                results.append({
+                    "file_path": str(pdf_path),
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        return {
+            "status": "completed",
+            "results": results,
+            "total_files": len(file_paths),
+            "successful_files": sum(1 for r in results if r["status"] == "success")
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing PDFs: {str(e)}"
+        )
+
+# classifier = pipeline(
+#     "zero-shot-image-classification",
+#     model="openai/clip-vit-base-patch32",
+#     device=-1,                         # -1 ➜ force CPU
+# )
+
+# CANDIDATES = [
+#     "a technical drawing, blueprint or CAD schematic",
+#     "a normal page of text or scanned document",
+# ]
+
+
+
+# @router.post("/classify-img")
+# async def classify(file: UploadFile = File(...)):
+#     logger.info(f"Received file: {file.filename} (content_type={file.content_type})")
+
+#     if file.content_type not in {"image/png", "image/jpeg"}:
+#         logger.warning("Unsupported file type")
+#         raise HTTPException(415, "Upload PNG or JPEG only.")
+
+#     try:
+#         contents = await file.read()
+#         logger.info(f"Read {len(contents)} bytes")
+#         image = Image.open(io.BytesIO(contents)).convert("RGB")
+#         logger.info("Image decoded successfully")
+#     except Exception as e:
+#         logger.error(f"Image decode error: {e}")
+#         raise HTTPException(400, "Cannot decode the image file.")
+
+#     logger.info("Running classification...")
+#     outputs = classifier(image, candidate_labels=CANDIDATES)
+#     logger.info(f"Model output: {outputs}")
+
+#     top = outputs[0]
+#     result: Literal["drawing", "document"] = (
+#         "drawing" if "drawing" in top["label"] or "blueprint" in top["label"]
+#         else "document"
+#     )
+
+#     logger.info(f"Final result: {result} (score: {top['score']:.4f})")
+#     return JSONResponse({"result": result, "score": round(top["score"], 4)})

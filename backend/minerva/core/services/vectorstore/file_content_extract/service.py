@@ -75,7 +75,8 @@ class FileExtractionService:
 
         extractor = self.registry.get(extension)
         if not extractor:
-            raise ValueError(f"No extractor registered for file type: {extension}")
+            logger.error(f"No extractor registered for file type: {extension}")
+            return []
 
         processed_files: List[Tuple[bytes, str, str, bytes, str]] = []
         # original_bytes = file_path.read_bytes() # MODIFIED: Remove eager loading

@@ -7,12 +7,13 @@ from minerva.core.models.request.ai import LLMSearchRequest, LLMRAGRequest
 from minerva.core.services.llm_logic import ask_llm_logic, llm_rag_search_logic
 from minerva.core.models.user import User
 from minerva.core.middleware.token_tracking import update_user_token_usage
-from minerva.core.models.extensions.tenders.tender_analysis import AnalysisCriteria, TenderAnalysis, TenderAnalysisResult, TenderDecriptionProfileMatches, TenderProfileMatches, TenderToAnalyseDescription
+from minerva.core.models.extensions.tenders.tender_analysis import AnalysisCriteria, TenderAnalysis, TenderAnalysisResult, TenderDecriptionProfileMatches, TenderProfileMatches, TenderToAnalyseDescription, Citation
 from minerva.core.services.vectorstore.file_content_extract.base import ExtractorRegistry
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
 from minerva.tasks.services.keyword_service import KeywordPresenceValidator
+from minerva.core.services.llm_providers.model_config import get_model_config, get_optimal_max_tokens
 from openai import AssistantEventHandler
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -39,6 +40,25 @@ from elasticsearch import helpers
 
 logger = logging.getLogger("minerva.tasks.analysis_tasks")
 
+# Whitelist of user IDs that get access to gpt-4.1-mini model
+PREMIUM_MODEL_USERS = {
+    "67c6cb742fee91862e135247", #hydratec
+    "67e0fc72cc9438c03bab1601", #eupol
+    "6841555abb4e90deb07f9690", #hebu
+    "68357b5f94b3cd20aaae436d", #hammermed
+    "67f129dc9f404265240342df", #projectsteel
+    "67f129dc9f404265240342df", #foliarex
+    "67e8300a74179050a8ad7db2", #neomed
+    "67ef3e119f404265240341d9", #esinvest
+    "682847cfc6e45120af03fca1", #ironmountain
+    "680608e336901be8673cc7c6", #masterprint
+    "681b17c837e582ff42246c52", #annfil
+    "683e9cbeef2a46d00c424c0e", #senda
+    "679736290723807cbe67ad15", #ondre
+    "680f94b869d687dfec1ed9e6", #testaccount
+    "6846ac0084451731b166b6ca" #arison construction
+}
+
 # Memory logging helper
 def log_mem(tag: str = ""):
     try:
@@ -55,6 +75,39 @@ def malloc_trim():
             libc.malloc_trim(0)
         except Exception:
             pass
+
+
+def safe_json_loads(json_string: str, fallback_response: dict, context: str = "unknown") -> dict:
+    """
+    Safely parse JSON with error handling for Unicode escape issues.
+    
+    Args:
+        json_string: The JSON string to parse
+        fallback_response: Default response to return if parsing fails
+        context: Context description for logging purposes
+    
+    Returns:
+        Parsed JSON dict or fallback response
+    """
+    try:
+        return json.loads(json_string)
+    except json.JSONDecodeError as json_error:
+        logger.warning(f"Initial JSON parsing failed for {context}: {str(json_error)}")
+        
+        # Try to sanitize the response by fixing common Unicode escape issues
+        sanitized_response = json_string
+        
+        # Fix incomplete Unicode escapes by removing malformed \u sequences
+        sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+        
+        # Try parsing again
+        try:
+            parsed_output = json.loads(sanitized_response)
+            logger.info(f"Successfully parsed JSON after sanitization for {context}")
+            return parsed_output
+        except json.JSONDecodeError as second_error:
+            logger.error(f"JSON parsing failed even after sanitization for {context}: {str(second_error)}")
+            return fallback_response
 
 
 class FileURL(BaseModel):
@@ -76,15 +129,15 @@ class ElasticsearchConfig:
     def __init__(
         self,
         index_name: str = "files-rag",
-        chunk_size: int = 750,
-        chunk_overlap: int = 150
+        chunk_size: int = 1000,
+        chunk_overlap: int = 400
     ):
         self.index_name = index_name
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
 class RAGManager:
-    def __init__(self, index_name: str, namespace: str, embedding_model: str, tender_pinecone_id: str, use_elasticsearch: bool = False, es_config: Optional[ElasticsearchConfig] = None, language: str = "polish"):
+    def __init__(self, index_name: str, namespace: str, embedding_model: str, tender_pinecone_id: str, use_elasticsearch: bool = False, es_config: Optional[ElasticsearchConfig] = None, language: str = "polish", tender_url: Optional[str] = None):
         # Memory log on RAGManager init
         log_mem(f"{tender_pinecone_id} RAGManager:init")
         
@@ -92,6 +145,7 @@ class RAGManager:
         self.namespace = namespace
         self.embedding_model = embedding_model
         self.tender_pinecone_id = tender_pinecone_id
+        self.tender_url = tender_url  # Store tender URL for logging context
         
         self.chunker = TextChunker(ChunkingConfig())
         
@@ -134,7 +188,36 @@ class RAGManager:
                         },
                         "metadata": {
                             "type": "object",
-                            "dynamic": True
+                            "dynamic": True,
+                            "properties": {
+                                "source": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword"
+                                        }
+                                    }
+                                },
+                                "sanitized_filename": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword"
+                                        }
+                                    }
+                                },
+                                "file_id": {
+                                    "type": "keyword"
+                                },
+                                "tender_pinecone_id": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword"
+                                        }
+                                    }
+                                }
+                            }
                         },
                         "created_at": {
                             "type": "date",
@@ -157,7 +240,36 @@ class RAGManager:
                     },
                     "metadata": {
                         "type": "object",
-                        "dynamic": True
+                        "dynamic": True,
+                        "properties": {
+                            "source": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword"
+                                    }
+                                }
+                            },
+                            "sanitized_filename": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword"
+                                    }
+                                }
+                            },
+                            "file_id": {
+                                "type": "keyword"
+                            },
+                            "tender_pinecone_id": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword"
+                                    }
+                                }
+                            }
+                        }
                     },
                     "created_at": {
                         "type": "date",
@@ -243,21 +355,65 @@ class RAGManager:
         file_content: bytes,
         filename: str,
     ) -> FilePineconeConfig:
+        tender_context = f"[{self.tender_url}]" if self.tender_url else f"[{self.tender_pinecone_id}]"
         log_mem(f"{self.tender_pinecone_id} upload:start:{filename}")
 
         sanitized_filename = sanitize_id(filename)
         filename_unique_prefix = f"{sanitized_filename}_{uuid4()}"
 
-        text = file_content.decode() if isinstance(file_content, (bytes, bytearray)) else file_content
-        file_content = None
+        # Extract text using the appropriate extractor first
+        import tempfile
+        from pathlib import Path
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp_file:
+            tmp_file.write(file_content if isinstance(file_content, (bytes, bytearray)) else file_content.encode())
+            tmp_file.flush()
+            tmp_path = Path(tmp_file.name)
+            
+            try:
+                # Get the appropriate extractor and set tender context if it supports it
+                extractor = self.registry.get(tmp_path.suffix.lower())
+                if extractor and hasattr(extractor, 'set_tender_context'):
+                    extractor.set_tender_context(tender_url=self.tender_url, tender_id=self.tender_pinecone_id)
+                
+                # Extract text content
+                file_content_list = list(extractor.extract_file_content(tmp_path)) if extractor else []
+                if file_content_list:
+                    text = file_content_list[0].content
+                else:
+                    text = file_content.decode() if isinstance(file_content, (bytes, bytearray)) else file_content
+            except Exception as e:
+                logger.warning(f"{tender_context} Error extracting content from {filename}: {e}")
+                text = file_content.decode() if isinstance(file_content, (bytes, bytearray)) else file_content
+            finally:
+                # Clean up temp file
+                try:
+                    tmp_path.unlink()
+                except:
+                    pass
 
+        file_content = None
         gc.collect()
 
+        # Check if this is a technical drawing that was skipped
+        is_technical_drawing = text.strip() == "__TECHNICAL_DRAWING_SKIP_OCR__"
+        
+        if is_technical_drawing:
+            logger.info(f"{tender_context} Technical drawing detected for {filename} - storing file metadata only, skipping vector indexing (file will still be stored in S3)")
+            return FilePineconeConfig(
+                query_config=QueryConfig(self.index_name, self.namespace, self.embedding_model),
+                pinecone_unique_id_prefix=filename_unique_prefix,
+                is_technical_drawing=True,  # Add this flag if the model supports it
+            )
+
         if not text or not text.strip():
+            logger.info(f"{tender_context} No text content extracted from {filename}")
             return FilePineconeConfig(
                 query_config=QueryConfig(self.index_name, self.namespace, self.embedding_model),
                 pinecone_unique_id_prefix=filename_unique_prefix,
             )
+
+        logger.info(f"{tender_context} Processing {filename} - {len(text)} characters extracted")
 
         # ─────────────── action generator ──────────────
         async def gen_actions():
@@ -275,7 +431,9 @@ class RAGManager:
                 chunk_id = f"{filename_unique_prefix}_{uuid4()}"
                 metadata = {
                     "tender_pinecone_id": self.tender_pinecone_id,
-                    "source": sanitized_filename,
+                    "source": filename,  # Keep original filename as source
+                    "sanitized_filename": sanitized_filename,  # Add sanitized version for internal use
+                    "file_id": filename_unique_prefix,  # Add unique file identifier
                     "extractor": "",
                     "source_type": "",
                     "chunk_index": chunk_index_global,
@@ -369,14 +527,18 @@ class RAGManager:
             "}\n\n"
         )
 
+        # Use model configuration helper
+        ai_filter_model = "o4-mini"
+        ai_filter_provider, ai_filter_max_tokens = get_model_config(ai_filter_model)
+        
         request_data = LLMSearchRequest(
             query=user_message,
             vector_store=None,
             llm={
-                "provider": "openai",
-                "model": "o4-mini",
+                "provider": ai_filter_provider,
+                "model": ai_filter_model,
                 "temperature": 0,
-                # "max_tokens": 16000,
+                # "max_tokens": ai_filter_optimized_tokens,
                 "system_message": system_message,
                 "stream": False,
                 "response_format": {
@@ -412,7 +574,28 @@ class RAGManager:
 
         try:
             response = await ask_llm_logic(request_data)
-            parsed_output = json.loads(response.llm_response)
+            
+            # Add robust JSON parsing with error handling
+            try:
+                parsed_output = json.loads(response.llm_response)
+            except json.JSONDecodeError as json_error:
+                logger.warning(f"Initial JSON parsing failed for ai_filter_tenders: {str(json_error)}")
+                
+                # Try to sanitize the response by fixing common Unicode escape issues
+                sanitized_response = response.llm_response
+                
+                # Fix incomplete Unicode escapes by removing malformed \u sequences
+                sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+                
+                # Try parsing again
+                try:
+                    parsed_output = json.loads(sanitized_response)
+                    logger.info(f"Successfully parsed JSON after sanitization for ai_filter_tenders")
+                except json.JSONDecodeError as second_error:
+                    logger.error(f"JSON parsing failed even after sanitization for ai_filter_tenders: {str(second_error)}")
+                    # Return a fallback response structure
+                    parsed_output = {"matches": []}
+            
             # logger.info(f"OpenAI response: {parsed_output}")  # Log raw response for debugging
 
             # Post-process to ensure 'id' is present (fallback if OpenAI omits it)
@@ -553,23 +736,39 @@ class RAGManager:
                 if hasattr(criterion, 'instruction') and criterion.instruction:
                     has_instruction = True
                 
-                # Format template with conditional summary instructions
-                summary_description = f"<Answer to the '{criterion.name}' question based on the documentation."
+                # Separate instruction guidance from JSON template
+                instruction_guidance = ""
                 if has_instruction:
-                    summary_description += f"Instruction for the answer: '{criterion.instruction}'"
-                # summary_description += " Response must directly support 'criteria_met' assessment.>"
+                    instruction_guidance = f"\nIMPORTANT INSTRUCTIONS: When writing your summary, follow this guidance: {criterion.instruction}\n"
+                
+                # Clean placeholder for JSON template
+                summary_placeholder = f"<Your concise answer to the '{criterion.name}' question based on the documentation{' following the instructions provided' if has_instruction else ''}>"
                 
                 format_instructions = (
                     f"Return your answer in JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <QUESTION> tag provided in the input.\n"
-                    f"The summary response must ALWAYS be in {self.language} unless the instruction states otherwise. Use correct character formatting/encoding for special characters for specific languages.\n"
+                    f"{instruction_guidance}"
+                    f"The summary response must ALWAYS be in {self.language} unless the instruction states otherwise. Use native characters directly in JSON (no Unicode escapes like \\uXXXX). Ensure proper JSON formatting with escaped quotes and backslashes where needed.\n"
+                    f"FORMATTING: Present your summary in clean, readable format using:\n"
+                    f"- **Bold text** for important terms and quantities\n"
+                    f"- Lists (1. 2. 3. or -) to organize multiple items clearly\n"
+                    f"- Line breaks between different topics for better readability\n"
+                    f"CRITICAL CITATION REQUIREMENT: In the 'citations' array, include ONLY the specific text fragments from the documentation that you actually used to support your analysis and 'criteria_met' decision. Each citation must contain the EXACT, UNMODIFIED text from the source document - do NOT add ellipsis (...), do NOT truncate, do NOT paraphrase, do NOT modify in any way. The citation text must be searchable with Ctrl+F in the original document.\n"
+                    f"If you cannot find ANY relevant information in the provided documentation to answer the question or support your analysis, return an empty citations array []. However, only return empty citations when there is truly NO related information available - if there is even partial or tangentially related information that helps inform your decision, include those citations.\n"
                 ) + f"""
                 {{
                     "criteria": "<Exact copy of the input <QUESTION>>",
                     "analysis": {{
-                        "summary": "{summary_description}",
+                        "summary": "{summary_placeholder}",
                         "confidence": "<LOW|MEDIUM|HIGH - Your confidence in the summary and 'criteria_met' assessment based on the available information.>",
                         "criteria_met": <true|false based on answer to question based in summary. It must reflect the conclusions from summary.>
-                    }}
+                    }},
+                    "citations": [
+                        {{
+                            "text": "<EXACT, UNMODIFIED text fragment from documentation - must match source document exactly for Ctrl+F search - NO ellipsis, NO truncation>",
+                            "source": "<Source filename>",
+                            "keyword": "<Optional: keyword that led to this citation if applicable>"
+                        }}
+                    ]
                 }}
                 """
                 
@@ -618,57 +817,10 @@ class RAGManager:
                     if keyword_validation_results["hits"]:
                         kw_ctx += "The following keywords were found in tender documentation:\n"
                         for hit in keyword_validation_results["hits"]:
-                            sample_snip = hit["snippets"][0]["text"]
-                            kw_ctx += f" - {hit['keyword']}: \"{sample_snip}\"\n"
-                    if keyword_validation_results["missing"]:
-                        kw_ctx += (
-                            "The following keywords **were NOT found** in tender documentation: "
-                            + ", ".join(keyword_validation_results["missing"])
-                            + "\n"
-                        )
-                    kw_ctx += "</KEYWORD_PRESENCE>\n"
-
-                subcriteria_results = []
-                if hasattr(criterion, 'subcriteria') and criterion.subcriteria and len(criterion.subcriteria) > 0:
-                    # Create tasks for all subcriteria queries
-                    subcriteria_tasks = [
-                        self.analyze_subcriteria(subcrit, self.tender_pinecone_id)
-                        for subcrit in criterion.subcriteria
-                    ]
-                    
-                    # Execute all subcriteria queries concurrently
-                    subcriteria_results = await asyncio.gather(*subcriteria_tasks)
-                    
-                    # Add subcriteria results to the prompt
-                    if any(result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0 for result in subcriteria_results):
-                        subcriteria_context = "\n\n<DOCUMENTATION_CONTEXT>\n"
-                        
-                        for result in subcriteria_results:
-                            has_results = result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0
-                            if has_results:
-                                subcriteria_context += f"\nResults for subquery: '{result['subcriteria']}'\n"
-                                
-                                # Add vector search results
-                                if result["vector_total_matches"] > 0:
-                                    for idx, match in enumerate(result["vector_results"], 1):
-                                        subcriteria_context += f"{idx}. From {match['metadata'].get('source', 'unknown')} ):\n{match['metadata'].get('text', '')}\n"
-                                
-                                # Add Elasticsearch results
-                                # if result["elasticsearch_total_matches"] > 0:
-                                #     subcriteria_context += "\nKeyword search results:\n"
-                                #     for idx, match in enumerate(result["elasticsearch_results"], 1):
-                                #         subcriteria_context += f"{idx}. From {match['source']}:\n{match['text']}\n"
-                        
-                        subcriteria_context += "\n</DOCUMENTATION_CONTEXT>\n"
-                        prompt += subcriteria_context
-
-                if keyword_validation_results and self.use_elasticsearch:
-                    kw_ctx  = "\n\n<KEYWORD_PRESENCE>\n"
-                    if keyword_validation_results["hits"]:
-                        kw_ctx += "The following keywords were found in tender documentation:\n"
-                        for hit in keyword_validation_results["hits"]:
-                            sample_snip = hit["snippets"][0]["text"]
-                            kw_ctx += f" - {hit['keyword']}: \"{sample_snip}\"\n"
+                            kw_ctx += f" - {hit['keyword']}:\n"
+                            for i, snippet in enumerate(hit["snippets"], 1):
+                                score_info = f" (score: {snippet.get('score', 'N/A'):.2f})" if 'score' in snippet else ""
+                                kw_ctx += f"   {i}. From {snippet['source']}{score_info}: \"{snippet['text']}\"\n"
                     if keyword_validation_results["missing"]:
                         kw_ctx += (
                             "The following keywords **were NOT found** in tender documentation: "
@@ -677,17 +829,6 @@ class RAGManager:
                         )
                     kw_ctx += "</KEYWORD_PRESENCE>\n"
                     prompt += kw_ctx
-
-                # Add Elasticsearch results to the prompt if available
-                # if self.use_elasticsearch and elastic_search_results["total_matches"] > 0:
-                #     es_context = "\n\n<ELASTICSEARCH_RESULTS>\n"
-                #     es_context += "It was keywords search. Treat them as a context but do not overthink it as it was only keyword serach\n"
-                #     es_context += f"Keywords used in search: {', '.join(elastic_search_results['search_keywords'])}\n\n"
-                #     es_context += "Relevant document excerpts:\n"
-                #     for idx, result in enumerate(elastic_search_results["results"], 1):
-                #         es_context += f"\n{idx}. From {result['source']}:\n{result['text']}\n"
-                #     es_context += "\n</ELASTICSEARCH_RESULTS>\n"
-                #     prompt += es_context
 
                 # Rest of your function remains the same
                 response_format = {
@@ -703,19 +844,44 @@ class RAGManager:
                                     "type": "object",
                                     "description": "Detailed analysis regarding whether the criterion is met.",
                                     "properties": {
-                                        "summary": {"type": "string", "description": summary_description},
+                                        "summary": {"type": "string", "description": "Concise, well-formatted markdown answer to the criterion question based on the documentation"},
                                         "confidence": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Confidence level in the assessment."},
                                         "criteria_met": {"type": "boolean", "description": "Whether the criterion is satisfied based on the documentation. It must reflect the conclusions from summary."}
                                     },
                                     "required": ["summary", "confidence", "criteria_met"],
                                     "additionalProperties": False
+                                },
+                                "citations": {
+                                    "type": "array",
+                                    "description": "Text extracts from documentation that directly support the analysis and criteria_met decision. Each citation must contain EXACT, UNMODIFIED text from source documents - no ellipsis, no truncation, no paraphrasing.",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "text": {"type": "string", "description": "EXACT, UNMODIFIED text fragment from documentation - must be searchable with Ctrl+F in original document. NO ellipsis (...), NO truncation, NO modification."},
+                                            "source": {"type": "string", "description": "Source filename or document identifier."},
+                                            "keyword": {"type": "string", "description": "Keyword that led to this citation either from KEYWORD_PRESENCE or QUESTION."}
+                                        },
+                                        "required": ["text", "source", "keyword"],
+                                        "additionalProperties": False
+                                    }
                                 }
                             },
-                            "required": ["criteria", "analysis"],
+                            "required": ["criteria", "analysis", "citations"],
                             "additionalProperties": False
                         }
                     }
                 }
+                
+                # Determine model based on user ID whitelist
+                model_to_use = "gemini-2.5-flash-preview-05-20" if str(current_user.id) in PREMIUM_MODEL_USERS else "gpt-4o-mini"
+                
+                # Get provider and max_tokens from model configuration
+                provider, max_tokens = get_model_config(model_to_use)
+                
+                # Use optimal max_tokens for high complexity task
+                max_tokens = get_optimal_max_tokens(model_to_use, "high")
+                
+                # print(f"using model: {model_to_use}, max_tokens: {max_tokens}, provider: {provider}")
                 request_data = LLMRAGRequest(
                     query=prompt,
                     rag_query=criterion.description,
@@ -725,15 +891,19 @@ class RAGManager:
                         "embedding_model": self.embedding_model
                     },
                     llm={
-                        "provider": "openai",
-                        "model": "gpt-4o-mini",
+                        "provider": provider,
+                        "model": model_to_use,
                         "temperature": 0,
-                        "max_tokens": 4000,
-                        "system_message": """You are a public tender expert with enormous expertise and knowledge in public tenders. 
-                        You excel at finding the information in public tender documentation.
+                        "max_tokens": max_tokens,
+                        "system_message": f"""You are a public tender expert with enormous expertise and knowledge in public tenders. 
+                        You excel at finding the information in public tender documentation and determining if it is worth a proposal.
                         In your work you always ground your responses in the documentation context and respond thoughtfully, never making false assessments as it is a critical branch of our business.
                         Even the smallest mistake can cost millions and you perform the most accurate search you can.
                         You have access to DOCUMENTATION_CONTEXT which is result of vector search in public tender documents.
+
+                        CRITICAL CITATION RULE: When providing citations, you MUST include the EXACT, UNMODIFIED text from the source documents. Never add ellipsis (...), never truncate, never paraphrase, never modify the text in any way. The citation text must be exactly as it appears in the source document so it can be found with Ctrl+F search. This is absolutely critical for document verification.
+                        Include ONLY the specific text fragments you actually used to make your assessment. Be precise and selective - include only the most relevant excerpts that directly support your analysis.
+                        If there is absolutely no relevant information in the documentation to support your analysis, return an empty citations array. However, be conservative about this - if there is even minimal relevant information that informs your decision, include it as a citation.
 
                         Always respond in {self.language} unless specified otherwise.
                         """,
@@ -743,14 +913,55 @@ class RAGManager:
                 )
 
                 response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)
-                parsed_output = json.loads(response.llm_response)
+                
+                # Add robust JSON parsing with error handling
+                try:
+                    parsed_output = json.loads(response.llm_response)
+                except json.JSONDecodeError as json_error:
+                    logger.warning(f"Initial JSON parsing failed for criterion {criterion.name}: {str(json_error)}")
+                    
+                    # Try to sanitize the response by fixing common Unicode escape issues
+                    sanitized_response = response.llm_response
+                    
+                    # Fix incomplete Unicode escapes by removing malformed \u sequences
+                    sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+                    
+                    # Try parsing again
+                    try:
+                        parsed_output = json.loads(sanitized_response)
+                        logger.info(f"Successfully parsed JSON after sanitization for criterion {criterion.name}")
+                    except json.JSONDecodeError as second_error:
+                        logger.error(f"JSON parsing failed even after sanitization for criterion {criterion.name}: {str(second_error)}")
+                        # Return a fallback response structure
+                        parsed_output = {
+                            "criteria": criterion.name,
+                            "analysis": {
+                                "summary": f"Error parsing LLM response: {str(second_error)}",
+                                "confidence": "LOW",
+                                "criteria_met": False
+                            },
+                            "citations": []
+                        }
 
-                # Add ES results to the output if available
-                # if elastic_search_results:
-                #     parsed_output["elasticsearch_results"] = elastic_search_results
+                # Convert the model's citations to Citation objects
+                if "citations" in parsed_output and parsed_output["citations"]:
+                    citations_list = []
+                    for citation_data in parsed_output["citations"]:
+                        citation = Citation(
+                            text=citation_data.get("text", ""),
+                            source=citation_data.get("source", ""),
+                            keyword=citation_data.get("keyword", ""),
+                            file_id=None,  # Model doesn't have access to file_id
+                            sanitized_filename=None  # Model doesn't have access to sanitized_filename
+                        )
+                        citations_list.append(citation)
+                    parsed_output["model_citations"] = citations_list
+                else:
+                    parsed_output["model_citations"] = []
 
+                # Keep keyword validation results for reference but don't use as primary citations
                 if keyword_validation_results:
-                    parsed_output["keyword_presence"] = keyword_validation_results
+                    parsed_output["keyword_validation_results"] = keyword_validation_results
 
                 # Add subcriteria results to the output
                 if subcriteria_results:
@@ -816,6 +1027,11 @@ class RAGManager:
                     }
                 }
 
+                # Use model configuration helper
+                location_model = "gpt-4.1-mini"
+                location_provider, location_max_tokens = get_model_config(location_model)
+                location_optimized_tokens = get_optimal_max_tokens(location_model, "low")
+                
                 request_data = LLMRAGRequest(
                     query=prompt,
                     rag_query="Podaj kraj, województwo i miasto dla przetargu.",
@@ -825,17 +1041,41 @@ class RAGManager:
                         "embedding_model": self.embedding_model
                     },
                     llm={
-                        "provider": "openai",
-                        "model": "gpt-4.1-mini",
+                        "provider": location_provider,
+                        "model": location_model,
                         "temperature": 0,
-                        "max_tokens": 2000,
+                        "max_tokens": location_optimized_tokens,
                         "system_message": "",
                         "stream": False, 
                         "response_format": response_format
                     }
                 )
                 response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 2)
-                parsed_output = json.loads(response.llm_response)
+                
+                # Add robust JSON parsing with error handling
+                try:
+                    parsed_output = json.loads(response.llm_response)
+                except json.JSONDecodeError as json_error:
+                    logger.warning(f"Initial JSON parsing failed for location analysis: {str(json_error)}")
+                    
+                    # Try to sanitize the response by fixing common Unicode escape issues
+                    sanitized_response = response.llm_response
+                    
+                    # Fix incomplete Unicode escapes by removing malformed \u sequences
+                    sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+                    
+                    # Try parsing again
+                    try:
+                        parsed_output = json.loads(sanitized_response)
+                        logger.info(f"Successfully parsed JSON after sanitization for location analysis")
+                    except json.JSONDecodeError as second_error:
+                        logger.error(f"JSON parsing failed even after sanitization for location analysis: {str(second_error)}")
+                        # Return a fallback response structure
+                        parsed_output = {
+                            "country": "UNKNOWN",
+                            "city": "UNKNOWN", 
+                            "voivodeship": "UNKNOWN"
+                        }
 
                 if include_vector_results and hasattr(response, 'vector_search_results'):
                     parsed_output['vector_search_results'] = response.vector_search_results
@@ -898,12 +1138,17 @@ class RAGManager:
         log_mem(f"{self.tender_pinecone_id} generate_tender_description:start")
         # Create thread and add initial message
         prompt = (
-                    f"Please summarize exactly what this tender is about in {self.language} (public tender is zamówienie publiczne in polish).."
+                    f"Summarize exactly what this tender is about in {self.language} (public tender is zamówienie publiczne in polish).."
                     "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
-                    "If you detect that there is no enough data to create summary or it doesn't make sense resopond with 'Brak danych'."
-                    "Respond with just the complete summary. (do not include the confidence level indicator)"
+                    "If you detect that there is no enough data to create summary or it doesn't make sense resopond with information that you lack information about the tender."
+                    "Respond with just the complete summary. \n"
                 )
 
+        # Use model configuration helper
+        model_name = "gpt-4.1-mini"
+        provider, max_tokens = get_model_config(model_name)
+        optimized_tokens = get_optimal_max_tokens(model_name, "medium")
+        
         request_data = LLMRAGRequest(
             query=prompt,
             # rag_query="Podaj wszystkie produkty/usługi i opis tego co jest przedmiotem zamówienia.",
@@ -914,10 +1159,10 @@ class RAGManager:
                 "embedding_model": self.embedding_model
             },
             llm={
-                "provider": "openai",
-                "model": "gpt-4.1-mini",
+                "provider": provider,
+                "model": model_name,
                 "temperature": 0.6,
-                "max_tokens": 2000,
+                "max_tokens": optimized_tokens,
                 "system_message": f"You are a tender analysis specialist. Always respond in {self.language}.",
                 "stream": False,
             }
@@ -981,15 +1226,21 @@ class RAGManager:
         {tenders_list_to_analyze}
         """
         # print(f"filtering with description using prompt: {prompt}")           
+        # Use model configuration helper
+        filter_model = "gpt-4.1"
+        filter_provider, filter_max_tokens = get_model_config(filter_model)
+        # Use high complexity for detailed filtering task
+        filter_optimized_tokens = get_optimal_max_tokens(filter_model, "high")
+        
         request_data = LLMRAGRequest(
             query=prompt,
             rag_query="Nothing here",
             vector_store=None,
             llm={
-                "provider": "openai",
-                "model": "gpt-4.1",
+                "provider": filter_provider,
+                "model": filter_model,
                 "temperature": 0,
-                "max_tokens": 30000,
+                "max_tokens": filter_optimized_tokens,
                 "system_message": system_prompt,
                 "stream": False,
                 "response_format": {
@@ -1021,6 +1272,26 @@ class RAGManager:
             }
         )
         response = await ask_llm_logic(request_data)
-        parsed_output = json.loads(response.llm_response)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            parsed_output = json.loads(response.llm_response)
+        except json.JSONDecodeError as json_error:
+            logger.warning(f"Initial JSON parsing failed for ai_filter_tenders_based_on_description: {str(json_error)}")
+            
+            # Try to sanitize the response by fixing common Unicode escape issues
+            sanitized_response = response.llm_response
+            
+            # Fix incomplete Unicode escapes by removing malformed \u sequences
+            sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+            
+            # Try parsing again
+            try:
+                parsed_output = json.loads(sanitized_response)
+                logger.info(f"Successfully parsed JSON after sanitization for ai_filter_tenders_based_on_description")
+            except json.JSONDecodeError as second_error:
+                logger.error(f"JSON parsing failed even after sanitization for ai_filter_tenders_based_on_description: {str(second_error)}")
+                # Return a fallback response structure
+                parsed_output = {"matches": []}
 
         return TenderDecriptionProfileMatches(**parsed_output)

@@ -35,7 +35,7 @@ const TenderSourceIcon: React.FC<TenderSourceIconProps> = ({ source, url }) => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={`ml-2 relative ${isTedSource ? 'w-7 h-7' : 'w-5 h-5'}`}>
+          <div className={`relative ${isTedSource ? 'w-7 h-7' : 'w-5 h-5'}`}>
             <Image
               src={sourceConfig.icon}
               alt={sourceConfig.label}

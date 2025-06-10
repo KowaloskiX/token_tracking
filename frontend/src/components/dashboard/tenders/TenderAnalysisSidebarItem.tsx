@@ -158,105 +158,115 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
   }
 
   async function handleShareWithOrganization(e: React.MouseEvent) {
-  e.stopPropagation();
-  if (!analysis._id) return;
+    e.stopPropagation();
+    if (!analysis._id) return;
 
-  // compute newAssignedUsers exactly as before…
-  const orgMemberIds = orgMembers.map(m => m.id);
-  const newAssignedUsers = isSharedWithOrg
-    ? currentAssignedUsers.filter(u => !orgMemberIds.includes(u) || u === analysis.user_id)
-    : Array.from(new Set([...currentAssignedUsers, ...orgMemberIds]));
+    // compute newAssignedUsers exactly as before…
+    const orgMemberIds = orgMembers.map(m => m.id);
+    const newAssignedUsers = isSharedWithOrg
+      ? currentAssignedUsers.filter(u => !orgMemberIds.includes(u) || u === analysis.user_id)
+      : Array.from(new Set([...currentAssignedUsers, ...orgMemberIds]));
 
-  try {
-    setIsSharing(true);
-    // update via context — this will refresh all badges
-    await assignUsers(analysis._id, newAssignedUsers);
+    try {
+      setIsSharing(true);
+      // update via context — this will refresh all badges
+      await assignUsers(analysis._id, newAssignedUsers);
 
-    // local mirror for sidebar state
-    setCurrentAssignedUsers(newAssignedUsers);
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setIsSharing(false);
+      // local mirror for sidebar state
+      setCurrentAssignedUsers(newAssignedUsers);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSharing(false);
+    }
   }
-}
-
 
   return (
     <div className="group/analysis relative w-full">
+      {/* Main clickable link area */}
       <Link href={`/dashboard/tenders/${analysis._id}`} passHref>
         <SidebarMenuButton asChild className="w-full">
-          <div className="relative w-full flex items-center gap-2 overflow-hidden">
+          <div className="relative w-full flex items-center gap-2 overflow-hidden pr-8">
             <Search className="shrink-0" />
             <div className="flex-1 min-w-0 overflow-hidden">
               <span className="block truncate max-w-36">{analysis.name}</span>
             </div>
-            {/* Only show Assign Users option for admins or the analysis owner */}
-            {canManageUsers && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <SidebarMenuAction 
-                    className="absolute right-1 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover/analysis:opacity-100 transition-opacity duration-200 z-10"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">More</span>
-                  </SidebarMenuAction>
-                </DropdownMenuTrigger>
-                <Portal>
-                  <DropdownMenuContent
-                    className="w-56 rounded-lg"
-                    side="right"
-                    align="start"
-                    sideOffset={4}
-                  >
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAssignUsersOpen(true);
-                      }}
-                    >
-                      <UserPlus className="mr-2 text-muted-foreground" />
-                      <span>Przypisz użytkowników</span>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem 
-                      onClick={handleShareWithOrganization}
-                      disabled={isSharing}
-                    >
-                      {isSharedWithOrg ? (
-                        <X className="mr-2 text-muted-foreground" />
-                      ) : (
-                        <Share2 className="mr-2 text-muted-foreground" />
-                      )}
-                      <span>
-                        {isSharing 
-                          ? (isSharedWithOrg ? 'Anulowanie udostępniania...' : 'Udostępnianie...')
-                          : (isSharedWithOrg ? 'Przestań udostępniać' : 'Udostępnij w organizacji')
-                        }
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteDialog(prev => ({ ...prev, isOpen: true }));
-                      }}
-                      className="text-destructive focus:text-destructive"
-                      disabled={isDeleting || deleteDialog.isLoading}
-                    >
-                      <Trash2 className="mr-2" />
-                      <span>
-                        {isDeleting || deleteDialog.isLoading ? 'Usuwanie...' : 'Usuń wyszukiwarkę'}
-                      </span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </Portal>
-              </DropdownMenu>
-            )}
           </div>
         </SidebarMenuButton>
       </Link>
+      
+      {/* Dropdown menu positioned absolutely outside the Link */}
+      {canManageUsers && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuAction 
+              className="absolute right-1 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover/analysis:opacity-100 transition-opacity duration-200 z-10"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">More</span>
+            </SidebarMenuAction>
+          </DropdownMenuTrigger>
+          <Portal>
+            <DropdownMenuContent
+              className="w-56 rounded-lg"
+              side="right"
+              align="start"
+              sideOffset={4}
+            >
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAssignUsersOpen(true);
+                }}
+              >
+                <UserPlus className="mr-2 text-muted-foreground" />
+                <span>Przypisz użytkowników</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleShareWithOrganization(e);
+                }}
+                disabled={isSharing}
+              >
+                {isSharedWithOrg ? (
+                  <X className="mr-2 text-muted-foreground" />
+                ) : (
+                  <Share2 className="mr-2 text-muted-foreground" />
+                )}
+                <span>
+                  {isSharing 
+                    ? (isSharedWithOrg ? 'Anulowanie udostępniania...' : 'Udostępnianie...')
+                    : (isSharedWithOrg ? 'Przestań udostępniać' : 'Udostępnij w organizacji')
+                  }
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDeleteDialog(prev => ({ ...prev, isOpen: true }));
+                }}
+                className="text-destructive focus:text-destructive"
+                disabled={isDeleting || deleteDialog.isLoading}
+              >
+                <Trash2 className="mr-2" />
+                <span>
+                  {isDeleting || deleteDialog.isLoading ? 'Usuwanie...' : 'Usuń wyszukiwarkę'}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </Portal>
+        </DropdownMenu>
+      )}
       
       <DeletePopup 
         isOpen={deleteDialog.isOpen}
@@ -269,7 +279,6 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
         isLoading={deleteDialog.isLoading}
       />
       
-      {/* Modal with enhanced cleanup */}
       {/* Modal with enhanced cleanup */}
       <AssignUsersModal
         analysis={{ ...analysis, assigned_users: currentAssignedUsers }}

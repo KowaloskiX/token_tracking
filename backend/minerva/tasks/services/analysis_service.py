@@ -15,6 +15,7 @@ from minerva.core.models.request.tender_analysis import BatchAnalysisResult, Ten
 from minerva.core.models.user import User
 from minerva.core.models.extensions.tenders.tender_analysis import (
     AnalysisCriteria,
+    Citation,
     FilterStage,
     FilteredTenderAnalysisResult,
     TenderAnalysis,
@@ -140,6 +141,7 @@ def create_tender_analysis_result_v2(
             ),
             exclude_from_score=getattr(criteria_defs_map.get(item["criteria"]), "exclude_from_score", False),
             is_disqualifying=getattr(criteria_defs_map.get(item["criteria"]), "is_disqualifying", False),
+            citations=item.get("model_citations", [])  # Use the model's actual citations instead of keyword-based ones
         )
         for item in raw_criteria_analysis if isinstance(item, dict) and "criteria" in item and "analysis" in item # Ensure item is a valid dict
     ]
@@ -249,7 +251,7 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
-                check_existing_analysis=False,
+                check_existing_analysis=True,
                 use_elasticsearch=True
             )
             if extraction_res.get("status") != "success":
@@ -314,13 +316,13 @@ async def analyze_relevant_tenders_with_our_rag(
     rag_index_name: str,
     embedding_model: str = "text-embedding-3-large",
     elasticsearch_index_name: str = "tenders",
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     top_k: int = 25,
     current_user: User = None,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 10,
+    batch_size: int = 8,
     language: str = "polish"
 ):
     playwright: Optional[Playwright] = None
@@ -600,7 +602,7 @@ async def analyze_relevant_tenders_with_our_rag(
 async def run_all_tender_analyses(
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 20,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None
 ) -> "TenderAnalysisResponse":
     analyses_cursor = db.tender_analysis.find({"active": True})
@@ -707,7 +709,7 @@ async def run_all_tender_analyses(
 async def run_all_analyses_for_user(
     user_id: str,
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     index_name: str = "tenders"
 ) -> Dict[str, Any]:
@@ -811,7 +813,7 @@ async def run_partial_tender_analyses(
     analyses: list,
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None
 ) -> "TenderAnalysisResponse":
     active_analyses = [a for a in analyses if a.get("active", False)]

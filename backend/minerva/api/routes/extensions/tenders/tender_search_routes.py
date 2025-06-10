@@ -7,7 +7,9 @@ from minerva.core.database.database import db
 from bson import ObjectId
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis
 from minerva.tasks.services.search_service import compare_tender_search_results, get_saved_search_results, perform_tender_search
+from minerva.tasks.services.tender_initial_ai_filtering_service import perform_ai_filtering
 from pydantic import BaseModel
+from datetime import datetime
 
 
 router = APIRouter()
@@ -18,7 +20,7 @@ class TenderSearchRequest(BaseModel):
     tender_names_index_name: Optional[str] = "tenders"
     elasticsearch_index_name: Optional[str] = "tenders"
     embedding_model: Optional[str] = "text-embedding-3-large"
-    score_threshold: Optional[float] = 0.1
+    score_threshold: Optional[float] = 0.5
     top_k: Optional[int] = 30
     sources: Optional[List[str]] = None
     filter_conditions: Optional[List[Dict[str, Any]]] = None
@@ -54,6 +56,7 @@ async def search_tenders(
     try:
         search_phrase_to_use = request.search_phrase
         analysis_id_to_use = request.analysis_id
+        sources_to_use = request.sources
 
         if not search_phrase_to_use:
             if not analysis_id_to_use:
@@ -70,6 +73,7 @@ async def search_tenders(
                     )
                 tender_analysis = TenderAnalysis(**analysis_doc)
                 search_phrase_to_use = tender_analysis.search_phrase
+                sources_to_use = tender_analysis.sources
                 if not search_phrase_to_use:
                      raise HTTPException(
                         status_code=404,
@@ -98,7 +102,7 @@ async def search_tenders(
             embedding_model=request.embedding_model,
             score_threshold=request.score_threshold,
             top_k=request.top_k,
-            sources=request.sources,
+            sources=sources_to_use,
             filter_conditions=request.filter_conditions,
             analysis_id=analysis_id_to_use,
             current_user_id=str(current_user.id),
@@ -197,3 +201,75 @@ async def compare_search(
             status_code=500,
             detail=f"Error comparing search results: {str(e)}"
         )
+
+class TestSearchRequest(BaseModel):
+    search_ids: List[str]
+    iterations: int = 3
+    analysis_id: str
+
+class TestSearchResult(BaseModel):
+    search_id: str
+    average_total_matches: float
+    average_total_filtered: float
+    average_total_filtered_out: float
+
+@router.post("/test-multiple-searches")
+async def test_multiple_searches(
+    request: TestSearchRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Test endpoint that runs multiple searches and AI filtering multiple times and calculates averages.
+    """
+    results = {}
+    
+    # Get tender analysis configuration from database
+    tender_analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(request.analysis_id)})
+    if not tender_analysis_doc:
+        raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
+    tender_analysis = TenderAnalysis(**tender_analysis_doc)
+    
+    for search_id in request.search_ids:
+        total_matches_sum = 0
+        total_filtered_sum = 0
+        total_filtered_out_sum = 0
+        
+        for _ in range(request.iterations):
+            try:
+                # Get search results
+                search_results = await get_saved_search_results(search_id)
+                if not search_results:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Search results with ID {search_id} not found"
+                    )
+                
+                # Perform AI filtering
+                filter_results = await perform_ai_filtering(
+                    tender_analysis=tender_analysis,
+                    all_tender_matches=search_results["all_tender_matches"],
+                    combined_search_matches=search_results.get("combined_search_matches", {}),
+                    analysis_id=request.analysis_id,
+                    current_user=current_user,
+                    ai_batch_size=20,
+                    search_id=search_id,
+                    save_results=False
+                )
+                
+                total_matches_sum += len(search_results["all_tender_matches"])
+                total_filtered_sum += len(filter_results.get("filtered_tenders", []))
+                total_filtered_out_sum += len(filter_results.get("filtered_out_tenders", []))
+            
+            except Exception as e:
+                logger.error(f"Error in iteration for search {search_id}: {str(e)}", exc_info=True)
+                continue
+        
+        # Calculate averages
+        results[search_id] = {
+            "search_id": search_id,
+            "average_total_matches": total_matches_sum / request.iterations,
+            "average_total_filtered": total_filtered_sum / request.iterations,
+            "average_total_filtered_out": total_filtered_out_sum / request.iterations
+        }
+    
+    return results

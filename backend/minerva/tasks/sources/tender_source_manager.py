@@ -15,7 +15,7 @@ from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
 from minerva.tasks.sources.platformazakupowa.extract_tenders import PlatformaZakupowaTenderExtractor
 from minerva.tasks.sources.smartpzp.extract_tenders import SmartPZPTenderExtractor
 from minerva.tasks.sources.source_types import TenderSourceType
-from minerva.tasks.sources.vergabe.extract_tender import EvergabeNRWTenderExtractor
+from minerva.tasks.sources.vergabe.extract_tender import DTVPLikeTenderExtractor
 from minerva.tasks.sources.ted.tender_countries import (
     TedTenderExtractor,
     GermanTedTenderExtractor,
@@ -44,6 +44,7 @@ from minerva.tasks.sources.ted.tender_countries import (
     LithuaniaTedTenderExtractor,
     LuxembourgTedTenderExtractor,
 )
+from minerva.tasks.sources.vergapeplatforms.extract_tender import VergabePlatformsTenderExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -214,10 +215,15 @@ class TenderSourceManager:
             source_type=TenderSourceType.PGE,
             extractor_class=PGETenderExtractor
         )
-        configs[TenderSourceType.VERGABE] = TenderSourceConfig(
-            source_type=TenderSourceType.VERGABE,
-            extractor_class=EvergabeNRWTenderExtractor
+        configs[TenderSourceType.DTVP_LIKE] = TenderSourceConfig(
+            source_type=TenderSourceType.DTVP_LIKE,
+            extractor_class=DTVPLikeTenderExtractor
         )
+        configs[TenderSourceType.VERGABEPLATFORMS] = TenderSourceConfig(
+            source_type=TenderSourceType.VERGABEPLATFORMS,
+            extractor_class=VergabePlatformsTenderExtractor
+        )
+        
         # Add all ezamawiajacy organizations
         # for source_type in EzamawiajacyConfig.ORGANIZATIONS.keys():
         #     configs[source_type] = TenderSourceConfig(

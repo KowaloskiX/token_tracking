@@ -27,11 +27,20 @@ class CriteriaAnalysis(BaseModel):
     criteria_met: Optional[bool] = False  # Default to False if nothing is returned
     weight: int = Field(default=3)
 
+class Citation(BaseModel):
+    """A citation snippet extracted from tender documentation referencing the source file."""
+    text: str
+    source: Optional[str] = None  # original filename or other identifier
+    keyword: Optional[str] = None  # keyword that triggered this citation
+    file_id: Optional[str] = None  # unique file identifier for better matching
+    sanitized_filename: Optional[str] = None  # normalized filename for fallback matching
+
 class CriteriaAnalysisResult(BaseModel):
     criteria: str
     analysis: CriteriaAnalysis
     exclude_from_score: Optional[bool] = False
     is_disqualifying: Optional[bool] = False
+    citations: Optional[List[Citation]] = None  # Snippets supporting the analysis
     class Config:
         extra = "allow"
 

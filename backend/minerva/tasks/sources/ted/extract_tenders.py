@@ -196,12 +196,24 @@ class BaseTedCountryExtractor:
                 self.logger.error(f"Error during cleanup: {str(e)}")
         return processed_files
 
-    async def get_organization_from_detail_page(self, context, detail_url: str) -> str:
+    async def get_organization_from_detail_page(self, context, detail_url: str) -> Tuple[str, str]:
         page = await context.new_page()
         organization = ""
+        notice_type = ""
         try:
             await safe_goto(page, detail_url, wait_until='networkidle', timeout=20000)
             try:
+                # First check for notice type in the summary section
+                summary_section = page.locator("section#summary")
+                if await summary_section.count() > 0:
+                    first_div = summary_section.locator("div").first
+                    if await first_div.count() > 0:
+                        notice_type_span = first_div.locator("span[data-labels-key*='form-type']")
+                        if await notice_type_span.count() > 0:
+                            notice_type = await notice_type_span.inner_text()
+                            logging.info(f"Found notice type: {notice_type}")
+
+                # Then get the organization name
                 official_name_labels = page.locator(
                     "span.label:has-text('Official name'), span.label:has-text('Official Name')"
                 )
@@ -212,11 +224,12 @@ class BaseTedCountryExtractor:
                     if await data_elem.count() > 0:
                         organization = (await data_elem.inner_text()).strip()
             except Exception as e:
-                logging.error(f"Error extracting official name: {e}")
+                logging.error(f"Error extracting official name or notice type: {e}")
                 organization = ""
+                notice_type = ""
         finally:
             await page.close()
-        return organization
+        return organization, notice_type
 
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 1)
@@ -363,7 +376,12 @@ class BaseTedCountryExtractor:
                                             submission_deadline = submission_deadline_raw
 
                                 country = (await cells.nth(3).inner_text()).strip()
-                                organization = await self.get_organization_from_detail_page(context, detail_url)
+                                organization, notice_type = await self.get_organization_from_detail_page(context, detail_url)
+
+                                # Skip if this is a result notice
+                                if notice_type and "Result" in notice_type:
+                                    logging.info(f"Skipping result notice at {detail_url}")
+                                    continue
 
                                 tender_data = {
                                     "name": name,

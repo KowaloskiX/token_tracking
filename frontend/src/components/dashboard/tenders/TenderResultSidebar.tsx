@@ -81,6 +81,8 @@ interface TenderResultSidebarProps {
     drawerRef?: React.RefObject<{ setVisibility: (value: boolean) => void }>;
     allResults: TenderAnalysisResult[];
     setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
+    onFilePreview?: (file: FileData, citationsForFile: string[]) => void;
+    tenderBoardStatus?: string | null;
 }
 interface UpdateSummary {
   update_id: string;
@@ -91,7 +93,7 @@ interface UpdateSummary {
   }>;
 }
 
-const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawerRef, allResults, setAllResults }) => {
+const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawerRef, allResults, setAllResults, onFilePreview,tenderBoardStatus }) => {
     const [isDownloading, setIsDownloading] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [initialLoad, setInitialLoad] = useState(true);
@@ -544,18 +546,23 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
         }
     };
     
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (status: string, currentTenderBoardStatus: string | null | undefined = tenderBoardStatus) => {
+        if (currentTenderBoardStatus) {
+            return <Badge variant="outline" className="border-transparent bg-secondary-hover text-primary shadow">{currentTenderBoardStatus}</Badge>;
+        }
+
         switch (status) {
             case 'inactive':
-                return <Badge variant="outline" className="border-gray-400 text-gray-600 font-normal">Nieaktywny</Badge>;
+            return <Badge variant="outline" className="border-gray-400 text-gray-600 font-normal">Nieaktywny</Badge>;
             case 'active':
-                return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 font-normal">Aktywny</Badge>;
+            return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 font-normal">Aktywny</Badge>;
             case 'archived':
-                return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">Zarchiwizowany</Badge>;
+            return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">Zarchiwizowany</Badge>;
             default:
-                return <Badge variant="outline">Nieznany</Badge>;
+            return <Badge variant="outline">Nieznany</Badge>;
         }
-    };
+        };
+
 
     const formatDate = (date: Date): string => {
         try {
@@ -703,8 +710,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                 <>
                                     <div className='border-b pb-4'>
                                         <div className="flex flex-wrap sm:flex-nowrap justify-between gap-4 sm:gap-8 mb-4">
-                                            <div className="flex items-start gap-4">
-                                                <div className="border border-neutral-200 p-2 rounded-lg mt-0.5">
+                                            <div className="flex items-center gap-4">
+                                                <div className="border border-neutral-200 p-2 rounded-lg">
                                                     <div className="w-5 h-5 relative">
                                                         <TenderSourceIcon 
                                                             source={updatedResult.source} 
@@ -923,7 +930,11 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             {updatedResult.criteria_analysis?.map((item, index) => {
                                                 // Determine rendering logic based on exclude_from_score
                                                 const shouldShowWeight = item.exclude_from_score === false;
-                                                const shouldShowConfidenceDot = item.exclude_from_score === true;
+
+                                                // Collect all citations from all criteria
+                                                const allCitations = updatedResult.criteria_analysis?.flatMap(criteria => 
+                                                    criteria.citations || []
+                                                ) || [];
 
                                                 return (
                                                     <Collapsible key={index}>
@@ -931,51 +942,48 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                             <CollapsibleTrigger asChild>
                                                                 <div 
                                                                     data-state="closed"
-                                                                    className="inline-flex overflow-hidden items-center gap-2 py-2 px-4 transition-all duration-200 border border-secondary-border shadow-sm bg-secondary/30 w-full hover:bg-secondary rounded-t-lg rounded-b-lg data-[state=open]:rounded-b-none cursor-pointer"
+                                                                    className="flex overflow-hidden items-center gap-2 py-2 px-4 transition-all duration-200 border border-secondary-border shadow-sm bg-secondary/30 w-full hover:bg-secondary rounded-t-lg rounded-b-lg data-[state=open]:rounded-b-none cursor-pointer"
                                                                 >
-                                                                    <div className="flex flex-grow w-full gap-2 items-center justify-between">
-                                                                        <div className="flex items-center gap-4 flex-grow">
-                                                                            <Card className="bg-secondary p-2 relative rounded-md">
-                                                                                {/* Conditional dot rendering */}
-                                                                                {shouldShowConfidenceDot ? (
-                                                                                    <div className={`absolute w-2 h-2 rounded-full ${item.analysis.confidence === "HIGH"
-                                                                                            ? "bg-green-600/80"
-                                                                                            : item.analysis.confidence === "MEDIUM"
-                                                                                                ? "bg-yellow-400/80"
-                                                                                                : "bg-red-400/80"
-                                                                                        } right-0 top-0 transform translate-x-1 -translate-y-1`} />
-                                                                                ) : (
-                                                                                    <div className={`absolute w-2 h-2 rounded-full ${getCriteriaMetColor(item.analysis.criteria_met)} right-0 top-0 transform translate-x-1 -translate-y-1`} />
-                                                                                )}
-                                                                                <ListCheck className="w-4 h-4 shrink-0 text-muted-foreground" />
-                                                                            </Card>
-                                                                            <TooltipProvider delayDuration={300}>
-                                                                                <Tooltip>
-                                                                                    <TooltipTrigger asChild>
-                                                                                        <div className="max-w-[300px]">
-                                                                                            <p className="text-sm font-medium truncate text-left">
-                                                                                                {item.criteria}
-                                                                                            </p>
-                                                                                        </div>
-                                                                                    </TooltipTrigger>
-                                                                                    <TooltipContent side="top" className="max-w-[300px] break-all">
-                                                                                        <div className="markdown-content">
-                                                                                            <ReactMarkdown
-                                                                                                remarkPlugins={[remarkGfm, remarkBreaks]}
-                                                                                                components={markdownComponents}
-                                                                                            >
-                                                                                                {item.criteria}
-                                                                                            </ReactMarkdown>
-                                                                                        </div>
-                                                                                    </TooltipContent>
-                                                                                </Tooltip>
-                                                                            </TooltipProvider>
+                                                                    {/* Icon - fixed width */}
+                                                                    <Card className="bg-secondary p-2 relative rounded-md flex-shrink-0">
+                                                                        {/* Conditional dot rendering */}
+                                                                        <div className={`absolute w-2 h-2 rounded-full ${getCriteriaMetColor(item.analysis.criteria_met)} right-0 top-0 transform translate-x-1 -translate-y-1`} />
+                                                                        <ListCheck className="w-4 h-4 shrink-0 text-muted-foreground" />
+                                                                    </Card>
+                                                                    
+                                                                    {/* Criteria text - flexible but constrained */}
+                                                                    <TooltipProvider delayDuration={300}>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <p className="text-sm font-medium truncate text-left">
+                                                                                        {item.criteria}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent side="top" className="max-w-[300px] break-all">
+                                                                                <div className="markdown-content">
+                                                                                    <ReactMarkdown
+                                                                                        remarkPlugins={[remarkGfm, remarkBreaks]}
+                                                                                        components={markdownComponents}
+                                                                                    >
+                                                                                        {item.criteria}
+                                                                                    </ReactMarkdown>
+                                                                                </div>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                    
+                                                                    {/* Weight badge - fixed position when present */}
+                                                                    {shouldShowWeight && (
+                                                                        <div className="flex-shrink-0 ml-2">
+                                                                            {getWeightBadge(item.analysis.weight)}
                                                                         </div>
-                                                                        {/* Conditional weight badge rendering */}
-                                                                        {shouldShowWeight && getWeightBadge(item.analysis.weight)}
-                                                                    </div>
+                                                                    )}
+                                                                    
+                                                                    {/* Chevron - always fixed position */}
                                                                     <ChevronDown 
-                                                                        className="w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" 
+                                                                        className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 ml-2" 
                                                                     />
                                                                 </div>
                                                             </CollapsibleTrigger>
@@ -988,9 +996,12 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                                         resultId={updatedResult._id?.toString() ?? ""}
                                                                         criteriaItem={item}
                                                                         markdownComponents={markdownComponents}
+                                                                        uploadedFiles={updatedResult.uploaded_files}
                                                                         onUpdate={(newSummary) => {
                                                                             handleCriteriaUpdate(item.criteria, newSummary);
                                                                         }}
+                                                                        onFilePreview={onFilePreview}
+                                                                        allCitations={allCitations}
                                                                     />
                                                                 </div>
                                                             </div>
@@ -1148,8 +1159,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                         {!updatedResult && (
                             <div className="flex items-center justify-center h-[80svh] text-muted-foreground">
                                 <div className="text-center space-y-2">
-                                    <p className="text-lg font-medium">No Tender Selected</p>
-                                    <p className="text-sm">Please select a tender to view its details</p>
+                                    <p className="text-lg font-medium">Nie wybranego przetargu</p>
+                                    <p className="text-sm">Wybierz przetarg żeby wyświetlić szczegóły</p>
                                 </div>
                             </div>
                         )}

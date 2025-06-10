@@ -1316,6 +1316,9 @@ const TextFileRenderer = ({
           function applyActiveCitationHighlight() {
             console.log(`[TextFile] Applying active highlight to citation ${activeIndex + 1}`);
             
+            // Add null check for container
+            if (!container) return;
+            
             // Remove all existing active-citation classes
             const allHighlights = container.querySelectorAll('.pdf-highlight.active-citation');
             allHighlights.forEach(el => el.classList.remove('active-citation'));
@@ -1454,7 +1457,7 @@ const showLoadingOverlay =
   (loadingPhase !== 'complete' && pagesRendered < numPages);
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-background rounded-lg shadow-lg flex flex-col w-full max-w-6xl max-h-[97vh] overflow-hidden relative">
+      <div className="bg-background rounded-lg shadow-lg flex flex-col w-full max-w-6xl min-h-[97vh] max-h-[97vh] overflow-hidden relative">
         {/* Loading Overlay */}
         {showLoadingOverlay && (
             <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-30">
@@ -1479,7 +1482,7 @@ const showLoadingOverlay =
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b z-10">
+        <div className="flex items-center justify-between p-4 border-b z-40">
           <div className="flex items-center space-x-4 flex-shrink min-w-0">
             <h2 className="text-xl font-semibold truncate" title={file.name}>{file.name}</h2>
             <span className="text-sm text-gray-500 bg-secondary px-2 py-1 rounded-full uppercase flex-shrink-0">
@@ -1509,7 +1512,7 @@ const showLoadingOverlay =
 
         {/* Search bar */}
         {showSearchBar && (
-          <div className="flex items-center p-2 px-4 md:px-6 border-b z-10 flex-wrap gap-y-2">
+          <div className="flex items-center p-2 px-4 md:px-6 border-b z-40 flex-wrap gap-y-2">
             {/* Input and Status */}
             <div className="flex flex-grow items-center space-x-2 min-w-[250px] mb-2 md:mb-0">
               <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />

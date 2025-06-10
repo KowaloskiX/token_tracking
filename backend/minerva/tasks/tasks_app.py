@@ -66,7 +66,7 @@ def configure_scheduler(loop):
     if worker_type == "scraping":
         scheduler.add_job(
             lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
-            trigger=CronTrigger(hour=19, minute=37, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=20, minute=40, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )

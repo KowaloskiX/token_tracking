@@ -65,7 +65,7 @@ interface TenderContextType {
   fetchAnalysisById: (id: string) => Promise<void>;
   markAsOpened: (id: string) => Promise<void>;
   markAsUnopened: (id: string) => Promise<void>; //here is
-  updateTenderStatus: (id: string, status: 'inactive' | 'active' | 'archived') => Promise<void>;
+  updateTenderStatus: (id: string, status: 'inactive' | 'active' | 'archived' | 'inBoard') => Promise<void>;
   fetchResults: (analysisId: string, page?: number, limit?: number) => Promise<void>;
   fetchAllActiveTenders: () => Promise<void>;
   fetchTenderResultById: (resultId: string) => Promise<TenderAnalysisResult | null>;
@@ -358,7 +358,7 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
   
-  const updateTenderStatus = useCallback(async (resultId: string, status: 'inactive' | 'active' | 'archived') => {
+  const updateTenderStatus = useCallback(async (resultId: string, status: 'inactive' | 'active' | 'archived' | 'inBoard') => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('token');

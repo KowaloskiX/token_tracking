@@ -47,7 +47,7 @@ import {
   ChevronDown
 } from "lucide-react";
 import { TenderAnalysis } from "@/types/tenders";
-import { POLISH_SOURCES, TED_SOURCES, CRITERIA_CONFIG } from "@/app/constants/tenders";
+import { POLISH_SOURCES, TED_SOURCES, GERMAN_SOURCES, CRITERIA_CONFIG } from "@/app/constants/tenders";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
@@ -122,6 +122,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
   // Determine if this analysis is shared (excludes owner)
   const isShared = assignedUsers.some(id => id !== analysis.user_id);
   const [tedExpanded, setTedExpanded] = useState(false);
+  const [germanExpanded, setGermanExpanded] = useState(false);
 
   const toggleSection = (criteriaIndex: number) => {
     setExpandedSections(prev => ({
@@ -427,6 +428,8 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                 const selectedSources = field.value || [];
                 const selectedTedCount = Object.keys(TED_SOURCES).filter(id => selectedSources.includes(id)).length;
                 const totalTedCount = Object.keys(TED_SOURCES).length;
+                const selectedGermanCount = Object.keys(GERMAN_SOURCES).filter(id => selectedSources.includes(id)).length;
+                const totalGermanCount = Object.keys(GERMAN_SOURCES).length;
                 
                 return (
                   <FormItem>
@@ -512,6 +515,61 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                               </CommandItem>
                               
                               {tedExpanded && Object.entries(TED_SOURCES).map(([sourceId, source]) => {
+                                const isSelected = selectedSources.includes(sourceId);
+                                return (
+                                  <CommandItem
+                                    key={sourceId}
+                                    onSelect={() => {
+                                      const newValue = isSelected
+                                        ? selectedSources.filter((value) => value !== sourceId)
+                                        : [...selectedSources, sourceId];
+                                      field.onChange(newValue);
+                                    }}
+                                    className="pl-8"
+                                  >
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <img 
+                                        src={source.icon} 
+                                        alt={source.label}
+                                        className="h-4 w-4 object-contain"
+                                      />
+                                      <span>{source.label}</span>
+                                    </div>
+                                    <Check
+                                      className={cn(
+                                        "ml-auto h-4 w-4",
+                                        isSelected ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                  </CommandItem>
+                                );
+                              })}
+
+                              <CommandItem
+                                onSelect={() => setGermanExpanded(!germanExpanded)}
+                                className="cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2 flex-1">
+                                  {germanExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                  <img 
+                                    src="/images/tender_sources/countries/de_flag.jpg" 
+                                    alt="German Sources"
+                                    className="h-4 w-4 object-contain"
+                                  />
+                                  <span>German Sources</span>
+                                  {selectedGermanCount > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ({selectedGermanCount}/{totalGermanCount})
+                                    </span>
+                                  )}
+                                </div>
+                              </CommandItem>
+                              
+                              {germanExpanded && Object.entries(GERMAN_SOURCES).map(([sourceId, source]) => {
                                 const isSelected = selectedSources.includes(sourceId);
                                 return (
                                   <CommandItem

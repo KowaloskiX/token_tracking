@@ -17,6 +17,7 @@ const Tenders = () => {
     const [initialized, setInitialized] = useState(false);
     const drawerRef = useRef<{ setVisibility: (value: boolean) => void }>(null);
     const { createAnalysis } = useTender();
+    const [currentTenderBoardStatus, setCurrentTenderBoardStatus] = useState<string | null>(null);
 
     useEffect(() => {
         // Only fetch if not initialized
@@ -120,7 +121,8 @@ const Tenders = () => {
                     drawerRef={drawerRef} allResults={[]} 
                     setAllResults={function (value: SetStateAction<TenderAnalysisResult[]>): void {
                         console.log("")
-                    } } />
+                    } } 
+                    setCurrentTenderBoardStatus={setCurrentTenderBoardStatus} />
                 </div>
             </div>
         </div>

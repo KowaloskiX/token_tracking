@@ -28,20 +28,25 @@ class ZipFileExtractor(BaseFileExtractor):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Extract based on file type
-            if ext == '.zip':
-                self.logger.info(f"Processing ZIP archive: {file_path}")
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-            elif ext == '.7z':
-                self.logger.info(f"Processing 7Z archive: {file_path}")
-                with py7zr.SevenZipFile(file_path, mode='r') as archive:
-                    archive.extractall(path=temp_dir)
-            elif ext == '.rar':
-                self.logger.info(f"Processing RAR archive: {file_path}")
-                with rarfile.RarFile(file_path) as rar_ref:
-                    rar_ref.extractall(temp_dir)
-            else:
-                raise ValueError(f"Unsupported archive format: {ext}")
+            try:
+                if ext == '.zip':
+                    self.logger.info(f"Processing ZIP archive: {file_path}")
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        zip_ref.extractall(temp_dir)
+                elif ext == '.7z':
+                    self.logger.info(f"Processing 7Z archive: {file_path}")
+                    with py7zr.SevenZipFile(file_path, mode='r') as archive:
+                        archive.extractall(path=temp_dir)
+                elif ext == '.rar':
+                    self.logger.info(f"Processing RAR archive: {file_path}")
+                    with rarfile.RarFile(file_path) as rar_ref:
+                        rar_ref.extractall(temp_dir)
+                else:
+                    raise ValueError(f"Unsupported archive format: {ext}")
+            except Exception as e:
+                self.logger.warning(
+                            f"Failed to process archive '{file_path}': {str(e)}"
+                        )
 
             # Process extracted files (same for all archive types)
             for root, _, files in os.walk(temp_dir):

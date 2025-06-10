@@ -48,7 +48,8 @@ async def perform_criteria_analysis(
             tender_pinecone_id=tender_pinecone_id,
             use_elasticsearch=use_elasticsearch,
             es_config=es_config,
-            language=language
+            language=language,
+            tender_url=original_tender_metadata.get("details_url") if original_tender_metadata else None
         )
         if use_elasticsearch:
             await rag_manager.ensure_elasticsearch_index_initialized()

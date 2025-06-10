@@ -27,7 +27,7 @@ type SourceKey = keyof Filters['source'];
 
 export interface Filters {
   onlyQualified: boolean;
-  status: { inactive: boolean; active: boolean; archived: boolean };
+  status: { inactive: boolean; active: boolean; archived: boolean; inBoard: boolean };
   voivodeship: {
     "Dolnośląskie": boolean;
     "Kujawsko-pomorskie": boolean;
@@ -116,8 +116,8 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
     });
   }, [availableSources, setFilters]);
 
-
-  const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived') => {
+  // Updated to handle the new 'inBoard' status
+  const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived' | 'inBoard') => {
     setFilters(prev => ({
       ...prev,
       status: { ...prev.status, [status]: !prev.status[status] },
@@ -336,6 +336,14 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                   >
                     <span className="truncate pr-6 pl-6">Zarchiwizowane</span>
                   </DropdownMenuCheckboxItem>
+                  {/* NEW: In Board Filter Option */}
+                  <DropdownMenuCheckboxItem
+                    checked={filters.status.inBoard}
+                    onSelect={(e) => { e.preventDefault(); toggleStatusFilter('inBoard'); }}
+                    className="px-2 flex items-center"
+                  >
+                    <span className="truncate pr-6 pl-6">W tablicy</span>
+                  </DropdownMenuCheckboxItem>
                 </div>
                 <DropdownMenuSeparator />
               </>
@@ -474,4 +482,4 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
       </div>
     </div>
   );
-}; 
+};

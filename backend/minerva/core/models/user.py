@@ -26,11 +26,11 @@ class User(BaseModel):
     name: str
     google_id: Optional[str] = None
     avatar_img: Optional[str] = None
-    role: UserRole = UserRole.MEMBER
+    role: UserRole = UserRole.ADMIN
     invited_by: Optional[PyObjectId] = None
     hashed_password: Optional[str] = None
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    subscription: UserSubscription = Field(default_factory=lambda: UserSubscription(plan_type="free"))
+    subscription: UserSubscription = Field(default_factory=lambda: UserSubscription(plan_type="enterprise"))
     total_tokens: Optional[int] = 0
     daily_tokens: Optional[int] = 0
     last_token_reset: Optional[datetime] = Field(default_factory=datetime.utcnow)

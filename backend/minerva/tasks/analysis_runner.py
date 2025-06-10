@@ -40,7 +40,7 @@ async def send_summary_email(html_content: str):
 async def run_all_tender_analyses_task(
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     worker_index: int = 0,
     total_workers: int = 1
@@ -248,7 +248,7 @@ async def run_tender_analysis_for_user_and_date(user_id: str, analysis_id: str, 
         analysis_id=analysis_id,
         current_user=user,
         top_k=30,
-        score_threshold=0.1,
+        score_threshold=0.5,
         filter_conditions=filter_conditions,
         tender_names_index_name="tenders",
         elasticsearch_index_name="tenders",

@@ -1,6 +1,14 @@
 import { SOURCE_CONFIG } from "@/app/constants/tenders";
 import { FileData } from ".";
 
+export interface Citation {
+  text: string;
+  source?: string;
+  keyword?: string;
+  file_id?: string;
+  sanitized_filename?: string;
+}
+
 export interface AnalysisCriteria {
   name: string;
   description: string;
@@ -11,6 +19,7 @@ export interface AnalysisCriteria {
   subcriteria?: string[];
   keywords?: string;
 }
+
 export interface TenderMetadata {
   name: string;
   organization: string;
@@ -29,6 +38,7 @@ export interface CriteriaAnalysisResult {
   };
   exclude_from_score?: boolean;
   is_disqualifying?: boolean;
+  citations?: Citation[];
 }
 
 export interface TenderAnalysisResult {
@@ -53,7 +63,7 @@ export interface TenderAnalysisResult {
   };
   tender_pinecone_id?: string;
   tender_description?: string;
-  status: 'inactive' | 'active' | 'archived';
+  status: 'inactive' | 'active' | 'archived' | 'inBoard';
   updated_at: string;
   created_at: string;
   opened_at: string;

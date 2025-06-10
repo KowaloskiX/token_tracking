@@ -1,16 +1,43 @@
-FROM python:3.12-slim
+# -------------------------------------------------------------------------- #
+# STAGE 1: Builder
+#
+# This stage installs all dependencies, including heavy build tools,
+# and prepares the Python environment.
+# -------------------------------------------------------------------------- #
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
-COPY . /app
-
-# Install system dependencies, including antiword
-RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sources && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    antiword \
+# Install system dependencies needed for building Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
     libssl-dev \
     libffi-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Set up a virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Install poetry and dependencies
+RUN pip install poetry
+COPY poetry.lock pyproject.toml ./
+RUN poetry install --only main --no-cache --no-root
+
+
+# -------------------------------------------------------------------------- #
+# STAGE 2: Final Production Image (API)
+#
+# This stage is the lean final image. It copies only the necessary
+# runtime dependencies and our application code from the builder stage.
+# -------------------------------------------------------------------------- #
+FROM python:3.12-slim
+
+# Install RUNTIME system dependencies
+RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    antiword \
+    curl \
     libnss3 \
     libasound2 \
     libatk1.0-0 \
@@ -28,21 +55,26 @@ RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sourc
     xvfb \
     libreoffice \
     libreoffice-writer \
-    odt2txt \
-    unrar \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-pol \
+    odt2txt \
+    unrar \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry and configure it
-RUN pip install poetry && poetry config virtualenvs.create false
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
-RUN poetry install --only main
+# Copy application code
+WORKDIR /app
+COPY . ./
 
-# Install Playwright dependencies
-RUN playwright install
+# Install Playwright browsers
+RUN playwright install chromium --with-deps
 
-# Run the application
+# Set up runtime environment
+ENV HF_HOME=/app/.cache/huggingface
+VOLUME ["/app/.cache/huggingface"]
+
 CMD ["uvicorn", "minerva.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

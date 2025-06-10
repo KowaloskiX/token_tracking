@@ -364,8 +364,8 @@ console.log(data);`;
                                                     {endpoint.useCase && (
                                                         <div>
                                                             <h4 className="font-medium mb-2">Kiedy używać</h4>
-                                                            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-                                                                <p className="text-sm text-blue-800">
+                                                            <div className="bg-secondary border-l-4 border-accent p-3 rounded">
+                                                                <p className="text-sm text-primary">
                                                                     {endpoint.useCase}
                                                                 </p>
                                                             </div>

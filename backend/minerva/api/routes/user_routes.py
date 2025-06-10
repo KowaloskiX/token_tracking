@@ -17,6 +17,7 @@ from google.auth.transport import requests
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
 from minerva.core.utils.email_utils import send_email
+from minerva.core.models.organization import Organization
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
-    org_id: Optional[str]
+    org_id: Optional[str] = None
     role: Optional[str] = "member"
 
 class UserLogin(BaseModel):
@@ -65,6 +66,9 @@ class UserResponse(BaseModel):
         }
         populate_by_name = True
 
+class PasswordVerificationRequest(BaseModel):
+    password: str
+
 @router.post("/register", response_model=dict)
 async def register(user_data: UserCreate):
     if await db["users"].find_one({"email": user_data.email}):
@@ -73,11 +77,27 @@ async def register(user_data: UserCreate):
             detail="Email already registered"
         )
     
+    # If no org_id is provided, create a new organization for the user
+    if not user_data.org_id:
+        # Create a new organization for this user
+        org_name = f"{user_data.name}'s Org"
+        new_organization = Organization(name=org_name)
+        
+        # Insert the organization into the database
+        org_result = await db["organizations"].insert_one(new_organization.dict(by_alias=True))
+        user_org_id = str(org_result.inserted_id)
+        
+        # Set user as admin since they're creating their own organization
+        user_role = UserRole.ADMIN
+    else:
+        user_org_id = user_data.org_id
+        user_role = user_data.role
+    
     user = User(
         email=user_data.email,
         name=user_data.name,
-        org_id=user_data.org_id,
-        role=user_data.role,
+        org_id=user_org_id,
+        role=user_role,
         hashed_password=User.hash_password(user_data.password)
     )
     
@@ -801,3 +821,20 @@ async def deactivate_users_after_email(
         "processed_emails": processed_emails,
         "error_emails": error_emails
     }
+
+@router.post("/verify-password", status_code=200)
+async def verify_password(
+    data: PasswordVerificationRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Verify if the provided password matches the current user's password.
+    Used for sensitive operations like API key generation.
+    """
+    if not current_user.hashed_password:
+        raise HTTPException(status_code=400, detail="No password set for this account.")
+    
+    if not current_user.verify_password(data.password):
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+    
+    return {"message": "Password verified successfully."}

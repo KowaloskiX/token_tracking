@@ -161,14 +161,12 @@ class PlatformaZakupowaTenderExtractor:
                         # Extract requirements
                         requirements_div = soup.select_one("div#requirements")
                         if requirements_div:
-                            details_content.append("=== REQUIREMENTS ===")
                             details_content.append(requirements_div.get_text(strip=True))
                             details_content.append("\n")
                         
                         # Extract evaluation criteria
                         criteria_div = soup.select_one("div.col-md-12.requirements")
                         if criteria_div:
-                            details_content.append("=== EVALUATION CRITERIA ===")
                             details_content.append(criteria_div.get_text(strip=True))
                         
                         # Save tender details as text file

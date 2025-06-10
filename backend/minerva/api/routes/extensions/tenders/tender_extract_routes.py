@@ -1,5 +1,7 @@
 from datetime import datetime
 import logging
+from minerva.tasks.sources.vergapeplatforms.extract_tender import VergabePlatformsTenderExtractor
+from minerva.tasks.sources.vergabe.extract_tender import DTVPLikeTenderExtractor
 from minerva.tasks.sources.bazakonkurencyjnosci.extract_tenders import BazaKonkurencyjnosciTenderExtractor
 from minerva.tasks.sources.platformazakupowa.extract_tenders import PlatformaZakupowaTenderExtractor
 from minerva.tasks.sources.ezamowienia.extract_tenders import TenderExtractor
@@ -17,7 +19,6 @@ from minerva.tasks.sources.orlenconnect.extract_tenders import OrlenConnectTende
 from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
 from minerva.tasks.sources.ted.tender_countries import IrelandTedTenderExtractor, ItalyTedTenderExtractor, TedTenderExtractor
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
-from minerva.tasks.sources.vergabe.extract_tender import EvergabeNRWTenderExtractor
 from openai import OpenAI
 from pinecone import Pinecone
 from pydantic import BaseModel
@@ -55,13 +56,13 @@ async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
 
         # Create configuration using the new pattern
         tender_insert_config = TenderInsertConfig.create_default(
-            pinecone_index="test-tenders3",
+            pinecone_index="tenders",
             pinecone_namespace="",
             embedding_model="text-embedding-3-large",
-            elasticsearch_index="test-tenders3"
+            elasticsearch_index="tenders"
         )
         
-        example_extractor = IrelandTedTenderExtractor()
+        example_extractor = VergabePlatformsTenderExtractor()
         # Create the service with the new configuration
         tender_service = TenderInsertService(
             config=tender_insert_config,

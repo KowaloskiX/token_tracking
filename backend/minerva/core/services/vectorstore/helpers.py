@@ -2,8 +2,8 @@ import tiktoken
 from pydantic import BaseModel
 
 class ChunkingConfig(BaseModel):
-    chunk_size: int = 750
-    chunk_overlap: int = 150
+    chunk_size: int = 1000
+    chunk_overlap: int = 250
     tokenizer_name: str = "cl100k_base"
 
 

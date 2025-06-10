@@ -13,6 +13,8 @@ class TenderSourceType(Enum):
     ORLENCONNECT = "orlenconnect"
     PGE = "pge"
     VERGABE = "vergabe"    
+    DTVP_LIKE = "dtvp_like"
+    VERGABEPLATFORMS = "vergabeplatforms"
     TED = "ted"  # Poland
     TED_GERMANY = "ted_germany"
     TED_FRANCE = "ted_france"

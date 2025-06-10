@@ -18,7 +18,6 @@ from bson import ObjectId
 from minerva.core.database.database import db
 from minerva.core.models.folder import Folder
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
-from minerva.core.utils.pdf_ocr import maybe_ocr_pdf
 from minerva.tasks.services.analyze_tender_files import RAGManager
 from openai import OpenAI
 import pandas as pd

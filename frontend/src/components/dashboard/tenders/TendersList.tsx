@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback} from "react";
+import { useEffect, useState, useRef, useMemo, useCallback, startTransition} from "react";
 import AllTendersPopup from "./AllTendersPopup";
 import {
   Table,
@@ -54,16 +54,50 @@ import { useKanban } from "@/context/KanbanContext";
 import { AddToKanbanDialog } from "./AddToKanbanDialog";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TenderFilters, Filters } from "./TenderFilters";
+import TenderPageInput from "./TenderPageInput"
 
 const LOCAL_ITEMS_PER_PAGE = 10;
+
+interface KanbanBoardTenderItem {
+  id?: string;
+  board_id: string;
+  column_id: string;
+  tender_analysis_result_id: string;
+  order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface KanbanColumn {
+  id?: string;
+  name: string;
+  order?: number;
+  color?: string;
+  limit?: number;
+  tender_items: KanbanBoardTenderItem[];
+}
+
+interface KanbanBoard {
+  id?: string;
+  _id?: string;
+  user_id: string;
+  org_id?: string;
+  name: string;
+  shared_with: string[];
+  created_at?: string;
+  updated_at?: string;
+  columns: KanbanColumn[];
+  assigned_users: string[];
+}
 
 interface TendersListProps {
   drawerRef: React.RefObject<{ setVisibility: (value: boolean) => void }>;
   allResults: TenderAnalysisResult[];
   setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
+  setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAllResults }) => {
+const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAllResults,setCurrentTenderBoardStatus }) => {
   const { 
     results, 
     selectedAnalysis, 
@@ -106,6 +140,10 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   // Track if we've already handled the initial URL page parameter
   const urlPageHandledRef = useRef(false);
   
+  // Add kanban boards state
+  const [kanbanBoards, setKanbanBoards] = useState<KanbanBoard[]>([]);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  
   // Function to safely get page number from URL
   const getPageFromUrl = useCallback(() => {
     const pageParam = searchParams.get('page');
@@ -119,7 +157,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   } | null>(null);
   const [filters, setFilters] = useState<Filters>({
     onlyQualified: false,
-    status: { inactive: true, active: true, archived: false },
+    status: { inactive: true, active: true, archived: false,  inBoard: true  },
     voivodeship: {
       "Dolnośląskie": true,
       "Kujawsko-pomorskie": true,
@@ -146,15 +184,90 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const [lastKnownPage, setLastKnownPage] = useState(1);
   const [includeHistorical, setIncludeHistorical] = useState(false);
   
-  const updateCurrentPage = useCallback((newPage: number) => {
+  // Function to fetch kanban boards
+  const fetchKanbanBoards = useCallback(async () => {
+    try {
+      setBoardsLoading(true);
+      const token = localStorage.getItem("token") || "";
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/boards`;
+      console.log("Fetching kanban boards from:", url);
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (response.ok) {
+        const boards = await response.json();
+        console.log("Successfully fetched boards:", boards);
+        console.log("Board structure sample:", boards[0] ? {
+          name: boards[0].name,
+          columnsCount: boards[0].columns?.length,
+          firstColumnSample: boards[0].columns?.[0] ? {
+            name: boards[0].columns[0].name,
+            tenderItemsCount: boards[0].columns[0].tender_items?.length
+          } : null
+        } : "No boards found");
+        setKanbanBoards(boards);
+      } else {
+        console.error("Failed to fetch kanban boards", {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url
+        });
+        setKanbanBoards([]);
+      }
+    } catch (error) {
+      console.error("Error fetching kanban boards:", error);
+      setKanbanBoards([]);
+    } finally {
+      setBoardsLoading(false);
+    }
+  }, []);
+
+  // Function to find which boards a tender belongs to
+  const getTenderBoards = useCallback((tenderId: string): string[] => {
+    const boardNames: string[] = [];
+    for (const board of kanbanBoards) {
+      for (const column of board.columns) {
+        const hasItem = column.tender_items.some(item => item.tender_analysis_result_id === tenderId);
+        if (hasItem) {
+          boardNames.push(board.name);
+          break; // Break inner loop since we found the tender in this board
+        }
+      }
+    }
+    return boardNames;
+  }, [kanbanBoards]);
+
+  // Fetch kanban boards when component mounts
+  useEffect(() => {
+    fetchKanbanBoards();
+  }, [fetchKanbanBoards]);
+  
+  const updateCurrentPage = useCallback((newPage: number, isUserTriggered = false) => {
     setCurrentPage(newPage);
     
-    // Update URL without reloading the page
-    const params = new URLSearchParams(window.location.search);
-    params.set('page', newPage.toString());
-    
-    // Use router.replace to update URL without adding to browser history
-    router.replace(`?${params.toString()}`, { scroll: false });
+    if (isUserTriggered) {
+      // ← FIXED: Only defer URL update for user-triggered events to avoid DOM conflicts
+      startTransition(() => {
+        setTimeout(() => {
+          // Update URL without reloading the page
+          const params = new URLSearchParams(window.location.search);
+          params.set('page', newPage.toString());
+          
+          // Use router.replace to update URL without adding to browser history
+          router.replace(`?${params.toString()}`, { scroll: false });
+        }, 0);
+      });
+    } else {
+      // For automatic navigation (initial load, filter changes), update immediately
+      const params = new URLSearchParams(window.location.search);
+      params.set('page', newPage.toString());
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
   }, [router]);
 
   const calculateDaysRemaining = (deadlineStr: string): number => {
@@ -360,88 +473,104 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     return localTender;
   }) : [];
 
-  const filteredResults = mergedData.filter((result) => {
-    if (filters.onlyQualified && result.tender_score < 0.7) return false;
+const filteredResults = mergedData.filter((result) => {
+  if (filters.onlyQualified && result.tender_score < 0.7) return false;
 
-    const status = result.status || "inactive";
-    if (!filters.status[status]) return false;
+  const status = result.status || "inactive";
+  const tenderBoards = getTenderBoards(result._id!);
+  const isInBoard = tenderBoards.length > 0;
   
-    if (result.location?.voivodeship && result.location.voivodeship !== "UNKNOWN") {
-      let voivodeshipFormatted = result.location.voivodeship;
-      
-      if (voivodeshipFormatted === voivodeshipFormatted.toUpperCase()) {
-        voivodeshipFormatted = 
-          voivodeshipFormatted.charAt(0).toUpperCase() + 
-          voivodeshipFormatted.slice(1).toLowerCase();
-      }
-      
-      if (!filters.voivodeship[voivodeshipFormatted as VoivodeshipKey]) {
-        return false;
-      }
+  // Check if any status filter matches
+  const statusMatches = 
+    (filters.status.inactive && status === 'inactive') ||
+    (filters.status.active && status === 'active') ||
+    (filters.status.archived && status === 'archived') ||
+    (filters.status.inBoard && isInBoard);
+  
+  // If no status filter is selected at all, show everything
+  const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard;
+  
+  if (anyStatusFilterSelected && !statusMatches) {
+    return false;
+  }
+
+  // Rest of your existing filtering logic remains the same...
+  if (result.location?.voivodeship && result.location.voivodeship !== "UNKNOWN") {
+    let voivodeshipFormatted = result.location.voivodeship;
+    
+    if (voivodeshipFormatted === voivodeshipFormatted.toUpperCase()) {
+      voivodeshipFormatted = 
+        voivodeshipFormatted.charAt(0).toUpperCase() + 
+        voivodeshipFormatted.slice(1).toLowerCase();
     }
-    const searchLower = searchQuery.toLowerCase();
-    if (searchQuery) {
-      const nameMatch = result.tender_metadata.name.toLowerCase().includes(searchLower);
-      const organizationMatch = result.tender_metadata.organization.toLowerCase().includes(searchLower);
-
-      let locationMatch = false;
-      if (result.location != null) {
-        const fullLocation =
-          "#"+result?.order_number+
-          result.location.country +
-          result.location.voivodeship +
-          result.location.city;
-        locationMatch = fullLocation.toLowerCase().includes(searchLower);
-      }
-
-      if (!nameMatch && !organizationMatch && !locationMatch) {
-        return false;
-      }
+    
+    if (!filters.voivodeship[voivodeshipFormatted as VoivodeshipKey]) {
+      return false;
     }
+  }
+  const searchLower = searchQuery.toLowerCase();
+  if (searchQuery) {
+    const nameMatch = result.tender_metadata.name.toLowerCase().includes(searchLower);
+    const organizationMatch = result.tender_metadata.organization.toLowerCase().includes(searchLower);
 
-    if (selectedDate) {
-      const dateField = dateFilterType === 'initiation_date' 
-        ? result.tender_metadata.initiation_date
-        : result.tender_metadata.submission_deadline;
-        
-      if (!dateField || dateField.includes('NaN')) return false;
-      
-      let fieldDate: Date;
-      if (dateField.includes('-')) {
-        const isoStr = dateField.includes(' ') ? dateField.replace(' ', 'T') : dateField;
-        fieldDate = new Date(isoStr);
-      } else if (dateField.includes('.')) {
-        const [day, month, year] = dateField.split('.').map(Number);
-        fieldDate = new Date(year, month - 1, day);
-      } else {
-        return false;
-      }
-      
-      if (isNaN(fieldDate.getTime())) return false;
-      
-      const selectedDateOnly = new Date(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate()
-      );
-      
-      const fieldDateOnly = new Date(
-        fieldDate.getFullYear(),
-        fieldDate.getMonth(),
-        fieldDate.getDate()
-      );
-      
-      if (selectedDateOnly.getTime() !== fieldDateOnly.getTime()) {
-        return false;
-      }
+    let locationMatch = false;
+    if (result.location != null) {
+      const fullLocation =
+        "#"+result?.order_number+
+        result.location.country +
+        result.location.voivodeship +
+        result.location.city;
+      locationMatch = fullLocation.toLowerCase().includes(searchLower);
     }
 
-    if (result.source && filters.source && !filters.source[result.source]) {
-        return false;
+    if (!nameMatch && !organizationMatch && !locationMatch) {
+      return false;
     }
+  }
 
-    return true;
-  });
+  if (selectedDate) {
+    const dateField = dateFilterType === 'initiation_date' 
+      ? result.tender_metadata.initiation_date
+      : result.tender_metadata.submission_deadline;
+      
+    if (!dateField || dateField.includes('NaN')) return false;
+    
+    let fieldDate: Date;
+    if (dateField.includes('-')) {
+      const isoStr = dateField.includes(' ') ? dateField.replace(' ', 'T') : dateField;
+      fieldDate = new Date(isoStr);
+    } else if (dateField.includes('.')) {
+      const [day, month, year] = dateField.split('.').map(Number);
+      fieldDate = new Date(year, month - 1, day);
+    } else {
+      return false;
+    }
+    
+    if (isNaN(fieldDate.getTime())) return false;
+    
+    const selectedDateOnly = new Date(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth(),
+      selectedDate.getDate()
+    );
+    
+    const fieldDateOnly = new Date(
+      fieldDate.getFullYear(),
+      fieldDate.getMonth(),
+      fieldDate.getDate()
+    );
+    
+    if (selectedDateOnly.getTime() !== fieldDateOnly.getTime()) {
+      return false;
+    }
+  }
+
+  if (result.source && filters.source && !filters.source[result.source]) {
+      return false;
+  }
+
+  return true;
+});
 
   const sortByTimeIfDateFiltered = (results: TenderAnalysisResult[]) => {
     if (!selectedDate) return results;
@@ -635,84 +764,97 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   };
 
   const handlePopupClose = () => {
-    setPopupOpen(false);
-    router.push("/dashboard/tenders/management");
-  };
+  setPopupOpen(false);
+  setAddToKanbanSuccess(null); // Reset the success state
+  router.push("/dashboard/tenders/management");
+};
 
   const handleRowClick = async (result: TenderAnalysisResult) => {
-  // Store current page before opening drawer
-  if (currentPage > 1) {
-    setLastKnownPage(currentPage);
-  }
-
-  console.log("[TendersList] Row clicked, setting selected result:", {
-    tenderId: result._id,
-    hasCriteria: !!result.criteria_analysis?.length,
-    hasDescription: !!result.tender_description
-  });
-
-  // FIRST set the selected result with basic data and open drawer immediately
-  setSelectedResult(result);
-  console.log("[TendersList] Opening drawer for tender:", result._id);
-  drawerRef.current?.setVisibility(true);
-
-  // ← ADD THESE: update the URL to include page & tenderId
-  const params = new URLSearchParams(window.location.search);
-  params.set("page", currentPage.toString());
-  params.set("tenderId", result._id!);
-  router.replace(`?${params.toString()}`, { scroll: false });
-  // ← END ADD
-
-  // THEN fetch the full data in the background
-  try {
-    console.log("[TendersList] Fetching full data in background for:", result._id);
-
-    const fullResult = await fetchTenderResultById(result._id!);
-      
-      console.log("[TendersList] Background fetch completed:", {
-        success: !!fullResult,
-        hasFullData: !!fullResult?.criteria_analysis && Array.isArray(fullResult.criteria_analysis) && fullResult.criteria_analysis.length > 0
-      });
-      
-      if (fullResult) {
-        // Update with the full data in the allResults list
-        setAllResults(prev => 
-          prev.map(item => 
-            item._id === result._id 
-              ? { ...item, ...fullResult } 
-              : item
-          )
-        );
-        
-        // Update the selected result with complete data
-        setSelectedResult(fullResult);
-      }
-    } catch (err) {
-      console.error("[TendersList] Error fetching data in background:", err);
+    // Store current page before opening drawer
+    if (currentPage > 1) {
+      setLastKnownPage(currentPage);
     }
+    const tenderBoards = getTenderBoards(result._id!);
+    const boardStatus = tenderBoards.length
+  ? tenderBoards.length === 1
+    ? tenderBoards[0]
+    : `${tenderBoards[0].length > 10 
+        ? tenderBoards[0].slice(0, 10) + '…' 
+        : tenderBoards[0]}+${tenderBoards.length - 1}`
+  : null;
+  
+    setCurrentTenderBoardStatus(boardStatus); // passing status up
+    console.log("[TendersList] Row clicked, setting selected result:", {
+      tenderId: result._id,
+      hasCriteria: !!result.criteria_analysis?.length,
+      hasDescription: !!result.tender_description
+    });
 
-    // Mark as opened if needed
-    const hasUpdate = isUpdatedAfterOpened(result);
-    if (!result.opened_at || hasUpdate) {
-      try {
-        console.log("[TendersList] Marking tender as opened:", result._id);
-        await markAsOpened(result._id!);
+    // FIRST set the selected result with basic data and open drawer immediately
+    setSelectedResult(result);
+    console.log("[TendersList] Opening drawer for tender:", result._id);
+    drawerRef.current?.setVisibility(true);
+
+    // ← FIXED: Defer URL update to avoid DOM conflicts
+    startTransition(() => {
+      setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        params.set("page", currentPage.toString());
+        params.set("tenderId", result._id!);
+        router.replace(`?${params.toString()}`, { scroll: false });
+      }, 0);
+    });
+
+    // THEN fetch the full data in the background
+    try {
+      console.log("[TendersList] Fetching full data in background for:", result._id);
+
+      const fullResult = await fetchTenderResultById(result._id!);
         
-        setAllResults(prev => 
-          prev.map(item => 
-            item._id === result._id 
-              ? { ...item, opened_at: new Date().toISOString() } 
-              : item
-          )
-        );
-
-        result.opened_at = new Date().toISOString();
-        console.log("[TendersList] Tender marked as opened successfully:", result._id);
+        console.log("[TendersList] Background fetch completed:", {
+          success: !!fullResult,
+          hasFullData: !!fullResult?.criteria_analysis && Array.isArray(fullResult.criteria_analysis) && fullResult.criteria_analysis.length > 0
+        });
+        
+        if (fullResult) {
+          // Update with the full data in the allResults list
+          setAllResults(prev => 
+            prev.map(item => 
+              item._id === result._id 
+                ? { ...item, ...fullResult } 
+                : item
+            )
+          );
+          
+          // Update the selected result with complete data
+          setSelectedResult(fullResult);
+        }
       } catch (err) {
-        console.error('[TendersList] Failed to mark as opened:', err);
+        console.error("[TendersList] Error fetching data in background:", err);
       }
-    }
-  };
+
+      // Mark as opened if needed
+      const hasUpdate = isUpdatedAfterOpened(result);
+      if (!result.opened_at || hasUpdate) {
+        try {
+          console.log("[TendersList] Marking tender as opened:", result._id);
+          await markAsOpened(result._id!);
+          
+          setAllResults(prev => 
+            prev.map(item => 
+              item._id === result._id 
+                ? { ...item, opened_at: new Date().toISOString() } 
+                : item
+            )
+          );
+
+          result.opened_at = new Date().toISOString();
+          console.log("[TendersList] Tender marked as opened successfully:", result._id);
+        } catch (err) {
+          console.error('[TendersList] Failed to mark as opened:', err);
+        }
+      }
+    };
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
     if (result.opened_at && result.opened_at !== "") {
@@ -893,7 +1035,30 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     return Math.min(100, Math.max(0, progress));
   };
 
-  const getStatusBadge = (result: TenderAnalysisResult) => {
+  // Replace the old getStatusBadge function with getBoardBadge
+  const getBoardBadge = (result: TenderAnalysisResult) => {
+    if (boardsLoading) {
+      return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">Wczytywanie...</Badge>;
+    }
+    
+    const boardNames = getTenderBoards(result._id!);
+    if (boardNames.length > 0) {
+      const displayText = boardNames.length === 1 
+        ? truncateText(boardNames[0], 15)
+        : `${truncateText(boardNames[0], 10)}+${boardNames.length - 1}`;
+      
+      return (
+        <Badge 
+          variant="outline" 
+          className="border-transparent bg-secondary-hover text-primary shadow"
+          title={boardNames.length > 1 ? `W tablicach: ${boardNames.join(', ')}` : boardNames[0]}
+        >
+          {displayText}
+        </Badge>
+      );
+    }
+    
+    // If not in any board, show status as fallback
     const status = result.status || 'inactive';
     switch (status) {
       case 'inactive':
@@ -931,9 +1096,15 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     }
     setSelectedResult(null);
     drawerRef.current?.setVisibility(false);
-    const params = new URLSearchParams(window.location.search);
-    params.delete("tenderId");
-    router.replace(`?${params.toString()}`, { scroll: false });
+    
+    // ← FIXED: Defer URL update to avoid DOM conflicts
+    startTransition(() => {
+      setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        params.delete("tenderId");
+        router.replace(`?${params.toString()}`, { scroll: false });
+      }, 0);
+    });
   };
 
   const availableSources = useMemo(() => {
@@ -981,17 +1152,74 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     }
   }
 }, [isLoading, requestedTenderId, allResults]);
-   // Handle page resets after filter changes (but not on initial load)
-  useEffect(() => {
-    // Only reset page after initial URL page has been handled
-    if (urlPageHandledRef.current) {
-      // Store current page before resetting
-      if (currentPage > 1) {
-        setLastKnownPage(currentPage);
+
+
+
+// Track previous values to detect what changed
+const prevSearchQuery = useRef(searchQuery);
+const prevFilters = useRef(filters);
+const prevSelectedDate = useRef(selectedDate);
+const prevDateFilterType = useRef(dateFilterType);
+
+const pageBeforeSearch = useRef(currentPage);
+
+useEffect(() => {
+  // Only act after initial load is complete
+  if (!initialPageAppliedRef.current || isLoading) {
+    // Update refs for next comparison
+    prevSearchQuery.current = searchQuery;
+    prevFilters.current = filters;
+    prevSelectedDate.current = selectedDate;
+    prevDateFilterType.current = dateFilterType;
+    return;
+  }
+
+  const searchChanged = prevSearchQuery.current !== searchQuery;
+  const filtersChanged = JSON.stringify(prevFilters.current) !== JSON.stringify(filters);
+  const dateChanged = prevSelectedDate.current !== selectedDate;
+  const dateTypeChanged = prevDateFilterType.current !== dateFilterType;
+
+  if (searchChanged || filtersChanged || dateChanged || dateTypeChanged) {
+    
+    if (searchChanged) {
+      const wasEmpty = prevSearchQuery.current.trim() === '';
+      const isNowEmpty = searchQuery.trim() === '';
+      
+      if (!wasEmpty && isNowEmpty) {
+        const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
+        const targetPage = Math.min(pageBeforeSearch.current, totalFilteredPages);
+        updateCurrentPage(targetPage, false);
+      } else if (wasEmpty && !isNowEmpty) {
+        pageBeforeSearch.current = currentPage;
+        updateCurrentPage(1, false);
+      } else if (!wasEmpty && !isNowEmpty) {
+        updateCurrentPage(1, false);
       }
-      updateCurrentPage(1);
+    } else {
+      const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
+      
+      if (currentPage > totalFilteredPages) {
+        updateCurrentPage(totalFilteredPages, false);
+      }
     }
-  }, [filters, searchQuery, selectedDate, dateFilterType, updateCurrentPage, currentPage]);
+  }
+
+  prevSearchQuery.current = searchQuery;
+  prevFilters.current = filters;
+  prevSelectedDate.current = selectedDate;
+  prevDateFilterType.current = dateFilterType;
+
+}, [
+  searchQuery, 
+  filters, 
+  selectedDate, 
+  dateFilterType, 
+  currentPage, 
+  filteredResults.length, 
+  isLoading, 
+  updateCurrentPage
+]);
+
 
   // Listen for URL changes (browser back/forward) and update page accordingly
   useEffect(() => {
@@ -1040,29 +1268,92 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   useNavigateOnLoad(isLoading, requestedPage, updateCurrentPage);
    // In your rendering pagination code, make sure to use updateCurrentPage
   const renderPaginationItems = () => {
-    const items = [];
+  const items = [];
+  
+  if (totalPages <= 5) {
     for (let i = 1; i <= totalPages; i++) {
-      if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
-        items.push(
-          <PaginationItem key={i}>
-            <PaginationLink
-              onClick={() => updateCurrentPage(i)}
-              isActive={currentPage === i}
-            >
-              {i}
-            </PaginationLink>
-          </PaginationItem>
-        );
-      } else if (i === currentPage - 2 || i === currentPage + 2) {
-        items.push(
-          <PaginationItem key={i}>
-            <PaginationEllipsis />
-          </PaginationItem>
-        );
-      }
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink
+            onClick={() => updateCurrentPage(i, true)}
+            isActive={currentPage === i}
+          >
+            {i}
+          </PaginationLink>
+        </PaginationItem>
+      );
     }
     return items;
-  };
+  }
+
+  items.push(
+    <PaginationItem key={1}>
+      <PaginationLink
+        onClick={() => updateCurrentPage(1, true)}
+        isActive={currentPage === 1}
+      >
+        1
+      </PaginationLink>
+    </PaginationItem>
+  );
+
+  if (currentPage > 3) {
+    items.push(
+      <PaginationItem key="ellipsis-left">
+        <div className="flex items-center justify-center h-9 w-9">
+          <TenderPageInput
+            totalPages={totalPages}
+            onPageJump={(page) => updateCurrentPage(page, true)}
+          />
+        </div>
+      </PaginationItem>
+    );
+  }
+
+  const startPage = Math.max(2, currentPage - 1);
+  const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+  for (let i = startPage; i <= endPage; i++) {
+    items.push(
+      <PaginationItem key={i}>
+        <PaginationLink
+          onClick={() => updateCurrentPage(i, true)}
+          isActive={currentPage === i}
+        >
+          {i}
+        </PaginationLink>
+      </PaginationItem>
+    );
+  }
+
+  if (currentPage < totalPages - 2) {
+    items.push(
+      <PaginationItem key="ellipsis-right">
+        <div className="flex items-center justify-center h-9 w-9">
+          <TenderPageInput
+            totalPages={totalPages}
+            onPageJump={(page) => updateCurrentPage(page, true)}
+          />
+        </div>
+      </PaginationItem>
+    );
+  }
+
+  if (totalPages > 1) {
+    items.push(
+      <PaginationItem key={totalPages}>
+        <PaginationLink
+          onClick={() => updateCurrentPage(totalPages, true)}
+          isActive={currentPage === totalPages}
+        >
+          {totalPages}
+        </PaginationLink>
+      </PaginationItem>
+    );
+  }
+
+  return items;
+};
 
   useEffect(() => {
     if (hasAutoOpenedRef.current) return;
@@ -1160,7 +1451,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                   {tableWidth < 700 && (
                     <TableHead className="text-xs w-[20%]">Termin zgłoszenia</TableHead>
                   )}
-                  {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">Status</TableHead>}
+                  {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">Tablica / Status</TableHead>}
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>Relewantność</TableHead>
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[5%]" : "w-[5%]")}></TableHead>
                 </TableRow>
@@ -1352,7 +1643,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                             </div>
                           </TableCell>
                         )}
-                        {tableWidth >= 700 && <TableCell>{getStatusBadge(result)}</TableCell>}
+                        {tableWidth >= 700 && <TableCell>{getBoardBadge(result)}</TableCell>}
                         <TableCell><ScoreIndicator score={result.tender_score} /></TableCell>
                         <TableCell className="p-0">
                           <DropdownMenu>
@@ -1418,11 +1709,11 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
-                    <PaginationPrevious onClick={() => updateCurrentPage(Math.max(currentPage - 1, 1))} />
+                    <PaginationPrevious onClick={() => updateCurrentPage(Math.max(currentPage - 1, 1), true)} />
                   </PaginationItem>
                   {renderPaginationItems()}
                   <PaginationItem>
-                    <PaginationNext onClick={() => updateCurrentPage(Math.min(currentPage + 1, totalPages))} />
+                    <PaginationNext onClick={() => updateCurrentPage(Math.min(currentPage + 1, totalPages), true)} />
                   </PaginationItem>
                 </PaginationContent>
               </Pagination>
@@ -1430,23 +1721,40 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
           )}
         </CardContent>
       </Card>
-      {selectedResult && (
-        <AddToKanbanDialog 
-          open={showKanbanDialog}
-          onOpenChange={setShowKanbanDialog}
-          tender={selectedResult}
-          onAddSuccess={() => {
-            setPopupMessage("Tender successfully added to Kanban board");
-            setAddToKanbanSuccess(true);
-            setPopupOpen(true);
-          }}
-          onAddError={() => {
-            setPopupMessage("Error adding tender to Kanban board");
-            setAddToKanbanSuccess(false);
-            setPopupOpen(true);
-          }}
-        />
-      )}
+{selectedResult && (
+  <AddToKanbanDialog 
+    open={showKanbanDialog}
+    onOpenChange={(isOpen) => {
+      setShowKanbanDialog(isOpen);
+      if (!isOpen) {
+        setSelectedResult(null);
+      }
+    }}
+    tender={selectedResult}
+    onAddSuccess={(boardId) => {
+      setShowKanbanDialog(false);
+      setSelectedResult(null);
+      setTimeout(() => {
+        setPopupMessage("Przetarg pomyślnie dodano do Kanban board");
+        setAddToKanbanSuccess(true);
+        setPopupOpen(true);
+        // Refresh kanban boards to update the display
+        fetchKanbanBoards();
+      }, 100);
+    }}
+    onAddError={(error) => {
+      // Close the Kanban dialog on error
+      setShowKanbanDialog(false);
+      setSelectedResult(null);
+      // Small delay before showing error popup
+      setTimeout(() => {
+        setPopupMessage("Error adding tender to Kanban board");
+        setAddToKanbanSuccess(false);
+        setPopupOpen(true);
+      }, 100);
+    }}
+  />
+)}
       {popupOpen && (
         <Dialog open={popupOpen} onOpenChange={setPopupOpen}>
           <DialogContent className="sm:max-w-[425px]">
@@ -1471,16 +1779,19 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                   variant="default"
                   className="px-6"
                 >
-                  View All Boards
+                  Pokaż wszystkie tablice
                 </Button>
               )}
               <Button 
-                onClick={() => setPopupOpen(false)}
-                variant={addToKanbanSuccess ? "outline" : "default"}
-                className="px-6"
-              >
-                {addToKanbanSuccess ? "Zostań tutaj" : "Zamknij"}
-              </Button>
+  onClick={() => {
+    setPopupOpen(false);
+    setAddToKanbanSuccess(null); // Reset the success state
+  }}
+  variant={addToKanbanSuccess ? "outline" : "default"}
+  className="px-6"
+>
+  {addToKanbanSuccess ? "Zostań tutaj" : "Zamknij"}
+</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

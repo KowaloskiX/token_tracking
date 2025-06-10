@@ -189,9 +189,24 @@ export const TED_SOURCES = {
   }
 } as const;
 
+
+export const GERMAN_SOURCES = {
+  dtvp_like: {
+    icon: '/images/tender_sources/dtvp_logo.png',
+    label: 'DTVP',
+    urlPattern: 'dtvp.de'
+  },
+  vergabeplatforms: {
+    icon: '/images/tender_sources/tender24_logo.png',
+    label: 'VergabePlatforms',
+    urlPattern: 'tender24.de'
+  }
+}
+
 export const SOURCE_CONFIG = {
   ...POLISH_SOURCES,
-  ...TED_SOURCES
+  ...TED_SOURCES,
+  ...GERMAN_SOURCES
 } as const;
 
 export const CRITERIA_CONFIG = [

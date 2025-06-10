@@ -213,7 +213,7 @@ async def perform_file_extraction(
         namespace = ""
         tender_name = tender.get('name', "")
         tender_pinecone_id = f"{sanitize_id(tender_name)}_{uuid4()}"
-        rag_manager = RAGManager(rag_index_name, namespace, embedding_model, tender_pinecone_id, use_elasticsearch=use_elasticsearch)
+        rag_manager = RAGManager(rag_index_name, namespace, embedding_model, tender_pinecone_id, use_elasticsearch=use_elasticsearch, tender_url=tender_id_str)
         await rag_manager.ensure_elasticsearch_index_initialized()
         
         # Extract files
@@ -289,14 +289,13 @@ async def perform_file_extraction(
                     file_extension = os.path.splitext(filename)[1].lower()
                     file_type = "file" if file_extension else "website"
 
-                    # Sanitize filename before uploading to Vercel Blob
-                    sanitized_blob_filename = safe_filename(filename)
-                    logger.info(f"[{tender_id_str}] Uploading file '{filename}' as '{sanitized_blob_filename}' ({bytes_len} bytes) to S3")
-                    blob_url = upload_file_to_s3(sanitized_blob_filename, original_bytes)
+                    # Use original filename for blob storage to maintain consistency
+                    logger.info(f"[{tender_id_str}] Uploading file '{filename}' ({bytes_len} bytes) to S3")
+                    blob_url = upload_file_to_s3(filename, original_bytes)
 
                     # Build record
                     record = {
-                        "filename": filename,
+                        "filename": filename,  # Keep original filename
                         "type": file_type,
                         "url": url,
                         "blob_url": blob_url,

@@ -9,6 +9,7 @@ class FilePineconeConfig(BaseModel):
     query_config: QueryConfig
     pinecone_unique_id_prefix: str
     elasticsearch_indexed: Optional[bool] = None
+    is_technical_drawing: Optional[bool] = False
 
 class File(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")

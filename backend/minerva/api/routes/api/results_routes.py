@@ -102,7 +102,7 @@ async def check_result_access(result_id: str, current_user: User) -> bool:
     analysis_id = str(result.get("tender_analysis_id"))
     return await check_analysis_access(analysis_id, current_user)
 
-@router.post("/", response_model=ResultsResponse)
+@router.post("/results", response_model=ResultsResponse)
 async def get_results(
     request: ResultsRequest,
     current_user: User = Depends(get_current_user_or_api_key)
@@ -191,7 +191,7 @@ async def get_results(
             detail=f"Error fetching results: {str(e)}"
         )
 
-@router.get("/{result_id}/criteria", response_model=CriteriaAnalysisResponse)
+@router.get("/results/{result_id}/criteria", response_model=CriteriaAnalysisResponse)
 async def get_result_criteria(
     result_id: str,
     current_user: User = Depends(get_current_user_or_api_key)
@@ -236,7 +236,7 @@ async def get_result_criteria(
             detail=f"Error fetching criteria: {str(e)}"
         )
 
-@router.get("/{result_id}/files", response_model=FilesResponse)
+@router.get("/results/{result_id}/files", response_model=FilesResponse)
 async def get_result_files(
     result_id: str,
     include_preview: bool = Query(default=False, description="Include content preview"),

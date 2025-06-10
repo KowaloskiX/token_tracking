@@ -184,7 +184,7 @@ async def remove_tender_from_kanban_boards(tender_result_id: str) -> int:
 async def run_all_analyses_for_user_endpoint(
     user_id: str,
     top_k: int = 20,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     current_user: User = Depends(get_current_user)
 ):
 
@@ -207,7 +207,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
 
         # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-05-27"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-06-05"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -874,7 +874,7 @@ async def test_extractors():
         # ("epropublico_main", "https://e-propublico.pl/Ogloszenia/Details/d7f144e7-2693-442f-bd07-6ffb7995a063"),
         # ("platformazakupowa", "https://platformazakupowa.pl/transakcja/1065234"),
         # ("smartpzp", "https://portal.smartpzp.pl/pazp/public/postepowanie?postepowanie=76699829"),
-        ("logintrade", "https://lafargeholcim.logintrade.net/portal,szczegolyZapytaniaOfertowe,f40c67caee744d36e260eb256f5e30e1.html"),
+        # ("logintrade", "https://lafargeholcim.logintrade.net/portal,szczegolyZapytaniaOfertowe,f40c67caee744d36e260eb256f5e30e1.html"),
         # ("ted", "https://ted.europa.eu/en/notice/-/detail/129599-2025"),
     # ("ezamawiajacy", "https://zimkrakow.ezamawiajacy.pl/app/demand/notice/public/164269/details"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/468376/wykonanie-okresowej-kontroli-instalacji-gazowych-w-nieruchomosciach-polozonych-w-obszarze-dzialania-oddzialu-terenowego-malopolskiego-2"),
@@ -886,11 +886,13 @@ async def test_extractors():
         # ("ezamowienia", "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-d1c9e5f6-b4b1-4660-b573-aabb973989a4")
         # ("orlenconnect", "https://connect.orlen.pl/app/outRfx/492099/supplier/status"),
         # ("pge", "https://swpp2.gkpge.pl/app/demand/notice/public/96084/details")
-        ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1621948,35f035581b097deddd7805921a2a69bd.html"),
+        # ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1621948,35f035581b097deddd7805921a2a69bd.html"),
         # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/externalProject.do?method=show&pid=1063335"),
         # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/projectForwarding.do?pid=1063424"),
-        ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
-        ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
+        # ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
+        # ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
+
+("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/documents")
 
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/471684/remont-pustostanow-lokali-mieszkalnych-czesc-nr-1-marszalkowska-34-50-m-23-adk-2-czesc-nr-2-krucza-6-14-m-5-adk-2-w-podziale-na-2-czesci"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/473338/opracowanie-dokumentacji-projektowo-kosztorysowej-na-remont-budynku-rozdzielnicy-agregatorowni-zlokalizowanej-na-terenie-stacji-pomp-rzecznych-przy-ul-czerniakowskiej-124-dzielnica-srodmiescie-1"),
@@ -2138,6 +2140,7 @@ async def duplicate_tender_analysis(
         new_analysis_data["name"] = f"{new_analysis_data.get('name', 'Untitled Analysis')} - Copy"
         new_analysis_data["created_at"] = datetime.utcnow()
         new_analysis_data["updated_at"] = datetime.utcnow()
+        new_analysis_data["assigned_users"] = []
         
         # Remove the original ID
         new_analysis_data.pop("_id", None)
@@ -2643,6 +2646,8 @@ async def analyze_single_tender(
                 source_type = TenderSourceType("platformazakupowa")
             elif "eb2b.com.pl" in request.tender_url:
                 source_type = TenderSourceType("eb2b")
+            elif "vergabeportal" in request.tender_url:
+                source_type = TenderSourceType("vergabeplatforms")
             elif "logintrade.net" in request.tender_url:
                 source_type = TenderSourceType("logintrade")
             else:
@@ -2740,6 +2745,230 @@ async def analyze_single_tender(
         raise HTTPException(
             status_code=500,
             detail=f"Error analyzing single tender: {str(e)}"
+        )
+    
+@router.delete("/user/{user_id}/cleanup-past-results", response_model=Dict[str, Any])
+async def cleanup_past_tender_results_for_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete all TenderAnalysisResults with non-active status (inactive/archived) for a given user.
+    This includes cleaning up associated files and vector embeddings, regardless of submission deadline.
+    Only preserves results with 'active' status.
+    """
+    try:
+        # Verify user exists
+        try:
+            user_oid = ObjectId(user_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
+            
+        user_data = await db['users'].find_one({"_id": user_oid})
+        if not user_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with ID {user_id} not found"
+            )
+        
+        logger.info(f"Starting cleanup of past tender results for user {user_id}")
+        
+        # Find all TenderAnalysis records for this user
+        tender_analyses = await db.tender_analysis.find({
+            "user_id": user_oid
+        }).to_list(None)
+        
+        if not tender_analyses:
+            return {
+                "message": f"No tender analyses found for user {user_id}",
+                "user_id": user_id,
+                "deleted": 0,
+                "files_deleted": 0,
+                "vectors_deleted": 0
+            }
+        
+        logger.info(f"Found {len(tender_analyses)} tender analyses for user {user_id}")
+        
+        # Build query to find results to delete
+        analysis_ids = [analysis["_id"] for analysis in tender_analyses]
+        
+        # Query for results that:
+        # 1. Belong to one of the user's analyses
+        # 2. Do NOT have active status (delete inactive/archived regardless of deadline)
+        query = {
+            "tender_analysis_id": {"$in": analysis_ids},
+            "status": {"$ne": "active"}  # Exclude active results
+        }
+        
+        # Get all non-active results (regardless of deadline)
+        results_to_delete = await db.tender_analysis_results.find(query).to_list(None)
+        logger.info(f"Found {len(results_to_delete)} non-active results to delete (regardless of deadline)")
+        
+        if not results_to_delete:
+            return {
+                "message": f"No non-active tender results found for user {user_id}",
+                "user_id": user_id,
+                "total_analyses": len(tender_analyses),
+                "deleted": 0,
+                "files_deleted": 0,
+                "vectors_deleted": 0
+            }
+        
+        # Clean up files and vectors for each result
+        deleted_count = 0
+        files_deleted_count = 0
+        vector_namespaces_cleaned = 0
+        vector_prefixes_cleaned = 0
+        filtered_results_deleted = 0
+        total_results = len(results_to_delete)
+        
+        logger.info(f"Starting cleanup of {total_results} non-active results...")
+        
+        for index, result in enumerate(results_to_delete, 1):
+            result_id = result["_id"]
+            logger.info(f"[{index}/{total_results}] Processing result {result_id}")
+            
+            try:
+                # 1. Delete files from S3/Vercel Blob
+                s3_blob_urls_to_delete = []
+                vercel_blob_urls_to_delete = []
+
+                for file_doc in result.get("uploaded_files", []):
+                    blob_url = file_doc.get("blob_url")
+                    if blob_url:
+                        if "amazonaws.com" in blob_url:  # Matches s3.amazonaws.com and s3.region.amazonaws.com
+                            s3_blob_urls_to_delete.append(blob_url)
+                        elif "vercel-storage.com" in blob_url:
+                            vercel_blob_urls_to_delete.append(blob_url)
+                        else:
+                            logger.warning(f"[{index}/{total_results}] Unknown blob_url format: {blob_url[:50]}...")
+                
+                # Check if there are other analyses using the same tender URL before deleting files
+                tender_url = result.get("tender_url")
+                other_analyses_count = await db.tender_analysis_results.count_documents({
+                    "tender_url": tender_url,
+                    "_id": {"$ne": result_id}  # Exclude current result
+                }) if tender_url else 0
+                
+                # Only delete files if this is the last analysis with this tender URL
+                files_deleted_this_result = 0
+                vectors_deleted_this_result = 0
+                
+                if other_analyses_count == 0:
+                    # Delete S3 files
+                    if s3_blob_urls_to_delete:
+                        try:
+                            delete_files_from_s3(s3_blob_urls_to_delete)
+                            files_deleted_count += len(s3_blob_urls_to_delete)
+                            files_deleted_this_result += len(s3_blob_urls_to_delete)
+                        except Exception as e:
+                            logger.error(f"[{index}/{total_results}] Error deleting S3 files: {str(e)}")
+
+                    # Delete Vercel files
+                    if vercel_blob_urls_to_delete:
+                        try:
+                            delete_files_from_vercel_blob(vercel_blob_urls_to_delete)
+                            files_deleted_count += len(vercel_blob_urls_to_delete)
+                            files_deleted_this_result += len(vercel_blob_urls_to_delete)
+                        except Exception as e:
+                            logger.error(f"[{index}/{total_results}] Error deleting Vercel files: {str(e)}")
+                
+                    # Delete Pinecone namespace
+                    if result.get("pinecone_config"):
+                        pinecone_config = result.get("pinecone_config")
+                        if pinecone_config.get("namespace") != "":
+                            try:
+                                pinecone_query_tool = QueryTool(config=QueryConfig(
+                                    index_name=pinecone_config.get("index_name"),
+                                    namespace=pinecone_config.get("namespace"),
+                                    embedding_model=pinecone_config.get("embedding_model")
+                                ))
+                                pinecone_query_tool.delete_namespace()
+                                vector_namespaces_cleaned += 1
+                                vectors_deleted_this_result += 1
+                            except Exception as e:
+                                logger.error(f"[{index}/{total_results}] Error deleting namespace: {str(e)}")
+                    
+                    # Delete individual file vectors
+                    file_pinecone_configs = [
+                        file.get("file_pinecone_config")
+                        for file in result.get("uploaded_files", [])
+                        if file.get("file_pinecone_config")
+                    ]
+                    
+                    for config in file_pinecone_configs:
+                        if config.get("pinecone_unique_id_prefix"):
+                            try:
+                                pinecone_query_tool = QueryTool(config=QueryConfig(
+                                    index_name=config.get("query_config", {}).get("index_name"),
+                                    namespace=config.get("query_config", {}).get("namespace", ""),
+                                    embedding_model=config.get("query_config", {}).get("embedding_model")
+                                ))
+                                pinecone_query_tool.delete_from_pinecone_by_id_prefix(config.get("pinecone_unique_id_prefix"))
+                                vector_prefixes_cleaned += 1
+                                vectors_deleted_this_result += 1
+                            except Exception as e:
+                                logger.error(f"[{index}/{total_results}] Error deleting vector prefix: {str(e)}")
+                
+                # Remove from kanban boards
+                boards_affected = await remove_tender_from_kanban_boards(str(result_id))
+                
+                # Delete related filtered tender results
+                filtered_deleted = await db.filtered_tender_analysis_results.delete_many({
+                    "tender_id": str(result_id)
+                })
+                filtered_results_deleted += filtered_deleted.deleted_count
+                
+                # Delete the main document from MongoDB
+                mongo_deleted = await db.tender_analysis_results.delete_one({"_id": result_id})
+                
+                if mongo_deleted.deleted_count > 0:
+                    deleted_count += 1
+                else:
+                    logger.warning(f"[{index}/{total_results}] Failed to delete result {result_id} from MongoDB")
+                
+                # Summary log for this result
+                summary_parts = []
+                if files_deleted_this_result > 0:
+                    summary_parts.append(f"{files_deleted_this_result} files")
+                if vectors_deleted_this_result > 0:
+                    summary_parts.append(f"{vectors_deleted_this_result} vectors")
+                if boards_affected > 0:
+                    summary_parts.append(f"{boards_affected} boards")
+                if filtered_deleted.deleted_count > 0:
+                    summary_parts.append(f"{filtered_deleted.deleted_count} filtered")
+                if other_analyses_count > 0:
+                    summary_parts.append(f"skipped files (shared)")
+                
+                cleanup_summary = f" (cleaned: {', '.join(summary_parts)})" if summary_parts else ""
+                logger.info(f"[{index}/{total_results}] ✓ Deleted result from MongoDB{cleanup_summary}")
+                
+            except Exception as e:
+                logger.error(f"[{index}/{total_results}] ✗ Error processing result {result_id}: {str(e)}")
+        
+        summary = {
+            "message": f"Successfully cleaned up non-active tender results for user {user_id}",
+            "user_id": user_id,
+            "total_analyses": len(tender_analyses),
+            "non_active_results_found": len(results_to_delete),
+            "deleted": deleted_count,
+            "files_deleted": files_deleted_count,
+            "vector_namespaces_cleaned": vector_namespaces_cleaned,
+            "vector_prefixes_cleaned": vector_prefixes_cleaned,
+            "filtered_results_deleted": filtered_results_deleted
+        }
+         
+        logger.info(f"✅ Cleanup completed for user {user_id}")
+        logger.info(f"📊 Summary: {deleted_count}/{total_results} results deleted, {files_deleted_count} files cleaned, {vector_namespaces_cleaned + vector_prefixes_cleaned} vectors removed, {filtered_results_deleted} filtered records cleaned")
+        return summary
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error cleaning up past tender results for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error cleaning up past tender results: {str(e)}"
         )
     
     

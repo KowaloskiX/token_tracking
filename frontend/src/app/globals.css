@@ -230,7 +230,7 @@ body {
 }
 
 .markdown-content a {
-  @apply text-blue-600 underline hover:text-blue-800;
+  @apply text-primary underline hover:text-primary-hover;
 }
 
 .markdown-content strong {

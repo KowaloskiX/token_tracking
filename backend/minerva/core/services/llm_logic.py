@@ -3,6 +3,7 @@ from fastapi import HTTPException
 import json
 from minerva.core.models.request.ai import LLMSearchRequest, LLMSearchResponse, SearchResult
 from minerva.core.services.llm_providers.anthropic import AnthropicLLM
+from minerva.core.services.llm_providers.google_gemini import GeminiLLM
 from minerva.core.services.llm_providers.openai import OpenAILLM
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
@@ -109,6 +110,7 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
         # print(f"prompt to LLM with rag: {user_content}")
         # Initialize the LLM
         llm_cls = OpenAILLM if request.llm.provider == "openai" else AnthropicLLM
+        llm_cls = GeminiLLM if request.llm.provider == "google" else llm_cls
         llm = llm_cls(
             model=request.llm.model,
             stream=request.llm.stream,
@@ -161,6 +163,7 @@ async def ask_llm_logic(request: LLMSearchRequest):
 
         # Initialize the LLM with user-supplied tools and instructions
         llm_cls = OpenAILLM if request.llm.provider == "openai" else AnthropicLLM
+        llm_cls = GeminiLLM if request.llm.provider == "google" else llm_cls
         llm = llm_cls(
             model=request.llm.model,
             stream=request.llm.stream,
