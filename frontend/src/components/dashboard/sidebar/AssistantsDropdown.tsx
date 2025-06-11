@@ -15,8 +15,11 @@ import CreateAssistantForm from "../forms/CreateAssistantForm"
 import EditAssistantForm from "../forms/EditAssistantForm"
 import { Assistant } from "@/types"
 import { getUserAssistants } from "@/utils/assistantActions"
+import { useTranslations } from 'next-intl'
 
 export function AssistantsDropdown() {
+  const t = useTranslations('common');
+  const tDashboard = useTranslations('dashboard.projects');
   const [isNewAssistantModalOpen, setIsNewAssistantModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [assistantToEdit, setAssistantToEdit] = useState<Assistant | null>(null);
@@ -40,7 +43,7 @@ export function AssistantsDropdown() {
         const data = await getUserAssistants(user._id)
         setAssistants(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error fetching assistants');
+        setError(err instanceof Error ? err.message : t('error'));
       } finally {
         setIsLoading(false);
       }
@@ -87,10 +90,10 @@ export function AssistantsDropdown() {
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight ml-2">
               <span className="truncate font-semibold">
-                {currentAssistant?.name || "Select Assistant"}
+                {currentAssistant?.name || t('projects')}
               </span>
               <span className="truncate text-xs">
-                Projekt
+                {tDashboard('title')}
               </span>
             </div>
             <ChevronsUpDown className="ml-auto" />
@@ -103,7 +106,7 @@ export function AssistantsDropdown() {
           sideOffset={4}
         >
           <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Projekty
+            {t('projects')}
           </DropdownMenuLabel>
           
           {isLoading && (
@@ -134,14 +137,14 @@ export function AssistantsDropdown() {
                     className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:text-blue-500"
                     onClick={(e) => handleEditClick(assistant, e)}
                   >
-                    <Pencil className="size-4 text-muted-foreground hover:text-blue-500" />
+                    <Pencil className="size-4 text-muted-foreground hover:text-blue-500 ml-1" />
                   </div>
                 </DropdownMenuItem>
               ))}
 
               {assistants.length === 0 && (
                 <div className="px-2 py-4 text-sm text-muted-foreground">
-                  Brak projektów
+                  {tDashboard('no_projects')}
                 </div>
               )}
             </div>
@@ -159,7 +162,7 @@ export function AssistantsDropdown() {
               <Plus className="size-4" />
             </div>
             <div className="font-medium text-muted-foreground">
-              Nowy Projekt
+              {tDashboard('new_project')}
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -33,7 +33,7 @@ import { createFolder, deleteFolder, getAssistantFolders, getDefaultFolder } fro
 import { deleteFile, getFolderFiles } from '@/utils/fileActions';
 import UploadMemoryPopup from '../../popup/UploadMemoryPopup';
 import { FilePreview } from '../../FilePreview';
-
+import { useTranslations } from 'next-intl';
 
 /** 
  * If you don't already have this somewhere, define the serverUrl to build the download link. 
@@ -67,6 +67,8 @@ interface SortConfig {
 }
 
 const MemorySidebar = () => {
+  const t = useTranslations('dashboard.memory');
+  const tCommon = useTranslations('common');
   const { currentAssistant, user } = useDashboard();
   const [isMounted, setIsMounted] = useState(false);
   const [isMobileView, setIsMobileView] = useState<boolean | null>(null);
@@ -139,14 +141,14 @@ const MemorySidebar = () => {
     } catch (e) {
       console.error('Error in fetchFoldersAndFiles:', e);
       toast({
-        title: "Error",
-        description: `Failed to fetch memory items: ${e instanceof Error ? e.message : String(e)}`,
+        title: tCommon('error'),
+        description: t('error_fetching_memory') + `: ${e instanceof Error ? e.message : String(e)}`,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [currentAssistant?._id, user?._id, currentFolderId, toast]);
+  }, [currentAssistant?._id, user?._id, currentFolderId, toast, t, tCommon]);
 
   // Reset state when currentAssistant changes
   useEffect(() => {
@@ -165,7 +167,7 @@ const MemorySidebar = () => {
     if (!user?._id || !currentAssistant?._id) return;
   
     // Generate unique name
-    const baseName = "New Folder";
+    const baseName = tCommon('new_folder');
     const existingFolders = folders.filter(f => 
       f.parent_folder_id === (currentFolderId || defaultFolderId)
     );
@@ -193,8 +195,8 @@ const MemorySidebar = () => {
       return newFolder;
     } catch (e) {
       toast({
-        title: "Error",
-        description: `Failed to create folder: ${e instanceof Error ? e.message : String(e)}`,
+        title: tCommon('error'),
+        description: t('error_creating_folder') + `: ${e instanceof Error ? e.message : String(e)}`,
         variant: "destructive",
       });
       return null;
@@ -338,14 +340,14 @@ const MemorySidebar = () => {
       }
       await fetchFoldersAndFiles();
       toast({
-        title: "Success",
-        description: `${itemType === 'folder' ? 'Folder' : 'File'} deleted successfully`,
+        title: tCommon('success'),
+        description: `${itemType === 'folder' ? t('folder_deleted') : t('file_deleted')}`,
       });
     } catch (e) {
       console.error('Error deleting item:', e);
       toast({
-        title: "Error",
-        description: `Failed to delete ${itemType.toLowerCase()}: ${e instanceof Error ? e.message : String(e)}`,
+        title: tCommon('error'),
+        description: t('error_deleting_item', { type: itemType.toLowerCase() }) + `: ${e instanceof Error ? e.message : String(e)}`,
         variant: "destructive",
       });
     }
@@ -380,7 +382,7 @@ const MemorySidebar = () => {
                 <ChevronLeft className="h-5 w-5" />
               </Button>
             )}
-            <h4 className="font-medium">{currentPath[currentPath.length - 1]?.name || "Home"}</h4>
+            <h4 className="font-medium">{currentPath[currentPath.length - 1]?.name || tCommon('home')}</h4>
           </div>
           <div className="flex items-center gap-2">
             <MemoryBreadcrumb 
@@ -407,14 +409,14 @@ const MemorySidebar = () => {
                   onClick={handleCreateFolder}
                 >
                   <FolderPlus className="w-4 h-4" />
-                  <span>Nowy folder</span>
+                  <span>{t('create_folder')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="flex items-center gap-3 cursor-pointer"
                   onClick={() => handleSort('name')}
                 >
                   <ArrowUpAZ className="w-4 h-4" />
-                  <span className="flex-1">Sortuj po nazwie</span>
+                  <span className="flex-1">{tCommon('sort_by_name')}</span>
                   {sortConfig.type === 'name' && (
                     <span className="text-xs text-muted-foreground">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -426,7 +428,7 @@ const MemorySidebar = () => {
                   onClick={() => handleSort('date')}
                 >
                   <CalendarArrowUp className="w-4 h-4" />
-                  <span className="flex-1">Sortuj po dacie</span>
+                  <span className="flex-1">{tCommon('sort_by_date')}</span>
                   {sortConfig.type === 'date' && (
                     <span className="text-xs text-muted-foreground">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -483,10 +485,10 @@ const MemorySidebar = () => {
                 ) 
               : "Assistant"
             }
-            &apos;- zasoby
+            &apos;- {tCommon('resources')}
           </h3>
           <p className="text-sm text-muted-foreground">
-            Wgrywaj pliki, strony www i inne materiały do AI.
+            {tCommon('upload_files_websites')}
           </p>
         </div>
         <Button 
@@ -494,7 +496,7 @@ const MemorySidebar = () => {
           onClick={() => setShowUploadPopup(true)}
         >
           <CloudUpload className="mr-2 flex-shrink-0" />
-          Wgraj
+          {tCommon('upload')}
         </Button>
       </div>
 

@@ -33,6 +33,7 @@ import { DeleteItemDialog } from './DeleteItemDialog';
 import { useToast } from '@/hooks/use-toast';
 import { Card } from '@/components/ui/card';
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from 'next-intl';
 
 interface MemoryItemData {
   _id: string;
@@ -198,6 +199,8 @@ const EditableTitle = ({
   onCancel: () => void;
   itemType: string;
 }) => {
+  const t = useTranslations('dashboard.memory');
+  const tCommon = useTranslations('common');
   const inputRef = useRef<HTMLInputElement>(null);
   const [editedName, setEditedName] = useState(initialName);
   const { toast } = useToast();
@@ -227,8 +230,8 @@ const EditableTitle = ({
     if (e.key === 'Enter') {
       if (editedName.length > MAX_TITLE_LENGTH) {
         toast({
-          title: "Error",
-          description: `Name cannot be longer than ${MAX_TITLE_LENGTH} characters`,
+          title: tCommon('error'),
+          description: t('name_too_long', { length: MAX_TITLE_LENGTH }),
           variant: "destructive",
         });
         return;
@@ -242,8 +245,8 @@ const EditableTitle = ({
   const handleBlur = () => {
     if (editedName.length > MAX_TITLE_LENGTH) {
       toast({
-        title: "Error",
-        description: `Name cannot be longer than ${MAX_TITLE_LENGTH} characters`,
+        title: tCommon('error'),
+        description: t('name_too_long', { length: MAX_TITLE_LENGTH }),
         variant: "destructive",
       });
       return;
@@ -283,6 +286,8 @@ const ItemDropdown = ({
   onDelete,
   onView
 }: ItemDropdownProps) => {
+  const t = useTranslations('dashboard.memory');
+  const tCommon = useTranslations('common');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -324,7 +329,7 @@ const ItemDropdown = ({
               className="gap-2"
             >
               <Eye className="w-4 h-4" />
-              Otwórz podgląd
+              {t('open_preview')}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem 
@@ -335,19 +340,17 @@ const ItemDropdown = ({
             className="gap-2"
           >
             <Pencil className="w-4 h-4" />
-            Zmień nazwę
+            {tCommon('rename')}
           </DropdownMenuItem>
-          {
-            removeable ? (
-          <DropdownMenuItem 
-            onClick={handleDeleteClick}
-            className="gap-2 text-red-600"
-          >
-            <Trash2 className="w-4 h-4" />
-            Usuń
-          </DropdownMenuItem>
-            ): null
-          }
+          {removeable && (
+            <DropdownMenuItem 
+              onClick={handleDeleteClick}
+              className="gap-2 text-red-600"
+            >
+              <Trash2 className="w-4 h-4" />
+              {tCommon('delete')}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <DeleteItemDialog
@@ -357,7 +360,7 @@ const ItemDropdown = ({
         }}
         onConfirm={handleConfirmDelete}
         itemName={name}
-        itemType={type}
+        itemType={type === 'folder' ? 'folder' : 'file'}
       />
     </>
   );
@@ -370,6 +373,8 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
   onRename,
   refreshItems
 }) => {
+  const t = useTranslations('dashboard.memory');
+  const tCommon = useTranslations('common');
   const [isEditing, setIsEditing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -383,8 +388,8 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
 
     if (newName.length > MAX_TITLE_LENGTH) {
       toast({
-        title: "Error",
-        description: `Name cannot be longer than ${MAX_TITLE_LENGTH} characters`,
+        title: tCommon('error'),
+        description: t('name_too_long', { length: MAX_TITLE_LENGTH }),
         variant: "destructive",
       });
       return;
@@ -401,13 +406,13 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
       refreshItems?.();
       
       toast({
-        title: "Success",
-        description: `${item.type === 'folder' ? 'Folder' : 'File'} renamed successfully`,
+        title: tCommon('success'),
+        description: `${item.type === 'folder' ? t('folder_renamed') : t('file_renamed')}`,
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: `Failed to rename ${item.type.toLowerCase()}: ${error instanceof Error ? error.message : String(error)}`,
+        title: tCommon('error'),
+        description: t('error_renaming_item', { type: item.type.toLowerCase() }) + `: ${error instanceof Error ? error.message : String(error)}`,
         variant: "destructive",
       });
     } finally {
@@ -431,14 +436,8 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
 
     if (!fileUrl) {
       toast({
-        title: "Brak pliku",
-        description: `Nie można pobrać pliku – brak adresu.
-  item._id: ${item._id}
-  item.name: ${item.name}
-  item.type: ${item.type}
-  item.blob_url: ${(item as any).blob_url}
-  item.url: ${(item as any).url}
-  `,
+        title: tCommon('error'),
+        description: t('no_download_url'),
         variant: "destructive",
       });
       return;
@@ -449,16 +448,16 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
       const response = await fetch(fileUrl);
   
       if (!response.ok) {
-        throw new Error(`Nie udało się pobrać pliku. Kod HTTP: ${response.status}`);
+        throw new Error(t('download_failed', { status: response.status }));
       }
   
       const blob = await response.blob();
   
       if (blob.size === 0) {
-        throw new Error("Pobrany plik jest pusty.");
+        throw new Error(t('file_empty'));
       }
       if (blob.type.startsWith("text/html")) {
-        throw new Error("Adres zwrócił HTML zamiast pliku. Sprawdź czy adres jest poprawny i publiczny.");
+        throw new Error(t('html_instead_of_file'));
       }
   
       const url = window.URL.createObjectURL(blob);
@@ -470,19 +469,11 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      // Debug: Log the error
       console.error("MemoryItem handleDownload error:", err);
   
       toast({
-        title: "Błąd pobierania",
-        description: `Nie udało się pobrać pliku.
-  ${err instanceof Error ? err.message : String(err)}
-  item._id: ${item._id}
-  item.name: ${item.name}
-  item.type: ${item.type}
-  item.blob_url: ${(item as any).blob_url}
-  item.url: ${(item as any).url}
-  `,
+        title: tCommon('error'),
+        description: t('download_error') + `: ${err instanceof Error ? err.message : String(err)}`,
         variant: "destructive",
       });
     } finally {
@@ -495,7 +486,6 @@ export const MemoryItem = React.memo<ExtendedMemoryItemProps>(({
       onNavigate?.(item.name);
     }
   };
-
 
   return (
     <div 

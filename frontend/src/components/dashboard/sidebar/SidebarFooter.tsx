@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 
 interface PriceIds {
   monthly: string;
@@ -52,6 +53,8 @@ const getInitials = (name?: string) => {
 }
 
 const SidebarFooterComponent = () => {
+  const t = useTranslations('common');
+  const tSettings = useTranslations('settings');
   const { 
     user, 
     reset,
@@ -163,10 +166,10 @@ const SidebarFooterComponent = () => {
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">
-                  Gość
+                  {t('guest')}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  Niezalogowany
+                  {t('not_logged_in')}
                 </span>
               </div>
               <LogIn className="ml-auto size-4" />
@@ -197,10 +200,10 @@ const SidebarFooterComponent = () => {
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">
-                    {user.name || 'Użytkownik'}
+                    {user.name || t('user')}
                   </span>
                   <span className="truncate text-xs">
-                    {user.email || 'Brak emaila'}
+                    {user.email || t('no_email')}
                   </span>
                 </div>
                 <ChevronsUpDown className="ml-auto size-4" />
@@ -224,10 +227,10 @@ const SidebarFooterComponent = () => {
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">
-                      {user.name || 'Użytkownik'}
+                      {user.name || t('user')}
                     </span>
                     <span className="truncate text-xs">
-                      {user.email || 'Brak emaila'}
+                      {user.email || t('no_email')}
                     </span>
                   </div>
                 </div>
@@ -236,13 +239,13 @@ const SidebarFooterComponent = () => {
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
                   <Settings className="mr-2" />
-                  Ustawienia
+                  {t('settings')}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2" />
-                Wyloguj się
+                {t('logout')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

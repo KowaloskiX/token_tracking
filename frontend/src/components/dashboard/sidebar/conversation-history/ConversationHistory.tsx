@@ -40,6 +40,7 @@ import { getConversation } from '@/utils/conversationActions';
 import { deleteConversation } from '@/utils/conversationActions';
 import { DeletePopup } from '../../popup/DeletePopup';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import Link from 'next/link'; // Import Link
 
@@ -54,6 +55,8 @@ function AssistantHeader({
   onToggleExpanded: () => void; 
   children: React.ReactNode; 
 }) {
+const t = useTranslations("dashboard.memory");
+  
   if (!assistant) return null;
 
   return (
@@ -82,9 +85,9 @@ function AssistantHeader({
           >
             <CollapsibleTrigger asChild className="w-full">
               <div className="w-full">
-                <SidebarMenuButton tooltip="Conversations" className="w-full rounded-none hover:bg-sidebar-accent/70">
+                <SidebarMenuButton tooltip={t('conversations')} className="w-full rounded-none hover:bg-sidebar-accent/70">
                   <MessageSquare className="shrink-0 text-sidebar-foreground" />
-                  <span className="flex-1 truncate min-w-0">Konwersacje</span>
+                  <span className="flex-1 truncate min-w-0">{t('conversations')}</span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-sidebar-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                 </SidebarMenuButton>
               </div>
@@ -106,6 +109,7 @@ function ConversationItem({
   onDelete,
   isDeleting = false
 }: any) {
+const t = useTranslations("dashboard.memory");
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     isLoading: boolean;
@@ -144,7 +148,7 @@ function ConversationItem({
                 >
                   <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
                     <Forward className="mr-2 text-muted-foreground" />
-                    <span>Share Conversation</span>
+                    <span>{t('share_conversation')}</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -157,7 +161,7 @@ function ConversationItem({
                   >
                     <Trash2 className="mr-2" />
                     <span>
-                      {isDeleting || deleteDialog.isLoading ? 'Deleting...' : 'Delete Conversation'}
+                      {isDeleting || deleteDialog.isLoading ? t('deleting') : t('delete_conversation')}
                     </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -173,8 +177,8 @@ function ConversationItem({
           setDeleteDialog(prev => ({ ...prev, isOpen: open }))
         }
         onConfirm={handleDelete}
-        title="Usuń konwersację"
-        description="Czy jesteś pewien? Ta akcja jest nieowracalna."
+        title={t('delete_conversation')}
+        description={t('delete_conversation_confirm')}
         isLoading={deleteDialog.isLoading}
       />
     </div>
@@ -182,6 +186,8 @@ function ConversationItem({
 }
 
 export function ConversationsHistory() {
+const t = useTranslations("dashboard.memory");
+  const tCommon = useTranslations('common');
   const { 
     currentAssistant, 
     currentConversation,
@@ -397,7 +403,7 @@ export function ConversationsHistory() {
                 <MessageSquarePlus className="shrink-0 text-sidebar-foreground" />
               )}
               <span className="flex-1 truncate min-w-0">
-                {isCreatingConversation ? 'Rozpoczynanie...' : 'Nowa konwersacja'}
+                {isCreatingConversation ? t('starting') : t('new_conversation')}
               </span>
             </SidebarMenuButton>
           </SidebarMenuSubItem>
@@ -430,7 +436,7 @@ export function ConversationsHistory() {
                   <MessageSquare className="shrink-0 text-sidebar-foreground/70" />
                 )}
                 <span className="flex-1 truncate min-w-0">
-                  {isLoading ? 'Loading...' : 'Load More'}
+                  {isLoading ? tCommon('loading') : t('load_more')}
                 </span>
               </SidebarMenuButton>
             </SidebarMenuSubItem>

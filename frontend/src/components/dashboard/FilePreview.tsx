@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { convertToPdf } from "@/utils/convertDocxToPdf";
 import JSZip from 'jszip';
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
 
 declare global {
   interface Window {
@@ -58,7 +59,7 @@ const customStyles = `
 export function buildGapRegex(phrase: string): RegExp {
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const words = phrase.trim().split(/\s+/).map(esc);
-  const GAP   = "[\\s\\p{P}\\p{S}\\d]*";
+  const GAP = "[\\s\\p{P}\\p{S}\\d]*";
   return new RegExp(words.join(GAP), "giu");
 }
 
@@ -101,7 +102,7 @@ interface FilePreviewProps {
 
 // Helper function to escape regex special characters
 function escapeRegExp(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Helper to split citation into fragments (sentences or microfragments)
@@ -122,38 +123,38 @@ function splitCitationToFragments(citation: string): string[] {
       for (let i = 0; i < words.length; i += MAX_WORDS_PER_MICROFRAGMENT) {
         const chunk = words.slice(i, i + MAX_WORDS_PER_MICROFRAGMENT).join(" ");
         if (chunk.split(/\s+/).length >= MIN_WORDS_FOR_MICROFRAGMENT) { // Only add if reasonably sized
-           microFrags.push(chunk);
+          microFrags.push(chunk);
         } else if (microFrags.length > 0) {
-           // Append small remainder to the previous fragment
-           microFrags[microFrags.length - 1] += " " + chunk;
+          // Append small remainder to the previous fragment
+          microFrags[microFrags.length - 1] += " " + chunk;
         } else {
-           // First chunk is too small, just use it
-           microFrags.push(chunk);
+          // First chunk is too small, just use it
+          microFrags.push(chunk);
         }
       }
       // Filter out any potentially empty strings again after processing
       frags = microFrags.filter(Boolean);
     }
   } else {
-      // If we split by sentence, ensure each resulting fragment isn't excessively long either
-      frags = frags.flatMap(frag => {
-          const words = frag.split(/\s+/);
-          if (words.length > MAX_WORDS_PER_MICROFRAGMENT + 4) {
-              const microFrags: string[] = [];
-              for (let i = 0; i < words.length; i += MAX_WORDS_PER_MICROFRAGMENT) {
-                  const chunk = words.slice(i, i + MAX_WORDS_PER_MICROFRAGMENT).join(" ");
-                  if (chunk.split(/\s+/).length >= MIN_WORDS_FOR_MICROFRAGMENT) {
-                      microFrags.push(chunk);
-                  } else if (microFrags.length > 0) {
-                      microFrags[microFrags.length - 1] += " " + chunk;
-                  } else {
-                      microFrags.push(chunk);
-                  }
-              }
-              return microFrags.filter(Boolean);
+    // If we split by sentence, ensure each resulting fragment isn't excessively long either
+    frags = frags.flatMap(frag => {
+      const words = frag.split(/\s+/);
+      if (words.length > MAX_WORDS_PER_MICROFRAGMENT + 4) {
+        const microFrags: string[] = [];
+        for (let i = 0; i < words.length; i += MAX_WORDS_PER_MICROFRAGMENT) {
+          const chunk = words.slice(i, i + MAX_WORDS_PER_MICROFRAGMENT).join(" ");
+          if (chunk.split(/\s+/).length >= MIN_WORDS_FOR_MICROFRAGMENT) {
+            microFrags.push(chunk);
+          } else if (microFrags.length > 0) {
+            microFrags[microFrags.length - 1] += " " + chunk;
+          } else {
+            microFrags.push(chunk);
           }
-          return frag; // Keep original sentence fragment if not too long
-      });
+        }
+        return microFrags.filter(Boolean);
+      }
+      return frag; // Keep original sentence fragment if not too long
+    });
   }
 
   // Final filter for safety
@@ -183,18 +184,18 @@ async function highlightSearchQuery(
   containerElement: HTMLElement,
   excludeSelectors: string[]
 ): Promise<HTMLElement[]> {
-  
+
   if (!searchQuery?.trim()) return [];
 
   console.log(`[Search] Processing: "${searchQuery}"`);
-  
+
   // Create a FRESH Mark.js instance for search to avoid state issues
   const freshMarkInstance = new Mark(containerElement);
   const regex = buildGapRegex(searchQuery.trim());
   console.log(`[Search] Using regex:`, regex);
-  
+
   const collectedElements: HTMLElement[] = [];
-  
+
   return new Promise((resolve) => {
     // Add a small delay to let any previous Mark.js operations complete
     setTimeout(() => {
@@ -223,18 +224,18 @@ async function highlightCitationFragments(
   containerElement: HTMLElement,
   excludeSelectors: string[]
 ): Promise<HTMLElement[]> {
-  
+
   if (!citation?.trim()) return [];
 
   console.log(`[Citation] Processing: "${citation.substring(0, 80)}..."`);
-  
+
   // Create a FRESH Mark.js instance for each citation to avoid state issues
   const freshMarkInstance = new Mark(containerElement);
   const regex = buildGapRegex(citation.trim());
   console.log(`[Citation] Using regex:`, regex);
-  
+
   const collectedElements: HTMLElement[] = [];
-  
+
   return new Promise((resolve) => {
     // Add a small delay to let any previous Mark.js operations complete
     setTimeout(() => {
@@ -259,7 +260,7 @@ async function highlightCitationFragments(
 }
 
 export function FilePreview({ file, onClose, loading: propLoading = false }: FilePreviewProps) {
-const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
+  const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [fileUrl, setFileUrl] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
   const [numPages, setNumPages] = useState<number>(0);
@@ -267,6 +268,8 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [internalIsLoading, setInternalIsLoading] = useState<boolean>(true);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileContentRef = useRef<Blob | null>(null);
+  const t = useTranslations('dashboard.file_preview');
+  const tCommon = useTranslations('common');
   // const pdfDocumentRef = useRef<any>(null); // Keep if needed for direct PDF manipulation
 
   const [textMode, setTextMode] = useState<"search" | "citation">("citation");
@@ -279,7 +282,7 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearchBar, setShowSearchBar] = useState<boolean>(true); // Keep visible
 
-  const textFileNavStateRef = useRef<{count: number, index: number}>({count: 0, index: -1});
+  const textFileNavStateRef = useRef<{ count: number, index: number }>({ count: 0, index: -1 });
 
   // State for User Search Results
   const [userSearchMatches, setUserSearchMatches] = useState<HTMLElement[]>([]);
@@ -290,7 +293,7 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [citationList, setCitationList] = useState<string[]>([]); // Ordered list of unique citations
   const [currentCitationIndex, setCurrentCitationIndex] = useState<number>(-1); // Index in citationList
   const [isProcessingHighlights, setIsProcessingHighlights] = useState<boolean>(false); // Combined loading for search/citations
-    
+
   // Add loading state phases for better user feedback
   const [loadingPhase, setLoadingPhase] = useState<'initial' | 'rendering' | 'highlighting' | 'complete'>('initial');
   const [highlightProgress, setHighlightProgress] = useState<number>(0);
@@ -337,7 +340,7 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
 
   // --- File Loading & Processing --- (Mostly unchanged, keeping relevant parts)
 
-  const isPdfValid = async (blob: Blob): Promise<boolean> => { /* ... as before ... */ 
+  const isPdfValid = async (blob: Blob): Promise<boolean> => { /* ... as before ... */
     try {
       const arrayBuffer = await blob.arrayBuffer();
       const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
@@ -348,38 +351,38 @@ const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
       return false;
     }
   };
-  const isDocxValid = async (blob: Blob): Promise<boolean> => { /* ... as before ... */ 
+  const isDocxValid = async (blob: Blob): Promise<boolean> => { /* ... as before ... */
     try {
-        const arrayBuffer = await blob.arrayBuffer();
-        await mammoth.extractRawText({ arrayBuffer });
-        return true;
-      } catch (error) {
-        console.error("DOCX validation failed:", error);
-        return false;
-      }
+      const arrayBuffer = await blob.arrayBuffer();
+      await mammoth.extractRawText({ arrayBuffer });
+      return true;
+    } catch (error) {
+      console.error("DOCX validation failed:", error);
+      return false;
+    }
   };
 
-const handleTextIndexChange = (newIndex: number) => {
-  setTextActiveIndex(newIndex);
-};
+  const handleTextIndexChange = (newIndex: number) => {
+    setTextActiveIndex(newIndex);
+  };
 
-const handleTextCountChange = (newCount: number) => {
-  setTextMatchCount(newCount);
-};
+  const handleTextCountChange = (newCount: number) => {
+    setTextMatchCount(newCount);
+  };
 
-useEffect(() => {
-  if (!file?._id) return;
+  useEffect(() => {
+    if (!file?._id) return;
 
-  // Reset state for new file
-  setFileUrl("");
-  setRawText("");
-  setNumPages(0);
-  setPagesRendered(0);
-  setFileError(null);
-  fileContentRef.current = null;
-  setSearchQuery(""); // Clear search on file change
-  clearAllHighlightsAndState(); // Clear highlights and related state
-    
+    // Reset state for new file
+    setFileUrl("");
+    setRawText("");
+    setNumPages(0);
+    setPagesRendered(0);
+    setFileError(null);
+    fileContentRef.current = null;
+    setSearchQuery(""); // Clear search on file change
+    clearAllHighlightsAndState(); // Clear highlights and related state
+
     console.log(`[File Load] Processing new file: ${file.name} (${file.type}), Citations: ${file.citations?.length || 0}`);
 
     (async () => {
@@ -397,68 +400,68 @@ useEffect(() => {
 
         // Process based on type
         if (file.type === "pdf") {
-            const isPdfOk = await isPdfValid(blob);
-            if (!isPdfOk) throw new Error("Invalid or corrupted PDF file");
-            setFileUrl(URL.createObjectURL(blob));
-            const pdfText = await extractPdfText(blob); // Extract text immediately
-            setRawText(pdfText);
+          const isPdfOk = await isPdfValid(blob);
+          if (!isPdfOk) throw new Error("Invalid or corrupted PDF file");
+          setFileUrl(URL.createObjectURL(blob));
+          const pdfText = await extractPdfText(blob); // Extract text immediately
+          setRawText(pdfText);
         } else if (file.type === "docx" || file.type === "doc" || file.type === "odt") {
-            let docText = "";
-             if (file.type === "docx") {
-                const isDocxOk = await isDocxValid(blob);
-                if (!isDocxOk) throw new Error("Invalid or corrupted DOCX file");
-                docText = await extractDocxRawText(blob);
-            } else if (file.type === "odt") {
-                docText = await extractOdtRawText(blob);
-            } else { // .doc
-                docText = "Text extraction not supported for .doc files, attempting conversion.";
-            }
-            setRawText(docText); // Set raw text even if conversion fails
+          let docText = "";
+          if (file.type === "docx") {
+            const isDocxOk = await isDocxValid(blob);
+            if (!isDocxOk) throw new Error("Invalid or corrupted DOCX file");
+            docText = await extractDocxRawText(blob);
+          } else if (file.type === "odt") {
+            docText = await extractOdtRawText(blob);
+          } else { // .doc
+            docText = "Text extraction not supported for .doc files, attempting conversion.";
+          }
+          setRawText(docText); // Set raw text even if conversion fails
 
-            try {
-                const pdfBlob = await convertToPdf(blob, file.type);
-                if (pdfBlob) {
-                    const isConvertedPdfValid = await isPdfValid(pdfBlob);
-                    if (isConvertedPdfValid) {
-                        setFileUrl(URL.createObjectURL(pdfBlob));
-                        // Re-extract text from the *converted* PDF for better accuracy if needed
-                        // const convertedPdfText = await extractPdfText(pdfBlob);
-                        // setRawText(convertedPdfText); // Optional: overwrite initial extraction
-                    } else {
-                        throw new Error("PDF conversion produced an invalid file");
-                    }
-                } else {
-                   throw new Error("PDF conversion failed");
-                }
-            } catch (conversionError) {
-                console.error("PDF conversion error:", conversionError);
-                setFileError("Could not convert document for preview. Text content (if available) is shown.");
-                // Keep fileUrl empty, rely on rawText + TextFileRenderer fallback
+          try {
+            const pdfBlob = await convertToPdf(blob, file.type);
+            if (pdfBlob) {
+              const isConvertedPdfValid = await isPdfValid(pdfBlob);
+              if (isConvertedPdfValid) {
+                setFileUrl(URL.createObjectURL(pdfBlob));
+                // Re-extract text from the *converted* PDF for better accuracy if needed
+                // const convertedPdfText = await extractPdfText(pdfBlob);
+                // setRawText(convertedPdfText); // Optional: overwrite initial extraction
+              } else {
+                throw new Error("PDF conversion produced an invalid file");
+              }
+            } else {
+              throw new Error("PDF conversion failed");
             }
+          } catch (conversionError) {
+            console.error("PDF conversion error:", conversionError);
+            setFileError("Could not convert document for preview. Text content (if available) is shown.");
+            // Keep fileUrl empty, rely on rawText + TextFileRenderer fallback
+          }
         } else if (file.type === "txt") {
-            const text = await blob.text();
-            setRawText(text);
-            // No fileUrl needed for text, will use TextFileRenderer
+          const text = await blob.text();
+          setRawText(text);
+          // No fileUrl needed for text, will use TextFileRenderer
         } else {
-             console.warn(`Preview not fully supported for type: ${file.type}`);
-             try {
-                const text = await blob.text();
-                if (text.length > 0 && !text.slice(0, 100).includes('\0')) {
-                    setRawText(text);
-                    setFileError(`Visual preview not available for ${file.type}. Showing text content.`);
-                } else {
-                     setFileError(`Preview not available for file type: ${file.type}`);
-                }
-             } catch {
-                 setFileError(`Preview not available for file type: ${file.type}`);
-             }
+          console.warn(`Preview not fully supported for type: ${file.type}`);
+          try {
+            const text = await blob.text();
+            if (text.length > 0 && !text.slice(0, 100).includes('\0')) {
+              setRawText(text);
+              setFileError(`Visual preview not available for ${file.type}. Showing text content.`);
+            } else {
+              setFileError(`Preview not available for file type: ${file.type}`);
+            }
+          } catch {
+            setFileError(`Preview not available for file type: ${file.type}`);
+          }
         }
 
       } catch (err) {
         console.error("File processing error:", err);
         setFileUrl("");
         setRawText("");
-        setFileError(`Error processing file: ${err instanceof Error ? err.message : String(err)}`);
+        setFileError(t('error_processing_file') + `: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         setInternalIsLoading(false);
         setLoadingPhase('complete');
@@ -498,17 +501,17 @@ useEffect(() => {
     setFileError(`Error loading PDF: ${error.message}`);
   };
   const onPageRenderSuccess = () => {
-     setPagesRendered((prev) => {
-         const newCount = prev + 1;
-         // Once all pages are rendered, we can consider the document "ready" for highlighting
-         if (newCount === numPages) {
-             console.log("All PDF pages rendered.");
-             // Potentially trigger highlighting logic here if it depends strictly on all pages being ready
-             // Or let the useEffect handle it based on pagesRendered >= numPages condition
-             setInternalIsLoading(false); // Mark loading as false *after* rendering
-         }
-         return newCount;
-     });
+    setPagesRendered((prev) => {
+      const newCount = prev + 1;
+      // Once all pages are rendered, we can consider the document "ready" for highlighting
+      if (newCount === numPages) {
+        console.log("All PDF pages rendered.");
+        // Potentially trigger highlighting logic here if it depends strictly on all pages being ready
+        // Or let the useEffect handle it based on pagesRendered >= numPages condition
+        setInternalIsLoading(false); // Mark loading as false *after* rendering
+      }
+      return newCount;
+    });
   };
 
   // Suppress specific console errors (if needed)
@@ -516,7 +519,7 @@ useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
       if (args[0] && typeof args[0] === 'string' &&
-          (args[0].includes('TextLayer') || args[0].includes('AbortException') || args[0].includes('InvalidPDFException'))) {
+        (args[0].includes('TextLayer') || args[0].includes('AbortException') || args[0].includes('InvalidPDFException'))) {
         return;
       }
       originalConsoleError(...args);
@@ -549,7 +552,7 @@ useEffect(() => {
     }
   }
   async function extractTextFromPage(pdfDoc: any, pageNum: number): Promise<string> { /* ... as before ... */
-     try {
+    try {
       const page = await pdfDoc.getPage(pageNum);
       const content = await page.getTextContent();
       let lastY = null;
@@ -558,10 +561,10 @@ useEffect(() => {
 
       // Sort items primarily by Y, then X for reading order
       const sortedItems = content.items.slice().sort((a: any, b: any) => {
-          if (Math.abs(a.transform[5] - b.transform[5]) > TOLERANCE) {
-              return b.transform[5] - a.transform[5]; // Higher Y first (top of page)
-          }
-          return a.transform[4] - b.transform[4]; // Then lower X first (left to right)
+        if (Math.abs(a.transform[5] - b.transform[5]) > TOLERANCE) {
+          return b.transform[5] - a.transform[5]; // Higher Y first (top of page)
+        }
+        return a.transform[4] - b.transform[4]; // Then lower X first (left to right)
       });
 
       for (const item of sortedItems) {
@@ -572,10 +575,10 @@ useEffect(() => {
         if (lastY !== null && Math.abs(y - lastY) > TOLERANCE) {
           text += " "; // Use space for line breaks within PDF rendering
         } else if (str.trim() !== "" && text.length > 0 && !text.endsWith(" ") && !text.endsWith("\n")) {
-           // Add space between words on the same visual line if needed
-           // Check the last character of the previous item and first of current
-           // This basic check might not perfectly handle hyphenation across spans
-           text += " ";
+          // Add space between words on the same visual line if needed
+          // Check the last character of the previous item and first of current
+          // This basic check might not perfectly handle hyphenation across spans
+          text += " ";
         }
         text += str;
         lastY = y;
@@ -627,322 +630,322 @@ useEffect(() => {
   }
 
   // Function to clear all highlights and reset related state
-function clearAllHighlightsAndState() {
-  // Never touch text file highlighting - it's completely isolated
-  if (file.type === "txt") {
-    return;
+  function clearAllHighlightsAndState() {
+    // Never touch text file highlighting - it's completely isolated
+    if (file.type === "txt") {
+      return;
+    }
+
+    if (containerRef.current) {
+      const markInstance = new Mark(containerRef.current);
+      markInstance.unmark();
+      // Also clear active highlight classes
+      const activeElements = containerRef.current.querySelectorAll('.pdf-highlight.active-citation, .pdf-highlight.active-search');
+      activeElements.forEach((el) => {
+        el.classList.remove('active-citation', 'active-search');
+      });
+    }
+
+    // Clear state only for non-text files
+    setUserSearchMatches([]);
+    setCurrentUserSearchMatchIndex(-1);
+    setCitationToElementsMap(new Map());
+    setCitationList([]);
+    setCurrentCitationIndex(-1);
   }
 
-  if (containerRef.current) {
-    const markInstance = new Mark(containerRef.current);
-    markInstance.unmark();
-    // Also clear active highlight classes
-    const activeElements = containerRef.current.querySelectorAll('.pdf-highlight.active-citation, .pdf-highlight.active-search');
-    activeElements.forEach((el) => {
-      el.classList.remove('active-citation', 'active-search');
+  function groupNearbyElements(elements: HTMLElement[]): HTMLElement[] {
+    if (elements.length === 0) return [];
+
+    // Sort elements by their position (top to bottom, left to right)
+    const sortedElements = elements.slice().sort((a, b) => {
+      const rectA = a.getBoundingClientRect();
+      const rectB = b.getBoundingClientRect();
+
+      const yDiff = rectA.top - rectB.top;
+      if (Math.abs(yDiff) > 2) { // Smaller threshold for same-line detection
+        return yDiff;
+      }
+      return rectA.left - rectB.left; // Same line, sort left to right
     });
-  }
-  
-  // Clear state only for non-text files
-  setUserSearchMatches([]);
-  setCurrentUserSearchMatchIndex(-1);
-  setCitationToElementsMap(new Map());
-  setCitationList([]);
-  setCurrentCitationIndex(-1);
-}
 
-function groupNearbyElements(elements: HTMLElement[]): HTMLElement[] {
-  if (elements.length === 0) return [];
+    const groups: HTMLElement[][] = [];
+    let currentGroup: HTMLElement[] = [sortedElements[0]];
 
-  // Sort elements by their position (top to bottom, left to right)
-  const sortedElements = elements.slice().sort((a, b) => {
-    const rectA = a.getBoundingClientRect();
-    const rectB = b.getBoundingClientRect();
-    
-    const yDiff = rectA.top - rectB.top;
-    if (Math.abs(yDiff) > 2) { // Smaller threshold for same-line detection
-      return yDiff;
-    }
-    return rectA.left - rectB.left; // Same line, sort left to right
-  });
+    for (let i = 1; i < sortedElements.length; i++) {
+      const current = sortedElements[i];
+      const previous = sortedElements[i - 1];
 
-  const groups: HTMLElement[][] = [];
-  let currentGroup: HTMLElement[] = [sortedElements[0]];
+      const currentRect = current.getBoundingClientRect();
+      const previousRect = previous.getBoundingClientRect();
 
-  for (let i = 1; i < sortedElements.length; i++) {
-    const current = sortedElements[i];
-    const previous = sortedElements[i - 1];
-    
-    const currentRect = current.getBoundingClientRect();
-    const previousRect = previous.getBoundingClientRect();
-    
-    // Calculate distances
-    const verticalDistance = Math.abs(currentRect.top - previousRect.top);
-    const horizontalDistance = Math.abs(currentRect.left - previousRect.right);
-    
-    // Different conditions for same line vs. multi-line matches
-    let shouldGroup = false;
-    
-    if (verticalDistance <= 5) {
-      // Same line: elements should be close horizontally
-      shouldGroup = horizontalDistance <= 50;
-    } else if (verticalDistance <= 40) {
-      // Potentially next line: check if it's a line wrap scenario
-      const isNextLine = currentRect.top > previousRect.top; // Current is below previous
-      const isReasonableLineHeight = verticalDistance >= 10 && verticalDistance <= 40; // Reasonable line height
-      
-      // For line wrapping, the new line element should be to the left of or close to the previous element
-      // OR if the previous element was near the end of its line, the new element can start from the left
-      const couldBeLineWrap = isNextLine && isReasonableLineHeight && 
-        (currentRect.left <= previousRect.left + 100); // Allow some flexibility for line wrapping
-      
-      shouldGroup = couldBeLineWrap;
-    }
-    
-    if (shouldGroup) {
-      // Same logical match, add to current group
-      currentGroup.push(current);
-    } else {
-      // Different match, start a new group
-      groups.push(currentGroup);
-      currentGroup = [current];
-    }
-  }
-  
-  // Add the last group
-  groups.push(currentGroup);
+      // Calculate distances
+      const verticalDistance = Math.abs(currentRect.top - previousRect.top);
+      const horizontalDistance = Math.abs(currentRect.left - previousRect.right);
 
-  // Return the first element from each group (representing the match)
-  return groups.map(group => group[0]);
-}
+      // Different conditions for same line vs. multi-line matches
+      let shouldGroup = false;
 
-function applyHighlights() {
-if (!containerRef.current || isLoading) return;
+      if (verticalDistance <= 5) {
+        // Same line: elements should be close horizontally
+        shouldGroup = horizontalDistance <= 50;
+      } else if (verticalDistance <= 40) {
+        // Potentially next line: check if it's a line wrap scenario
+        const isNextLine = currentRect.top > previousRect.top; // Current is below previous
+        const isReasonableLineHeight = verticalDistance >= 10 && verticalDistance <= 40; // Reasonable line height
 
-  console.log(`[Highlighting] Starting - Search: "${searchQuery}", Citations: ${file.citations?.length || 0}`);
-  
-  setIsProcessingHighlights(true);
-  setLoadingPhase("highlighting");
-  const markInstance = new Mark(containerRef.current);
+        // For line wrapping, the new line element should be to the left of or close to the previous element
+        // OR if the previous element was near the end of its line, the new element can start from the left
+        const couldBeLineWrap = isNextLine && isReasonableLineHeight &&
+          (currentRect.left <= previousRect.left + 100); // Allow some flexibility for line wrapping
 
-  // Always start with a clean slate
-  markInstance.unmark({
-    done: () => requestAnimationFrame(async () => {
-      if (!containerRef.current) {
-        setIsProcessingHighlights(false);
-        setLoadingPhase("complete");
-        return;
+        shouldGroup = couldBeLineWrap;
       }
 
-      /* ────────────────────────────────────────────────
-         USER SEARCH BRANCH (IMPROVED - same as citations)
-         ──────────────────────────────────────────────── */
-      if (searchQuery.trim()) {
-        console.log(`[User Search] Processing: "${searchQuery}"`);
-        
-        // WAIT FOR DOM TO BE FULLY READY (same as citations)
-        const isDomReady = await waitForTextLayerReady(3000);
-        if (!isDomReady) {
-          console.warn(`[User Search] DOM not ready, but proceeding anyway`);
-        }
-        
-        try {
-          // Use the improved search function with fresh Mark instance
-          const allElements = await highlightSearchQuery(searchQuery, containerRef.current, EXCLUDE_SELECTORS);
-          
-          if (allElements.length > 0) {
-            // Group elements that are close together (same logical match)
-            const groupedMatches = groupNearbyElements(allElements);
-            
-            console.log(`[User Search] Found ${groupedMatches.length} unique matches (from ${allElements.length} elements)`);
-            setUserSearchMatches(groupedMatches);
-            const first = groupedMatches.length ? 0 : -1;
-            setCurrentUserSearchMatchIndex(first);
+      if (shouldGroup) {
+        // Same logical match, add to current group
+        currentGroup.push(current);
+      } else {
+        // Different match, start a new group
+        groups.push(currentGroup);
+        currentGroup = [current];
+      }
+    }
 
-            // Clear citation mode
-            setCitationToElementsMap(new Map());
-            setCitationList([]);
-            setCurrentCitationIndex(-1);
+    // Add the last group
+    groups.push(currentGroup);
 
-            if (first !== -1) {
-              applyActiveSearchHighlight(first, groupedMatches);
-            } else {
-              setIsProcessingHighlights(false);
-              setLoadingPhase("complete");
-            }
-          } else {
-            console.log(`[User Search] No matches found`);
-            setUserSearchMatches([]);
-            setCurrentUserSearchMatchIndex(-1);
-            setIsProcessingHighlights(false);
-            setLoadingPhase("complete");
-          }
-        } catch (error) {
-          console.error(`[User Search] Error processing search:`, error);
-          setUserSearchMatches([]);
-          setCurrentUserSearchMatchIndex(-1);
+    // Return the first element from each group (representing the match)
+    return groups.map(group => group[0]);
+  }
+
+  function applyHighlights() {
+    if (!containerRef.current || isLoading) return;
+
+    console.log(`[Highlighting] Starting - Search: "${searchQuery}", Citations: ${file.citations?.length || 0}`);
+
+    setIsProcessingHighlights(true);
+    setLoadingPhase("highlighting");
+    const markInstance = new Mark(containerRef.current);
+
+    // Always start with a clean slate
+    markInstance.unmark({
+      done: () => requestAnimationFrame(async () => {
+        if (!containerRef.current) {
           setIsProcessingHighlights(false);
           setLoadingPhase("complete");
+          return;
         }
-        return;
-      }
 
-      /* ────────────────────────────────────────────────
-         CITATION HIGHLIGHTING BRANCH (IMPROVED)
-         ──────────────────────────────────────────────── */
-      if (file.citations && file.citations.length > 0 && citationList.length === 0) {
-        console.log(`[Citations] Processing ${file.citations.length} citations with improved DOM readiness`);
-        
-        // WAIT FOR DOM TO BE FULLY READY
-        const isDomReady = await waitForTextLayerReady(3000);
-        if (!isDomReady) {
-          console.warn(`[Citations] DOM not ready, but proceeding anyway`);
-        }
-        
-        const newMap: Map<string, { fragments: string[]; elements: HTMLElement[] }> = new Map();
-        const unique = Array.from(new Set(file.citations.filter(Boolean)));
-        setTotalCitationsToProcess(unique.length);
-        setHighlightProgress(0);
+        /* ────────────────────────────────────────────────
+           USER SEARCH BRANCH (IMPROVED - same as citations)
+           ──────────────────────────────────────────────── */
+        if (searchQuery.trim()) {
+          console.log(`[User Search] Processing: "${searchQuery}"`);
 
-        const processCitationSequentially = async (index: number) => {
-          if (index >= unique.length) {
-            // All done
-            console.log(`[Citations] Final: ${newMap.size}/${unique.length} citations highlighted`);
-            
-            setCitationToElementsMap(newMap);
-            const list = Array.from(newMap.keys());
-            setCitationList(list);
+          // WAIT FOR DOM TO BE FULLY READY (same as citations)
+          const isDomReady = await waitForTextLayerReady(3000);
+          if (!isDomReady) {
+            console.warn(`[User Search] DOM not ready, but proceeding anyway`);
+          }
 
-            const start = list.length ? 0 : -1;
-            setCurrentCitationIndex(start);
+          try {
+            // Use the improved search function with fresh Mark instance
+            const allElements = await highlightSearchQuery(searchQuery, containerRef.current, EXCLUDE_SELECTORS);
 
-            setUserSearchMatches([]);
-            setCurrentUserSearchMatchIndex(-1);
+            if (allElements.length > 0) {
+              // Group elements that are close together (same logical match)
+              const groupedMatches = groupNearbyElements(allElements);
 
-            if (start !== -1) {
-              applyActiveCitationHighlight(start, list, newMap);
+              console.log(`[User Search] Found ${groupedMatches.length} unique matches (from ${allElements.length} elements)`);
+              setUserSearchMatches(groupedMatches);
+              const first = groupedMatches.length ? 0 : -1;
+              setCurrentUserSearchMatchIndex(first);
+
+              // Clear citation mode
+              setCitationToElementsMap(new Map());
+              setCitationList([]);
+              setCurrentCitationIndex(-1);
+
+              if (first !== -1) {
+                applyActiveSearchHighlight(first, groupedMatches);
+              } else {
+                setIsProcessingHighlights(false);
+                setLoadingPhase("complete");
+              }
             } else {
+              console.log(`[User Search] No matches found`);
+              setUserSearchMatches([]);
+              setCurrentUserSearchMatchIndex(-1);
               setIsProcessingHighlights(false);
               setLoadingPhase("complete");
             }
-            return;
-          }
-
-          const cit = unique[index];
-          console.log(`[Citations] Processing ${index + 1}/${unique.length}: "${cit.substring(0, 50)}..."`);
-          
-          // LONGER delay and DOM check before each citation
-          await new Promise(resolve => setTimeout(resolve, 100)); // Increased from 10ms to 100ms
-          
-          // Double-check container is still available
-          if (!containerRef.current) {
-            console.error(`[Citations] Container lost during processing`);
+          } catch (error) {
+            console.error(`[User Search] Error processing search:`, error);
+            setUserSearchMatches([]);
+            setCurrentUserSearchMatchIndex(-1);
             setIsProcessingHighlights(false);
             setLoadingPhase("complete");
-            return;
           }
-          
-          try {
-            // Use the improved function with fresh Mark instance
-            const els = await highlightCitationFragments(cit, containerRef.current, EXCLUDE_SELECTORS);
-            
-            if (els.length > 0) {
-              newMap.set(cit, {
-                fragments: splitCitationToFragments(cit),
-                elements: els,
-              });
-              console.log(`[Citations] ✅ Success: ${els.length} elements`);
-            } else {
-              console.log(`[Citations] ❌ No matches found - trying debug`);
-              
-              // ENHANCED DEBUGGING
-              if (containerRef.current) {
-                const pdfText = containerRef.current.textContent || '';
-                const firstTenWords = cit.split(' ').slice(0, 10).join(' ');
-                const firstFiveWords = cit.split(' ').slice(0, 5).join(' ');
-                const firstThreeWords = cit.split(' ').slice(0, 3).join(' ');
-                
-                console.log(`[Debug] Citation: "${cit}"`);
-                console.log(`[Debug] First 10 words: "${firstTenWords}"`);
-                console.log(`[Debug] First 5 words: "${firstFiveWords}"`);
-                console.log(`[Debug] First 3 words: "${firstThreeWords}"`);
-                console.log(`[Debug] PDF contains first 10 words:`, pdfText.includes(firstTenWords));
-                console.log(`[Debug] PDF contains first 5 words:`, pdfText.includes(firstFiveWords));
-                console.log(`[Debug] PDF contains first 3 words:`, pdfText.includes(firstThreeWords));
-                
-                // Try searching with shorter fragments
-                if (!pdfText.includes(firstTenWords) && pdfText.includes(firstFiveWords)) {
-                  console.log(`[Debug] 🔄 Retrying with first 5 words only`);
-                  const retryEls = await highlightCitationFragments(firstFiveWords, containerRef.current, EXCLUDE_SELECTORS);
-                  if (retryEls.length > 0) {
-                    newMap.set(cit, {
-                      fragments: splitCitationToFragments(firstFiveWords),
-                      elements: retryEls,
-                    });
-                    console.log(`[Debug] ✅ Retry success with shorter text: ${retryEls.length} elements`);
+          return;
+        }
+
+        /* ────────────────────────────────────────────────
+           CITATION HIGHLIGHTING BRANCH (IMPROVED)
+           ──────────────────────────────────────────────── */
+        if (file.citations && file.citations.length > 0 && citationList.length === 0) {
+          console.log(`[Citations] Processing ${file.citations.length} citations with improved DOM readiness`);
+
+          // WAIT FOR DOM TO BE FULLY READY
+          const isDomReady = await waitForTextLayerReady(3000);
+          if (!isDomReady) {
+            console.warn(`[Citations] DOM not ready, but proceeding anyway`);
+          }
+
+          const newMap: Map<string, { fragments: string[]; elements: HTMLElement[] }> = new Map();
+          const unique = Array.from(new Set(file.citations.filter(Boolean)));
+          setTotalCitationsToProcess(unique.length);
+          setHighlightProgress(0);
+
+          const processCitationSequentially = async (index: number) => {
+            if (index >= unique.length) {
+              // All done
+              console.log(`[Citations] Final: ${newMap.size}/${unique.length} citations highlighted`);
+
+              setCitationToElementsMap(newMap);
+              const list = Array.from(newMap.keys());
+              setCitationList(list);
+
+              const start = list.length ? 0 : -1;
+              setCurrentCitationIndex(start);
+
+              setUserSearchMatches([]);
+              setCurrentUserSearchMatchIndex(-1);
+
+              if (start !== -1) {
+                applyActiveCitationHighlight(start, list, newMap);
+              } else {
+                setIsProcessingHighlights(false);
+                setLoadingPhase("complete");
+              }
+              return;
+            }
+
+            const cit = unique[index];
+            console.log(`[Citations] Processing ${index + 1}/${unique.length}: "${cit.substring(0, 50)}..."`);
+
+            // LONGER delay and DOM check before each citation
+            await new Promise(resolve => setTimeout(resolve, 100)); // Increased from 10ms to 100ms
+
+            // Double-check container is still available
+            if (!containerRef.current) {
+              console.error(`[Citations] Container lost during processing`);
+              setIsProcessingHighlights(false);
+              setLoadingPhase("complete");
+              return;
+            }
+
+            try {
+              // Use the improved function with fresh Mark instance
+              const els = await highlightCitationFragments(cit, containerRef.current, EXCLUDE_SELECTORS);
+
+              if (els.length > 0) {
+                newMap.set(cit, {
+                  fragments: splitCitationToFragments(cit),
+                  elements: els,
+                });
+                console.log(`[Citations] ✅ Success: ${els.length} elements`);
+              } else {
+                console.log(`[Citations] ❌ No matches found - trying debug`);
+
+                // ENHANCED DEBUGGING
+                if (containerRef.current) {
+                  const pdfText = containerRef.current.textContent || '';
+                  const firstTenWords = cit.split(' ').slice(0, 10).join(' ');
+                  const firstFiveWords = cit.split(' ').slice(0, 5).join(' ');
+                  const firstThreeWords = cit.split(' ').slice(0, 3).join(' ');
+
+                  console.log(`[Debug] Citation: "${cit}"`);
+                  console.log(`[Debug] First 10 words: "${firstTenWords}"`);
+                  console.log(`[Debug] First 5 words: "${firstFiveWords}"`);
+                  console.log(`[Debug] First 3 words: "${firstThreeWords}"`);
+                  console.log(`[Debug] PDF contains first 10 words:`, pdfText.includes(firstTenWords));
+                  console.log(`[Debug] PDF contains first 5 words:`, pdfText.includes(firstFiveWords));
+                  console.log(`[Debug] PDF contains first 3 words:`, pdfText.includes(firstThreeWords));
+
+                  // Try searching with shorter fragments
+                  if (!pdfText.includes(firstTenWords) && pdfText.includes(firstFiveWords)) {
+                    console.log(`[Debug] 🔄 Retrying with first 5 words only`);
+                    const retryEls = await highlightCitationFragments(firstFiveWords, containerRef.current, EXCLUDE_SELECTORS);
+                    if (retryEls.length > 0) {
+                      newMap.set(cit, {
+                        fragments: splitCitationToFragments(firstFiveWords),
+                        elements: retryEls,
+                      });
+                      console.log(`[Debug] ✅ Retry success with shorter text: ${retryEls.length} elements`);
+                    }
                   }
                 }
               }
+            } catch (error) {
+              console.error(`[Citations] Error processing citation ${index + 1}:`, error);
             }
-          } catch (error) {
-            console.error(`[Citations] Error processing citation ${index + 1}:`, error);
-          }
-          
-          setHighlightProgress(index + 1);
-          
-          // Process next citation
-          processCitationSequentially(index + 1);
-        };
 
-        // Start processing from first citation
-        processCitationSequentially(0);
-        return; // Important: return here to avoid the fallback below
+            setHighlightProgress(index + 1);
+
+            // Process next citation
+            processCitationSequentially(index + 1);
+          };
+
+          // Start processing from first citation
+          processCitationSequentially(0);
+          return; // Important: return here to avoid the fallback below
+        }
+
+        /* ────────────────────────────────────────────────
+           🚨 FIX: FALLBACK FOR NO SEARCH AND NO CITATIONS
+           ──────────────────────────────────────────────── */
+        // If we reach here, there's nothing to highlight
+        console.log(`[Highlighting] No search query or citations to process - finishing immediately`);
+
+        // Clear any existing state
+        setUserSearchMatches([]);
+        setCurrentUserSearchMatchIndex(-1);
+        setCitationToElementsMap(new Map());
+        setCitationList([]);
+        setCurrentCitationIndex(-1);
+
+        // Mark as complete
+        setIsProcessingHighlights(false);
+        setLoadingPhase("complete");
+
+      }) // <- This closes the requestAnimationFrame callback
+    }); // <- This closes the markInstance.unmark call
+  }
+
+  const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean> => {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      if (!containerRef.current) return false;
+
+      // Check if text layer has meaningful content
+      const textContent = containerRef.current.textContent || '';
+      const textNodes = containerRef.current.querySelectorAll('[class*="textLayer"] span');
+
+      // Make sure we have both text content and rendered text spans
+      if (textContent.trim().length > 100 && textNodes.length > 10) {
+        console.log(`[DOM Ready] Text layer ready: ${textContent.length} chars, ${textNodes.length} spans`);
+        return true;
       }
 
-      /* ────────────────────────────────────────────────
-         🚨 FIX: FALLBACK FOR NO SEARCH AND NO CITATIONS
-         ──────────────────────────────────────────────── */
-      // If we reach here, there's nothing to highlight
-      console.log(`[Highlighting] No search query or citations to process - finishing immediately`);
-      
-      // Clear any existing state
-      setUserSearchMatches([]);
-      setCurrentUserSearchMatchIndex(-1);
-      setCitationToElementsMap(new Map());
-      setCitationList([]);
-      setCurrentCitationIndex(-1);
-      
-      // Mark as complete
-      setIsProcessingHighlights(false);
-      setLoadingPhase("complete");
-      
-    }) // <- This closes the requestAnimationFrame callback
-  }); // <- This closes the markInstance.unmark call
-}
-
-const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean> => {
-  const startTime = Date.now();
-  
-  while (Date.now() - startTime < maxWaitMs) {
-    if (!containerRef.current) return false;
-    
-    // Check if text layer has meaningful content
-    const textContent = containerRef.current.textContent || '';
-    const textNodes = containerRef.current.querySelectorAll('[class*="textLayer"] span');
-    
-    // Make sure we have both text content and rendered text spans
-    if (textContent.trim().length > 100 && textNodes.length > 10) {
-      console.log(`[DOM Ready] Text layer ready: ${textContent.length} chars, ${textNodes.length} spans`);
-      return true;
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
-    
-    // Wait a bit before checking again
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  
-  console.warn(`[DOM Ready] Timeout waiting for text layer (${maxWaitMs}ms)`);
-  return false;
-};
+
+    console.warn(`[DOM Ready] Timeout waiting for text layer (${maxWaitMs}ms)`);
+    return false;
+  };
 
   // Function to highlight *only* the currently selected search result
   function applyActiveSearchHighlight(
@@ -974,86 +977,86 @@ const waitForTextLayerReady = async (maxWaitMs: number = 2000): Promise<boolean>
 
   // Function to highlight *only* the fragments of the currently selected citation
   function applyActiveCitationHighlight(
-      citationIndex: number,
-      currentCitations: string[],
-      currentMap: Map<string, { fragments: string[], elements: HTMLElement[] }>
-    ) {
-      if (!containerRef.current || citationIndex < 0 || citationIndex >= currentCitations.length) {
-           setIsProcessingHighlights(false);
-           setLoadingPhase('complete');
-           return;
-      }
-
-      const citation = currentCitations[citationIndex];
-      const citationData = currentMap.get(citation);
-
-      console.log(`Applying active highlight for citation ${citationIndex + 1}/${currentCitations.length}: "${citation}"`);
-
-      if (!citationData) {
-        setIsProcessingHighlights(false);
-        setLoadingPhase('complete');
-        return;
-      }
-
-      // 1️⃣ Remove previous active-citation classes
-      const prevActives = containerRef.current.querySelectorAll('.pdf-highlight.active-citation');
-      prevActives.forEach((el) => el.classList.remove('active-citation'));
-
-      // 2️⃣ Add active class to cached elements
-      citationData.elements.forEach((el) => {
-        el.classList.add('active-citation');
-      });
-
-      // 3️⃣ Scroll to first element
-      if (citationData.elements.length > 0) {
-        scrollToElement(citationData.elements[0]);
-      }
-
+    citationIndex: number,
+    currentCitations: string[],
+    currentMap: Map<string, { fragments: string[], elements: HTMLElement[] }>
+  ) {
+    if (!containerRef.current || citationIndex < 0 || citationIndex >= currentCitations.length) {
       setIsProcessingHighlights(false);
       setLoadingPhase('complete');
+      return;
+    }
+
+    const citation = currentCitations[citationIndex];
+    const citationData = currentMap.get(citation);
+
+    console.log(`Applying active highlight for citation ${citationIndex + 1}/${currentCitations.length}: "${citation}"`);
+
+    if (!citationData) {
+      setIsProcessingHighlights(false);
+      setLoadingPhase('complete');
+      return;
+    }
+
+    // 1️⃣ Remove previous active-citation classes
+    const prevActives = containerRef.current.querySelectorAll('.pdf-highlight.active-citation');
+    prevActives.forEach((el) => el.classList.remove('active-citation'));
+
+    // 2️⃣ Add active class to cached elements
+    citationData.elements.forEach((el) => {
+      el.classList.add('active-citation');
+    });
+
+    // 3️⃣ Scroll to first element
+    if (citationData.elements.length > 0) {
+      scrollToElement(citationData.elements[0]);
+    }
+
+    setIsProcessingHighlights(false);
+    setLoadingPhase('complete');
   }
 
 
   // Trigger highlighting logic when relevant dependencies change
-useEffect(() => {
-  // COMPLETELY SKIP text files - they are handled in isolation
-  if (file.type === "txt") {
-    return;
-  }
+  useEffect(() => {
+    // COMPLETELY SKIP text files - they are handled in isolation
+    if (file.type === "txt") {
+      return;
+    }
 
-  // Rest of the logic for non-text files only
-  const isPdfReady = (file.type === "pdf" || fileUrl) && pagesRendered >= numPages && numPages > 0;
-  const isConvertedDocReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && fileUrl && pagesRendered >= numPages && numPages > 0;
-  const isConvertedDocTextOnlyReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && !fileUrl && rawText && fileError;
+    // Rest of the logic for non-text files only
+    const isPdfReady = (file.type === "pdf" || fileUrl) && pagesRendered >= numPages && numPages > 0;
+    const isConvertedDocReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && fileUrl && pagesRendered >= numPages && numPages > 0;
+    const isConvertedDocTextOnlyReady = (file.type === "docx" || file.type === "doc" || file.type === "odt") && !fileUrl && rawText && fileError;
 
-  const isContentReady = isPdfReady || isConvertedDocReady || isConvertedDocTextOnlyReady;
+    const isContentReady = isPdfReady || isConvertedDocReady || isConvertedDocTextOnlyReady;
 
-  if (isContentReady && !isLoading && containerRef.current) {
-    console.log("Content ready, triggering IMPROVED applyHighlights. Search:", searchQuery, "Citations available:", !!file.citations?.length);
-    
-    const highlightDelay = 500;
-    const timeoutId = setTimeout(() => {
+    if (isContentReady && !isLoading && containerRef.current) {
+      console.log("Content ready, triggering IMPROVED applyHighlights. Search:", searchQuery, "Citations available:", !!file.citations?.length);
+
+      const highlightDelay = 500;
+      const timeoutId = setTimeout(() => {
         if (containerRef.current) {
-           applyHighlights();
+          applyHighlights();
         }
-    }, highlightDelay);
-    
-    return () => clearTimeout(timeoutId);
-  } else {
-    clearAllHighlightsAndState();
-    console.log("Content not ready or loading, clearing highlights. Ready states:", { isPdfReady, isConvertedDocReady, isConvertedDocTextOnlyReady, isLoading });
-  }
-}, [
-    searchQuery, 
+      }, highlightDelay);
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      clearAllHighlightsAndState();
+      console.log("Content not ready or loading, clearing highlights. Ready states:", { isPdfReady, isConvertedDocReady, isConvertedDocTextOnlyReady, isLoading });
+    }
+  }, [
+    searchQuery,
     file.type,
-    pagesRendered, 
-    numPages,      
-    fileUrl,       
-    rawText,       
-    isLoading,     
-    fileError      
+    pagesRendered,
+    numPages,
+    fileUrl,
+    rawText,
+    isLoading,
+    fileError
     // Note: Removed file object from dependencies to avoid unnecessary re-runs
-]);
+  ]);
 
   // Function to scroll to a specific element
   function scrollToElement(element: HTMLElement | null) {
@@ -1063,9 +1066,9 @@ useEffect(() => {
 
   // --- Navigation ---
 
-function handleNext() {
-  // Handle text files with isolated navigation
-      if (file.type === "txt") {
+  function handleNext() {
+    // Handle text files with isolated navigation
+    if (file.type === "txt") {
       if (textMatchCount > 0) {
         const nextIndex = (textActiveIndex + 1) % textMatchCount;
         setTextActiveIndex(nextIndex);
@@ -1073,28 +1076,28 @@ function handleNext() {
       return;
     }
 
-  // Handle other file types
-  if (searchQuery.trim()) { // Navigate User Search Results
-    if (userSearchMatches.length === 0) return;
-    let nextIndex = currentUserSearchMatchIndex + 1;
-    if (nextIndex >= userSearchMatches.length) {
-      nextIndex = 0; // Wrap around
+    // Handle other file types
+    if (searchQuery.trim()) { // Navigate User Search Results
+      if (userSearchMatches.length === 0) return;
+      let nextIndex = currentUserSearchMatchIndex + 1;
+      if (nextIndex >= userSearchMatches.length) {
+        nextIndex = 0; // Wrap around
+      }
+      setCurrentUserSearchMatchIndex(nextIndex);
+      applyActiveSearchHighlight(nextIndex, userSearchMatches);
+    } else { // Navigate Citations
+      if (citationList.length === 0) return;
+      let nextIndex = currentCitationIndex + 1;
+      if (nextIndex >= citationList.length) {
+        nextIndex = 0; // Wrap around
+      }
+      setCurrentCitationIndex(nextIndex);
+      applyActiveCitationHighlight(nextIndex, citationList, citationToElementsMap);
     }
-    setCurrentUserSearchMatchIndex(nextIndex);
-    applyActiveSearchHighlight(nextIndex, userSearchMatches);
-  } else { // Navigate Citations
-    if (citationList.length === 0) return;
-    let nextIndex = currentCitationIndex + 1;
-    if (nextIndex >= citationList.length) {
-      nextIndex = 0; // Wrap around
-    }
-    setCurrentCitationIndex(nextIndex);
-    applyActiveCitationHighlight(nextIndex, citationList, citationToElementsMap);
   }
-}
 
-function handlePrev() {
-  // Handle text files with isolated navigation
+  function handlePrev() {
+    // Handle text files with isolated navigation
     if (file.type === "txt") {
       if (textMatchCount > 0) {
         const prevIndex = (textActiveIndex - 1 + textMatchCount) % textMatchCount;
@@ -1103,25 +1106,25 @@ function handlePrev() {
       return;
     }
 
-  // Handle other file types
-  if (searchQuery.trim()) { // Navigate User Search Results
-    if (userSearchMatches.length === 0) return;
-    let prevIndex = currentUserSearchMatchIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = userSearchMatches.length - 1; // Wrap around
+    // Handle other file types
+    if (searchQuery.trim()) { // Navigate User Search Results
+      if (userSearchMatches.length === 0) return;
+      let prevIndex = currentUserSearchMatchIndex - 1;
+      if (prevIndex < 0) {
+        prevIndex = userSearchMatches.length - 1; // Wrap around
+      }
+      setCurrentUserSearchMatchIndex(prevIndex);
+      applyActiveSearchHighlight(prevIndex, userSearchMatches);
+    } else { // Navigate Citations
+      if (citationList.length === 0) return;
+      let prevIndex = currentCitationIndex - 1;
+      if (prevIndex < 0) {
+        prevIndex = citationList.length - 1; // Wrap around
+      }
+      setCurrentCitationIndex(prevIndex);
+      applyActiveCitationHighlight(prevIndex, citationList, citationToElementsMap);
     }
-    setCurrentUserSearchMatchIndex(prevIndex);
-    applyActiveSearchHighlight(prevIndex, userSearchMatches);
-  } else { // Navigate Citations
-    if (citationList.length === 0) return;
-    let prevIndex = currentCitationIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = citationList.length - 1; // Wrap around
-    }
-    setCurrentCitationIndex(prevIndex);
-    applyActiveCitationHighlight(prevIndex, citationList, citationToElementsMap);
   }
-}
 
   // --- Download Handler --- (Unchanged)
   const handleDownload = async () => { /* ... as before ... */
@@ -1143,289 +1146,288 @@ function handlePrev() {
     } catch (error) {
       console.error("Download error:", error);
     }
-   };
+  };
 
   // --- Rendering Components ---
 
-const TextFileRenderer = ({ 
-  text, 
-  citations = [], 
-  searchQuery = "", 
-  textMode = "citation", 
-  activeIndex = -1, 
-  onIndexChange,
-  onCountChange 
-}: { 
-  text: string;
-  citations?: string[];
-  searchQuery?: string;
-  textMode?: "search" | "citation";
-  activeIndex?: number;
-  onIndexChange?: (newIndex: number) => void;
-  onCountChange?: (count: number) => void;
-}) => {
-  const textContentRef = useRef<HTMLDivElement>(null);
+  const TextFileRenderer = ({
+    text,
+    citations = [],
+    searchQuery = "",
+    textMode = "citation",
+    activeIndex = -1,
+    onIndexChange,
+    onCountChange
+  }: {
+    text: string;
+    citations?: string[];
+    searchQuery?: string;
+    textMode?: "search" | "citation";
+    activeIndex?: number;
+    onIndexChange?: (newIndex: number) => void;
+    onCountChange?: (count: number) => void;
+  }) => {
+    const textContentRef = useRef<HTMLDivElement>(null);
 
-  // Single useEffect that handles both search and citation highlighting
-  useEffect(() => {
-    const container = textContentRef.current;
-    if (!container) return;
+    // Single useEffect that handles both search and citation highlighting
+    useEffect(() => {
+      const container = textContentRef.current;
+      if (!container) return;
 
-    console.log(`[TextFile] Mode: ${textMode}, Search: "${searchQuery}", Citations: ${citations.length}, ActiveIndex: ${activeIndex}`);
+      console.log(`[TextFile] Mode: ${textMode}, Search: "${searchQuery}", Citations: ${citations.length}, ActiveIndex: ${activeIndex}`);
 
-    const markInstance = new Mark(container);
+      const markInstance = new Mark(container);
 
-    // Always start by clearing all highlights
-    markInstance.unmark({
-      done: () => {
-        // Search mode - highlight search query
-        if (textMode === "search" && searchQuery.trim()) {
-          const regex = buildGapRegex(searchQuery.trim());
-          console.log(`[TextFile] Highlighting search: "${searchQuery}"`);
-          
-          markInstance.markRegExp(regex, {
-            className: "pdf-highlight",
-            exclude: [".citation-overlay"],
-            acrossElements: true,
-            done: (totalMarks: number) => {
-              const allMarks = Array.from(
-                container.querySelectorAll("mark.pdf-highlight")
-              ) as HTMLElement[];
-              
-              const grouped = groupNearbyElements(allMarks);
-              console.log(`[TextFile] Found ${grouped.length} search matches`);
-              
-              // Update count first
-              if (onCountChange) onCountChange(grouped.length);
-              
-              if (grouped.length > 0) {
-                const safeIndex = Math.max(0, Math.min(activeIndex, grouped.length - 1));
-                
-                // Remove any existing active classes
-                allMarks.forEach(el => el.classList.remove('active-search', 'active-citation'));
-                
-                // Add active class to current match
-                grouped[safeIndex].classList.add('active-search');
-                grouped[safeIndex].scrollIntoView({ behavior: "smooth", block: "center" });
-                
-                // Update index if needed
-                if (onIndexChange && safeIndex !== activeIndex) {
-                  onIndexChange(safeIndex);
-                }
-              } else {
-                if (onIndexChange) onIndexChange(-1);
-              }
-            },
-            noMatch: () => {
-              console.log(`[TextFile] No search matches found`);
-              if (onCountChange) onCountChange(0);
-              if (onIndexChange) onIndexChange(-1);
-            }
-          });
-        }
-        // Citation mode - highlight all citations, then make one active
-        else if (textMode === "citation" && citations.length > 0) {
-          console.log(`[TextFile] Citation mode - highlighting all citations, active: ${activeIndex + 1}/${citations.length}`);
-          
-          const uniqueCitations = Array.from(new Set(citations.filter(Boolean)));
-          
-          if (uniqueCitations.length === 0) {
-            if (onCountChange) onCountChange(0);
-            if (onIndexChange) onIndexChange(-1);
-            return;
-          }
-          
-          // Update count immediately
-          if (onCountChange) onCountChange(uniqueCitations.length);
-          
-          // Step 1: Highlight ALL citations with base style
-          let pendingCitations = uniqueCitations.length;
-          const citationElementMap = new Map<number, HTMLElement[]>(); // Map citation index to its elements
-          
-          uniqueCitations.forEach((citation, citationIdx) => {
-            const regex = buildGapRegex(citation.trim());
-            
-            console.log(`[TextFile] Highlighting citation ${citationIdx + 1}/${uniqueCitations.length}: "${citation.substring(0, 30)}..."`);
-            
+      // Always start by clearing all highlights
+      markInstance.unmark({
+        done: () => {
+          // Search mode - highlight search query
+          if (textMode === "search" && searchQuery.trim()) {
+            const regex = buildGapRegex(searchQuery.trim());
+            console.log(`[TextFile] Highlighting search: "${searchQuery}"`);
+
             markInstance.markRegExp(regex, {
               className: "pdf-highlight",
               exclude: [".citation-overlay"],
               acrossElements: true,
-              each: (element: Element) => {
-                // Store which citation this element belongs to
-                const htmlElement = element as HTMLElement;
-                htmlElement.setAttribute('data-citation-index', citationIdx.toString());
-                
-                // Keep track of elements for each citation
-                if (!citationElementMap.has(citationIdx)) {
-                  citationElementMap.set(citationIdx, []);
-                }
-                citationElementMap.get(citationIdx)!.push(htmlElement);
-              },
-              done: () => {
-                pendingCitations--;
-                console.log(`[TextFile] Citation ${citationIdx + 1} highlighted, ${pendingCitations} remaining`);
-                
-                if (pendingCitations === 0) {
-                  // Step 2: All citations highlighted, now make one active
-                  applyActiveCitationHighlight();
+              done: (totalMarks: number) => {
+                const allMarks = Array.from(
+                  container.querySelectorAll("mark.pdf-highlight")
+                ) as HTMLElement[];
+
+                const grouped = groupNearbyElements(allMarks);
+                console.log(`[TextFile] Found ${grouped.length} search matches`);
+
+                // Update count first
+                if (onCountChange) onCountChange(grouped.length);
+
+                if (grouped.length > 0) {
+                  const safeIndex = Math.max(0, Math.min(activeIndex, grouped.length - 1));
+
+                  // Remove any existing active classes
+                  allMarks.forEach(el => el.classList.remove('active-search', 'active-citation'));
+
+                  // Add active class to current match
+                  grouped[safeIndex].classList.add('active-search');
+                  grouped[safeIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+
+                  // Update index if needed
+                  if (onIndexChange && safeIndex !== activeIndex) {
+                    onIndexChange(safeIndex);
+                  }
+                } else {
+                  if (onIndexChange) onIndexChange(-1);
                 }
               },
               noMatch: () => {
-                pendingCitations--;
-                console.log(`[TextFile] Citation ${citationIdx + 1} not found, ${pendingCitations} remaining`);
-                
-                // Try with shorter text for this citation
-                const words = citation.split(' ');
-                if (words.length > 5) {
-                  const shorterText = words.slice(0, 5).join(' ');
-                  const shorterRegex = buildGapRegex(shorterText);
-                  
-                  console.log(`[TextFile] Retrying citation ${citationIdx + 1} with shorter text: "${shorterText}"`);
-                  
-                  markInstance.markRegExp(shorterRegex, {
-                    className: "pdf-highlight",
-                    exclude: [".citation-overlay"],
-                    acrossElements: true,
-                    each: (element: Element) => {
-                      const htmlElement = element as HTMLElement;
-                      htmlElement.setAttribute('data-citation-index', citationIdx.toString());
-                      
-                      if (!citationElementMap.has(citationIdx)) {
-                        citationElementMap.set(citationIdx, []);
-                      }
-                      citationElementMap.get(citationIdx)!.push(htmlElement);
-                    },
-                    done: () => {
-                      console.log(`[TextFile] Retry successful for citation ${citationIdx + 1}`);
-                    },
-                    noMatch: () => {
-                      console.log(`[TextFile] Citation ${citationIdx + 1} still not found after retry`);
-                    }
-                  });
-                }
-                
-                if (pendingCitations === 0) {
-                  applyActiveCitationHighlight();
-                }
+                console.log(`[TextFile] No search matches found`);
+                if (onCountChange) onCountChange(0);
+                if (onIndexChange) onIndexChange(-1);
               }
             });
-          });
-          
-          // Function to apply active highlighting to the current citation
-          function applyActiveCitationHighlight() {
-            console.log(`[TextFile] Applying active highlight to citation ${activeIndex + 1}`);
-            
-            // Add null check for container
-            if (!container) return;
-            
-            // Remove all existing active-citation classes
-            const allHighlights = container.querySelectorAll('.pdf-highlight.active-citation');
-            allHighlights.forEach(el => el.classList.remove('active-citation'));
-            
-            // Determine safe index
-            const safeIndex = Math.max(0, Math.min(activeIndex, uniqueCitations.length - 1));
-            
-            // Add active-citation class to elements belonging to the current citation
-            const activeElements = citationElementMap.get(safeIndex) || [];
-            
-            if (activeElements.length > 0) {
-              activeElements.forEach(el => {
-                el.classList.add('active-citation');
-              });
-              
-              // Scroll to the first element of the active citation
-              activeElements[0].scrollIntoView({ behavior: "smooth", block: "center" });
-              console.log(`[TextFile] ✅ Applied active highlight to citation ${safeIndex + 1} with ${activeElements.length} elements`);
-            } else {
-              console.warn(`[TextFile] No elements found for citation ${safeIndex + 1}`);
+          }
+          // Citation mode - highlight all citations, then make one active
+          else if (textMode === "citation" && citations.length > 0) {
+            console.log(`[TextFile] Citation mode - highlighting all citations, active: ${activeIndex + 1}/${citations.length}`);
+
+            const uniqueCitations = Array.from(new Set(citations.filter(Boolean)));
+
+            if (uniqueCitations.length === 0) {
+              if (onCountChange) onCountChange(0);
+              if (onIndexChange) onIndexChange(-1);
+              return;
             }
-            
-            // Update index if needed
-            if (onIndexChange && safeIndex !== activeIndex) {
-              onIndexChange(safeIndex);
+
+            // Update count immediately
+            if (onCountChange) onCountChange(uniqueCitations.length);
+
+            // Step 1: Highlight ALL citations with base style
+            let pendingCitations = uniqueCitations.length;
+            const citationElementMap = new Map<number, HTMLElement[]>(); // Map citation index to its elements
+
+            uniqueCitations.forEach((citation, citationIdx) => {
+              const regex = buildGapRegex(citation.trim());
+
+              console.log(`[TextFile] Highlighting citation ${citationIdx + 1}/${uniqueCitations.length}: "${citation.substring(0, 30)}..."`);
+
+              markInstance.markRegExp(regex, {
+                className: "pdf-highlight",
+                exclude: [".citation-overlay"],
+                acrossElements: true,
+                each: (element: Element) => {
+                  // Store which citation this element belongs to
+                  const htmlElement = element as HTMLElement;
+                  htmlElement.setAttribute('data-citation-index', citationIdx.toString());
+
+                  // Keep track of elements for each citation
+                  if (!citationElementMap.has(citationIdx)) {
+                    citationElementMap.set(citationIdx, []);
+                  }
+                  citationElementMap.get(citationIdx)!.push(htmlElement);
+                },
+                done: () => {
+                  pendingCitations--;
+                  console.log(`[TextFile] Citation ${citationIdx + 1} highlighted, ${pendingCitations} remaining`);
+
+                  if (pendingCitations === 0) {
+                    // Step 2: All citations highlighted, now make one active
+                    applyActiveCitationHighlight();
+                  }
+                },
+                noMatch: () => {
+                  pendingCitations--;
+                  console.log(`[TextFile] Citation ${citationIdx + 1} not found, ${pendingCitations} remaining`);
+
+                  // Try with shorter text for this citation
+                  const words = citation.split(' ');
+                  if (words.length > 5) {
+                    const shorterText = words.slice(0, 5).join(' ');
+                    const shorterRegex = buildGapRegex(shorterText);
+
+                    console.log(`[TextFile] Retrying citation ${citationIdx + 1} with shorter text: "${shorterText}"`);
+
+                    markInstance.markRegExp(shorterRegex, {
+                      className: "pdf-highlight",
+                      exclude: [".citation-overlay"],
+                      acrossElements: true,
+                      each: (element: Element) => {
+                        const htmlElement = element as HTMLElement;
+                        htmlElement.setAttribute('data-citation-index', citationIdx.toString());
+
+                        if (!citationElementMap.has(citationIdx)) {
+                          citationElementMap.set(citationIdx, []);
+                        }
+                        citationElementMap.get(citationIdx)!.push(htmlElement);
+                      },
+                      done: () => {
+                        console.log(`[TextFile] Retry successful for citation ${citationIdx + 1}`);
+                      },
+                      noMatch: () => {
+                        console.log(`[TextFile] Citation ${citationIdx + 1} still not found after retry`);
+                      }
+                    });
+                  }
+
+                  if (pendingCitations === 0) {
+                    applyActiveCitationHighlight();
+                  }
+                }
+              });
+            });
+
+            // Function to apply active highlighting to the current citation
+            function applyActiveCitationHighlight() {
+              console.log(`[TextFile] Applying active highlight to citation ${activeIndex + 1}`);
+
+              // Add null check for container
+              if (!container) return;
+
+              // Remove all existing active-citation classes
+              const allHighlights = container.querySelectorAll('.pdf-highlight.active-citation');
+              allHighlights.forEach(el => el.classList.remove('active-citation'));
+
+              // Determine safe index
+              const safeIndex = Math.max(0, Math.min(activeIndex, uniqueCitations.length - 1));
+
+              // Add active-citation class to elements belonging to the current citation
+              const activeElements = citationElementMap.get(safeIndex) || [];
+
+              if (activeElements.length > 0) {
+                activeElements.forEach(el => {
+                  el.classList.add('active-citation');
+                });
+
+                // Scroll to the first element of the active citation
+                activeElements[0].scrollIntoView({ behavior: "smooth", block: "center" });
+                console.log(`[TextFile] ✅ Applied active highlight to citation ${safeIndex + 1} with ${activeElements.length} elements`);
+              } else {
+                console.warn(`[TextFile] No elements found for citation ${safeIndex + 1}`);
+              }
+
+              // Update index if needed
+              if (onIndexChange && safeIndex !== activeIndex) {
+                onIndexChange(safeIndex);
+              }
             }
           }
+          // No highlighting mode
+          else {
+            console.log(`[TextFile] No highlighting needed`);
+            if (onCountChange) onCountChange(0);
+            if (onIndexChange) onIndexChange(-1);
+          }
         }
-        // No highlighting mode
-        else {
-          console.log(`[TextFile] No highlighting needed`);
-          if (onCountChange) onCountChange(0);
-          if (onIndexChange) onIndexChange(-1);
-        }
-      }
-    });
-  }, [textMode, searchQuery, citations, activeIndex, text]);
+      });
+    }, [textMode, searchQuery, citations, activeIndex, text]);
 
-  return (
-    <div className="bg-white rounded-lg shadow-md p-6 max-w-[900px] mx-auto">
-      <div ref={textContentRef}>
-        <pre className="whitespace-pre-wrap font-mono text-sm overflow-x-auto max-w-full">
-          {text}
-        </pre>
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6 max-w-[900px] mx-auto">
+        <div ref={textContentRef}>
+          <pre className="whitespace-pre-wrap font-mono text-sm overflow-x-auto max-w-full">
+            {text}
+          </pre>
+        </div>
       </div>
-    </div>
-  );
-};
-  // Fallback error component
-  const ErrorDisplay = ({ message }: { message: string }) => ( /* ... as before ... */
-     <div className="bg-white rounded-lg shadow-md p-8 max-w-[900px] mx-auto text-center">
+    );
+  };
+  const ErrorDisplay = ({ message }: { message: string }) => (
+    <div className="bg-white rounded-lg shadow-md p-8 max-w-[900px] mx-auto text-center">
       <div className="text-red-500 mb-4">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
       </div>
-      <h3 className="text-lg font-medium text-gray-900 mb-2">File Preview Error</h3>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">{t('file_preview_error')}</h3>
       <p className="text-gray-500 mb-4">{message}</p>
-      {!rawText && ( // Only show download if text isn't available either
+      {!rawText && (
         <>
-            <p className="text-sm text-gray-400 mb-6">
-            You can still download the file to view it in its native application.
-            </p>
-            <Button onClick={handleDownload} className="mx-auto">
-                <Download className="h-4 w-4 mr-2" />
-                Download File
-            </Button>
+          <p className="text-sm text-gray-400 mb-6">
+            {t('try_downloading')}
+          </p>
+          <Button onClick={handleDownload} className="mx-auto">
+            <Download className="h-4 w-4 mr-2" />
+            {t('download_file')}
+          </Button>
         </>
       )}
     </div>
   );
 
   // Determine current display mode and counts
-const isTextFile = file.type === "txt";
-const isTextCitationMode = isTextFile && textMode === "citation";
-const isTextSearchMode = isTextFile && textMode === "search";
-const isCitationMode = !isTextFile && !searchQuery.trim() && citationList.length > 0;
-const isSearchMode = !isTextFile && searchQuery.trim();
+  const isTextFile = file.type === "txt";
+  const isTextCitationMode = isTextFile && textMode === "citation";
+  const isTextSearchMode = isTextFile && textMode === "search";
+  const isCitationMode = !isTextFile && !searchQuery.trim() && citationList.length > 0;
+  const isSearchMode = !isTextFile && searchQuery.trim();
 
-const displayCount = isTextFile ? textMatchCount : 
-                    // REMOVE: isTextCitationMode ? textFileCitationList.length :
-                    isCitationMode ? citationList.length : 
-                    userSearchMatches.length;
+  const displayCount = isTextFile ? textMatchCount :
+    // REMOVE: isTextCitationMode ? textFileCitationList.length :
+    isCitationMode ? citationList.length :
+      userSearchMatches.length;
 
-const currentIndex = isTextFile ? textActiveIndex :
-                    // REMOVE: isTextCitationMode ? currentTextFileCitationIndex :
-                    isCitationMode ? currentCitationIndex : 
-                    currentUserSearchMatchIndex;
+  const currentIndex = isTextFile ? textActiveIndex :
+    // REMOVE: isTextCitationMode ? currentTextFileCitationIndex :
+    isCitationMode ? currentCitationIndex :
+      currentUserSearchMatchIndex;
 
-// 7. UPDATE the citation text display logic:
-const currentCitationText = isCitationMode && currentCitationIndex !== -1 ? citationList[currentCitationIndex] :
-                           // For text files in citation mode, get the citation by index
-                           isTextCitationMode && textActiveIndex !== -1 && file.citations ? file.citations[textActiveIndex] :
-                           null;
-  
-  
+  // 7. UPDATE the citation text display logic:
+  const currentCitationText = isCitationMode && currentCitationIndex !== -1 ? citationList[currentCitationIndex] :
+    // For text files in citation mode, get the citation by index
+    isTextCitationMode && textActiveIndex !== -1 && file.citations ? file.citations[textActiveIndex] :
+      null;
+
+
   // Helper function to get loading message based on the current phase
   const getLoadingMessage = () => {
-    if (isLoading) return 'Wczytywanie pliku...';
-    if (loadingPhase === 'rendering') return 'Renderowanie stron...';
+    if (isLoading) return t('loading_file');
+    if (loadingPhase === 'rendering') return t('rendering_pages');
     if (loadingPhase === 'highlighting') {
       if (totalCitationsToProcess > 0) {
-        return `Przetwarzanie zaznaczeń... (${highlightProgress}/${totalCitationsToProcess})`;
+        return t('processing_highlights') + ` (${highlightProgress}/${totalCitationsToProcess})`;
       }
-      return 'Przetwarzanie zaznaczeń...';
+      return t('processing_highlights');
     }
-    return 'Przetwarzanie...';
+    return t('processing');
   };
 
   // Calculate loading progress for the progress bar
@@ -1439,46 +1441,46 @@ const currentCitationText = isCitationMode && currentCitationIndex !== -1 ? cita
     }
     return 0;
   };
-  
+
   // Consider we are still processing citations if we haven't built citationList yet
-const isProcessingCitations =
-  !searchQuery.trim() &&
-  !!file.citations &&
-  file.citations.length > 0 &&
-  // REMOVE: ((file.type === "txt" && textFileCitationList.length === 0) ||
-  (file.type !== "txt" && citationList.length === 0);
+  const isProcessingCitations =
+    !searchQuery.trim() &&
+    !!file.citations &&
+    file.citations.length > 0 &&
+    // REMOVE: ((file.type === "txt" && textFileCitationList.length === 0) ||
+    (file.type !== "txt" && citationList.length === 0);
 
   // Show overlay while any loading OR citation processing is active
-const showLoadingOverlay =
-  isLoading ||
-  isProcessingHighlights ||
-  // REMOVE: isProcessingTextCitations ||
-  isProcessingCitations ||
-  (loadingPhase !== 'complete' && pagesRendered < numPages);
+  const showLoadingOverlay =
+    isLoading ||
+    isProcessingHighlights ||
+    // REMOVE: isProcessingTextCitations ||
+    isProcessingCitations ||
+    (loadingPhase !== 'complete' && pagesRendered < numPages);
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
       <div className="bg-background rounded-lg shadow-lg flex flex-col w-full max-w-6xl min-h-[97vh] max-h-[97vh] overflow-hidden relative">
         {/* Loading Overlay */}
         {showLoadingOverlay && (
-            <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-30">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                <span className="text-sm text-gray-600 mb-2">{getLoadingMessage()}</span>
-                
-                {/* Progress bar for rendering pages or processing citations */}
-                {getLoadingProgress() > 0 && (
-                  <div className="w-48 bg-gray-200 rounded-full h-2 mb-1 overflow-hidden">
-                    <div 
-                      className="bg-primary h-full transition-all duration-300 ease-in-out" 
-                      style={{ width: `${getLoadingProgress()}%` }}
-                    ></div>
-                  </div>
-                )}
-                
-                {/* Detailed status for pages or citations */}
-                {loadingPhase === 'rendering' && numPages > 0 && (
-                  <span className="text-xs text-gray-500">{pagesRendered} z {numPages} stron</span>
-                )}
-            </div>
+          <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-30">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+            <span className="text-sm text-gray-600 mb-2">{getLoadingMessage()}</span>
+            
+            {/* Progress bar for rendering pages or processing citations */}
+            {getLoadingProgress() > 0 && (
+              <div className="w-48 bg-gray-200 rounded-full h-2 mb-1 overflow-hidden">
+                <div 
+                  className="bg-primary h-full transition-all duration-300 ease-in-out" 
+                  style={{ width: `${getLoadingProgress()}%` }}
+                ></div>
+              </div>
+            )}
+            
+            {/* Detailed status for pages or citations */}
+            {loadingPhase === 'rendering' && numPages > 0 && (
+              <span className="text-xs text-gray-500">{pagesRendered} {t('pages_from')} {numPages}</span>
+            )}
+          </div>
         )}
 
         {/* Header */}
@@ -1490,12 +1492,11 @@ const showLoadingOverlay =
             </span>
           </div>
           <div className="flex space-x-2 flex-shrink-0">
-            {/* Search toggle removed - keeping bar visible */}
-             <Button
+            <Button
               variant="ghost"
               size="icon"
               onClick={handleDownload}
-              title="Download File"
+              title={t('download_file')}
             >
               <Download className="h-5 w-5" />
             </Button>
@@ -1503,7 +1504,7 @@ const showLoadingOverlay =
               variant="ghost"
               size="icon"
               onClick={onClose}
-              title="Close Preview (Esc)"
+              title={t('close_preview')}
             >
               <X className="h-5 w-5" />
             </Button>
@@ -1511,151 +1512,143 @@ const showLoadingOverlay =
         </div>
 
         {/* Search bar */}
-        {showSearchBar && (
-          <div className="flex items-center p-2 px-4 md:px-6 border-b z-40 flex-wrap gap-y-2">
-            {/* Input and Status */}
-            <div className="flex flex-grow items-center space-x-2 min-w-[250px] mb-2 md:mb-0">
-              <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
-              <Input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={file.citations && file.citations.length > 0 && !searchQuery ? "Cytaty zaznaczone. Wpisz frazę aby ją wyszukać..." : "Wpisz frazę aby ją wyszukać..."}
-                disabled={isProcessingHighlights}
-                className="flex-1"
-              />
-            </div>
-
-            {/* Citation/Search Info & Navigation */}
-            <div className="flex flex-grow items-center justify-between md:justify-end space-x-2 w-full md:w-auto">
-                {/* Match Count/Index */}
-<span className="text-sm text-gray-600 min-w-[100px] text-center md:text-left" data-text-file-counter>
-  {isProcessingHighlights || isProcessingCitations ? ( // REMOVE: || isProcessingTextCitations
-    <span className="italic">Przetwarzanie...</span>
-  ) : displayCount > 0 ? (
-    `${currentIndex + 1} / ${displayCount} ${(isCitationMode || isTextCitationMode) ? 'cytat' : 'fragment'}${displayCount !== 1 ? 'ów' : ''}`
-  ) : (isSearchMode || isTextSearchMode) ? (
-    "No matches"
-  ) : file.citations && file.citations.length > 0 && 
-      // REMOVE: ((file.type === "txt" && textFileCitationList.length === 0) || 
-      (file.type !== "txt" && citationList.length === 0) && 
-      !isProcessingCitations ? ( // REMOVE: && !isProcessingTextCitations
-    "Brak cytatów w pliku."
-  ) : (
-    "" // Nothing to show if no search/citations
-  )}
-</span>
-
-                 {/* Navigation Buttons */}
-                <div className="flex space-x-1">
-                  <Button
-  variant="outline"
-  size="sm"
-  onClick={handlePrev}
-  disabled={displayCount === 0 || isProcessingHighlights} // REMOVE: || isProcessingTextCitations
-  title="Previous"
->
-  <ChevronLeft className="h-4 w-4" />
-</Button>
-<Button
-  variant="outline"
-  size="sm"
-  onClick={handleNext}
-  disabled={displayCount === 0 || isProcessingHighlights} // REMOVE: || isProcessingTextCitations
-  title="Next"
->
-  <ChevronRight className="h-4 w-4" />
-</Button>
-                </div>
-            </div>
-
-             {/* Current Citation Text Display */}
-{currentCitationText && (
-  <div className="w-full text-xs bg-secondary p-2 mt-2 rounded border border-secondary-border text-primary overflow-hidden text-ellipsis whitespace-nowrap">
-    <span className="font-medium">Citation {(isCitationMode ? currentCitationIndex : /* REMOVE: currentTextFileCitationIndex */ textActiveIndex) + 1}: </span>
-    <span className="italic">{currentCitationText}</span>
-  </div>
-)}
+        <div className="flex items-center p-2 px-4 md:px-6 border-b z-40 flex-wrap gap-y-2">
+          <div className="flex flex-grow items-center space-x-2 min-w-[250px] mb-2 md:mb-0">
+            <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={file.citations && file.citations.length > 0 && !searchQuery 
+                ? t('citations_highlighted') 
+                : t('type_phrase_to_search')
+              }
+              disabled={isProcessingHighlights}
+              className="flex-1"
+            />
           </div>
-        )}
 
-        {/* Main content container */}
+          <div className="flex flex-grow items-center justify-between md:justify-end space-x-2 w-full md:w-auto">
+            <span className="text-sm text-gray-600 min-w-[100px] text-center md:text-left" data-text-file-counter>
+              {isProcessingHighlights || isProcessingCitations ? (
+                <span className="italic">{t('processing')}</span>
+              ) : displayCount > 0 ? (
+                `${currentIndex + 1} / ${displayCount} ${(isCitationMode || isTextCitationMode) ? t('citation') : t('fragment')}${displayCount !== 1 ? (tCommon('language') === 'pl' ? 'ów' : 's') : ''}`
+              ) : (isSearchMode || isTextSearchMode) ? (
+                t('no_matches')
+              ) : file.citations && file.citations.length > 0 && 
+                  (file.type !== "txt" && citationList.length === 0) && 
+                  !isProcessingCitations ? (
+                t('no_citations_in_file')
+              ) : (
+                ""
+              )}
+            </span>
+
+            <div className="flex space-x-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrev}
+                disabled={displayCount === 0 || isProcessingHighlights}
+                title={t('previous')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNext}
+                disabled={displayCount === 0 || isProcessingHighlights}
+                title={t('next')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Current Citation Text Display */}
+          {currentCitationText && (
+            <div className="w-full text-xs bg-secondary p-2 mt-2 rounded border border-secondary-border text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+              <span className="font-medium">{t('citation')} {(isCitationMode ? currentCitationIndex : textActiveIndex) + 1}: </span>
+              <span className="italic">{currentCitationText}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Main content container with updated error handling */}
         <div
           ref={containerRef}
-          // Use custom scrollbar class OR standard scrollbar based on preference
-          className="flex-1 overflow-auto p-4 custom-scrollbar bg-secondary" // Added bg color for contrast
+          className="flex-1 overflow-auto p-4 custom-scrollbar bg-secondary"
           onClick={(e) => e.stopPropagation()}
-          // Style needed for Mark.js acrossElements with position:relative containers like react-pdf pages
           style={{ position: 'relative' }}
         >
-          {fileError && !rawText && !fileUrl ? ( // Complete error, nothing to show
+          {fileError && !rawText && !fileUrl ? (
             <ErrorDisplay message={fileError} />
-          ) : fileUrl && !fileError ? ( // PDF or Converted DOCX/ODT view
-            <div className="relative w-full min-h-full flex justify-center"> {/* Center content */}
-              {/* Added key to Document to force remount on fileUrl change */}
+          ) : fileUrl && !fileError ? (
+            <div className="relative w-full min-h-full flex justify-center">
               <Document
                 key={fileUrl}
                 file={fileUrl}
                 onLoadStart={onDocumentLoadStart}
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={onDocumentLoadError}
-                className="flex flex-col items-center" // Center pages
-                error={<ErrorDisplay message="Could not load PDF document. It may be corrupted or unsupported." />}
-                loading={null} // Handled by outer loading state
-                noData={<ErrorDisplay message="No data found in the PDF file." />}
+                className="flex flex-col items-center"
+                error={<ErrorDisplay message={t('could_not_load_pdf')} />}
+                loading={null}
+                noData={<ErrorDisplay message={t('no_data_in_pdf')} />}
               >
                 {Array.from(new Array(numPages), (_, idx) => (
                   <Page
                     key={`page_${idx + 1}`}
                     pageNumber={idx + 1}
                     width={containerWidth}
-                    renderTextLayer // Essential for highlighting
-                    renderAnnotationLayer={false} // Usually false for previews
+                    renderTextLayer
+                    renderAnnotationLayer={false}
                     onRenderSuccess={onPageRenderSuccess}
-                    className="mb-4 shadow-lg" // Add shadow for page separation
-                     error={<div className="p-4 border border-red-200 bg-red-50 rounded mb-4 text-red-500 text-sm">Error rendering page {idx + 1}</div>}
-                     loading={<Skeleton className="w-full h-[11in]" style={{width: containerWidth, height: containerWidth * 11/8.5}} />} // Approximate page height
+                    className="mb-4 shadow-lg"
+                    error={<div className="p-4 border border-red-200 bg-red-50 rounded mb-4 text-red-500 text-sm">{t('error_rendering_page')} {idx + 1}</div>}
+                    loading={<Skeleton className="w-full h-[11in]" style={{width: containerWidth, height: containerWidth * 11/8.5}} />}
                   />
                 ))}
               </Document>
             </div>
-          ) : rawText ? ( // TXT file or Fallback text view
+          ) : rawText ? (
             <div className="relative">
-              {/* Show warning if it's a fallback due to conversion error */}
               {fileError && (file.type === "docx" || file.type === "doc" || file.type === "odt") && (
-                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 max-w-[900px] mx-auto text-sm">
-                    <p className="text-amber-800 font-medium">
-                      Visual preview failed: {fileError}
-                    </p>
-                    <p className="text-amber-700 mt-1">
-                      Displaying extracted text content instead. Highlighting may be limited.
-                    </p>
-                 </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 max-w-[900px] mx-auto text-sm">
+                  <p className="text-amber-800 font-medium">
+                    {t('visual_preview_failed')}: {fileError}
+                  </p>
+                  <p className="text-amber-700 mt-1">
+                    {t('displaying_text_instead')}
+                  </p>
+                </div>
               )}
-               {/* Render the text content */}
-<TextFileRenderer 
-  text={rawText}
-  citations={file.citations || []}
-  searchQuery={searchQuery}
-  textMode={textMode}
-  activeIndex={textActiveIndex}
-  onIndexChange={handleTextIndexChange}
-  onCountChange={handleTextCountChange} // NEW
-/>         </div>
-          ) : !isLoading && !fileError ? ( // No preview available state (and not loading/error)
+              <TextFileRenderer 
+                text={rawText}
+                citations={file.citations || []}
+                searchQuery={searchQuery}
+                textMode={textMode}
+                activeIndex={textActiveIndex}
+                onIndexChange={handleTextIndexChange}
+                onCountChange={handleTextCountChange}
+              />
+            </div>
+          ) : !isLoading && !fileError ? (
             <div className="flex items-center justify-center h-full">
               <div className="p-6 text-center">
-                <p className="text-lg text-gray-700">No preview available.</p>
+                <p className="text-lg text-gray-700">{t('no_preview_available')}</p>
                 <p className="text-sm text-gray-500 mt-2">
-                  Try downloading the file.
+                  {t('try_downloading')}
                 </p>
-                 <Button onClick={handleDownload} className="mt-4">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download File
+                <Button onClick={handleDownload} className="mt-4">
+                  <Download className="h-4 w-4 mr-2" />
+                  {t('download_file')}
                 </Button>
               </div>
             </div>
-          ) : null /* Loading state handled by overlay */ }
+          ) : null }
         </div>
       </div>
     </div>

@@ -31,6 +31,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { CollapsibleTrigger } from "@radix-ui/react-collapsible"
 import TendersSidebarContent from "../tenders/TendersSidebarContent"
 import { useEffect, useState } from "react"
+import { useTranslations } from 'next-intl'
 
 // Define route-specific sidebar content components
 const ChatSidebarContent = () => (
@@ -64,6 +65,7 @@ interface SidebarComponentProps {
 }
 
 export default function SidebarComponent({ defaultCollapsed }: SidebarComponentProps) {
+  const t = useTranslations('common');
   const { 
     assistants = [],
     currentAssistant, 
@@ -146,7 +148,7 @@ export default function SidebarComponent({ defaultCollapsed }: SidebarComponentP
         >
           <LibraryBig strokeWidth={2.2} className="w-5 h-5 size-5" />
           <span className="truncate font-semibold text-lg ml-2">
-            Projekty
+            {t('projects')}
           </span>
         </SidebarMenuButton>
       )

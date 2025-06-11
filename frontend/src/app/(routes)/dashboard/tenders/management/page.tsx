@@ -81,6 +81,7 @@ export default function BoardManagementHome() {
   const t = useTranslations('dashboard.tenders');
   const tKanban = useTranslations('dashboard.kanban');
   const tCommon = useTranslations('common');
+  const tDashboard = useTranslations('dashboard.projects');
 
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [boardForAssign, setBoardForAssign] = useState<null | typeof boards[0]>(null);
@@ -92,8 +93,8 @@ export default function BoardManagementHome() {
     type: SortType;
     direction: SortDirection;
   }>({
-      type: "date",
-      direction: "desc",
+    type: "date",
+    direction: "desc",
   });
 
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -328,12 +329,12 @@ export default function BoardManagementHome() {
                                   {board.org_id ? (
                                     <>
                                       <X className="w-4 h-4 mr-2" />
-                                      {t('stop_sharing')}
+                                      {tDashboard('stop_sharing')}
                                     </>
                                   ) : (
                                     <>
                                       <Share2 className="w-4 h-4 mr-2" />
-                                      {t('share_in_organization')}
+                                      {tDashboard('share_in_organization')}
                                     </>
                                   )}
                                 </DropdownMenuItem>
@@ -396,14 +397,14 @@ export default function BoardManagementHome() {
                     <CardContent className="p-3 pt-0 relative">
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-foreground">
-                        <span className="hidden sm:inline">{tCommon('created')}</span>{" "}
-                        {formatDate(board.created_at)}
+                          <span className="hidden sm:inline">{tCommon('created')}</span>{" "}
+                          {formatDate(board.created_at)}
                         </p>
                         <Badge
                           variant={board.org_id ? "default" : "secondary"}
                           className="text-xs font-medium"
                         >
-                          {board.org_id ? t('shared') : t('private')}
+                          {board.org_id ? tDashboard('shared') : tDashboard('private')}
                         </Badge>
                       </div>
                     </CardContent>

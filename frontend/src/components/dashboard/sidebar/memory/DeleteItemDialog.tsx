@@ -11,6 +11,7 @@ import {
     AlertDialogTitle,
   } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from 'next-intl';
 
 interface DeleteItemDialogProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export const DeleteItemDialog: React.FC<DeleteItemDialogProps> = ({
   itemName,
   itemType
 }) => {
+  const t = useTranslations('dashboard.memory');
+  const tCommon = useTranslations('common');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleConfirm = async (e?: React.MouseEvent) => {
@@ -46,13 +49,13 @@ export const DeleteItemDialog: React.FC<DeleteItemDialogProps> = ({
     }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Usuń {itemType}</AlertDialogTitle>
+          <AlertDialogTitle>{tCommon('delete')} {itemType}</AlertDialogTitle>
           <AlertDialogDescription>
-            Czy na pewno chcesz usunąć &quot;{itemName}&quot;?
-            Tej operacji nie można cofnąć.
+            {itemType === 'folder' ? t('delete_folder_confirm') : t('delete_file_confirm')}
+            &quot;{itemName}&quot;?
             {itemType === 'folder' && (
               <span className="block text-black mt-4">
-                Uwaga: Spowoduje to również usunięcie wszystkich plików i podfolderów w tym folderze.
+                {t('delete_folder_warning')}
               </span>
             )}
           </AlertDialogDescription>
@@ -62,7 +65,7 @@ export const DeleteItemDialog: React.FC<DeleteItemDialogProps> = ({
             onClick={(e) => e?.stopPropagation()}
             disabled={isLoading}
           >
-            Anuluj
+            {tCommon('cancel')}
           </AlertDialogCancel>
           <Button 
             onClick={handleConfirm}
@@ -72,10 +75,10 @@ export const DeleteItemDialog: React.FC<DeleteItemDialogProps> = ({
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Usuwanie...
+                {tCommon('deleting')}
               </>
             ) : (
-              'Usuń'
+              tCommon('delete')
             )}
           </Button>
         </AlertDialogFooter>

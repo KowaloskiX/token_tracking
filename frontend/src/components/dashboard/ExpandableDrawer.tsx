@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { ChevronLeft, ChevronRight, FolderOpen, GripVertical } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 interface MagicDrawerProps {
   children: React.ReactNode;
@@ -18,6 +19,7 @@ const MagicDrawer = forwardRef<{ setVisibility: (value: boolean) => void }, Magi
   forceExpanded = false,
   onVisibilityChange
 }, ref) => {
+  const t = useTranslations('common');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -126,7 +128,7 @@ const MagicDrawer = forwardRef<{ setVisibility: (value: boolean) => void }, Magi
             <button
               onClick={toggleVisibility}
               className="p-1 hover:bg-secondary transition-colors"
-              aria-label={isVisible ? "Collapse sidebar" : "Expand sidebar"}
+              aria-label={isVisible ? t('collapse_sidebar') : t('expand_sidebar')}
             >
               {isVisible ? (
                 <ChevronRight className="size-6 text-neutral-600" />
@@ -141,7 +143,7 @@ const MagicDrawer = forwardRef<{ setVisibility: (value: boolean) => void }, Magi
               className="p-1 hover:bg-secondary cursor-ew-resize"
               role="button"
               tabIndex={0}
-              aria-label="Resize sidebar"
+              aria-label={t('resize_sidebar')}
             >
               <GripVertical className="size-6 text-neutral-600" />
             </div>
@@ -159,7 +161,7 @@ const MagicDrawer = forwardRef<{ setVisibility: (value: boolean) => void }, Magi
             <button
               onClick={toggleVisibility}
               className="md:hidden fixed right-0 top-1/2 -translate-y-1/2 z-50 p-2 bg-background rounded-l-md border shadow-lg"
-              aria-label="Expand sidebar"
+              aria-label={t('expand_sidebar')}
             >
               <FolderOpen className="size-4 text-neutral-600" />
             </button>
@@ -169,7 +171,7 @@ const MagicDrawer = forwardRef<{ setVisibility: (value: boolean) => void }, Magi
             <button
               onClick={toggleVisibility}
               className="md:hidden fixed top-4 right-4 z-50 p-2 bg-background rounded-full shadow-lg"
-              aria-label="Close sidebar"
+              aria-label={t('close')}
             >
               <ChevronRight className="size-6 text-neutral-600" />
             </button>
