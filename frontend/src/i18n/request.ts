@@ -8,7 +8,7 @@ async function loadMessages(locale: string) {
     'settings',
     'dashboard',
     'auth',
-    'landing'
+    'errors'
   ];
 
   const messages: Record<string, any> = {};

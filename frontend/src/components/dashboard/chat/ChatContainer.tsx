@@ -12,12 +12,17 @@ import FileComponent from "../FileComponent";
 import { SUPPORTED_EXTENSIONS } from "@/app/constants";
 import { checkOrCreateConversation } from "@/utils/conversationActions";
 import TokenLimitDialog from "../popup/TokenLimitPopup";
+import { useTranslations } from 'next-intl';
 
-const EmptyChat = () => (
-  <div className="flex-1 flex items-center text-center justify-center text-neutral-400">
-    Rozpocznij konwersację z AI
-  </div>
-);
+const EmptyChat = () => {
+  const t = useTranslations('dashboard.chat');
+  
+  return (
+    <div className="flex-1 flex items-center text-center justify-center text-neutral-400">
+      {t('start_conversation')}
+    </div>
+  );
+};
 
 const LoadingSpinner = ({ text }: { text: string }) => (
   <div className="flex flex-col items-center justify-center gap-3">
@@ -45,7 +50,7 @@ const GradientBackground = styled.div<{ $height: number }>`
   left: 0;
   width: 100%;
   height: ${props => props.$height + 16}px;
-  background: rgba(245, 239, 228, 0.5); /* #F5EFE4 with 0.5 opacity */
+  background: rgba(245, 239, 228, 0.5);
   backdrop-filter: blur(8px);
   z-index: 5;
   
@@ -65,7 +70,6 @@ const GradientBackground = styled.div<{ $height: number }>`
   );
 `;
 
-// Updated StyledTextarea with Input styling
 const StyledTextarea = styled.textarea`
   flex: 1;
   height: 40px;
@@ -73,14 +77,12 @@ const StyledTextarea = styled.textarea`
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   
-  /* Applied Input component styling */
   border: 1px solid var(--input-border, #e2e8f0);
   background-color: var(--secondary, #f8fafc);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
   color: inherit;
   font-size: 1rem;
   
-  /* Focus styles */
   outline: none;
   &:focus-visible {
     outline: none;
@@ -89,19 +91,16 @@ const StyledTextarea = styled.textarea`
     ring-offset: 2px;
   }
   
-  /* Other styles */
   resize: none;
   overflow-y: auto;
   font-family: inherit;
   line-height: 1.5;
   transition: height 0.1s ease-out;
   
-  /* Placeholder styling */
   &::placeholder {
     color: var(--muted-foreground, #64748b);
   }
   
-  /* Disabled styling */
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
@@ -132,32 +131,33 @@ const ChatContainer = () => {
     const [inputContainerHeight, setInputContainerHeight] = useState(0);
     const [textareaHeight, setTextareaHeight] = useState(40);
 
-        const {
-            messages,
-            isLoading,
-            sendMessage,
-            setMessages,
-            tokenLimitError,
-            setTokenLimitError
-        } = useStreamingChat({
-            assistantId: currentAssistant?._id || '',
-            conversationId: currentConversation?._id || '',
-        });
+    // Translation hooks
+    const t = useTranslations('dashboard.chat');
+    const tCommon = useTranslations('common');
+    const tErrors = useTranslations('errors.general');
 
-    // Updated useEffect to handle textarea resizing
+    const {
+        messages,
+        isLoading,
+        sendMessage,
+        setMessages,
+        tokenLimitError,
+        setTokenLimitError
+    } = useStreamingChat({
+        assistantId: currentAssistant?._id || '',
+        conversationId: currentConversation?._id || '',
+    });
+
     useEffect(() => {
       if (textareaRef.current) {
-        // Reset height to base height first
         textareaRef.current.style.height = '40px';
         
-        // Only expand if there's content
         if (inputValue.trim()) {
           const scrollHeight = textareaRef.current.scrollHeight;
           const newHeight = Math.min(scrollHeight, 120);
           textareaRef.current.style.height = `${newHeight}px`;
           setTextareaHeight(newHeight);
         } else {
-          // When empty, explicitly reset to default height
           textareaRef.current.style.height = '40px';
           setTextareaHeight(40);
         }
@@ -174,6 +174,7 @@ const ChatContainer = () => {
         const files = Array.from(event.target.files || []);
         const supportedFiles = files.filter(file => isFileSupported(file));
         const unsupportedFiles = files.filter(file => !isFileSupported(file));
+        
         if (unsupportedFiles.length > 0) {
             const extensions = Object.keys(SUPPORTED_EXTENSIONS).join(', ');
             setError(`Unsupported file type(s). Supported extensions: ${extensions}`);
@@ -183,7 +184,6 @@ const ChatContainer = () => {
         setSelectedFiles(prevFiles => [...prevFiles, ...supportedFiles]);
     };
 
-    // Height measurement effect
     useEffect(() => {
         const updateHeight = () => {
             if (inputContainerRef.current) {
@@ -221,10 +221,9 @@ const ChatContainer = () => {
         let isActive = true;
 
         const initializeConversation = async () => {
-            // Guard clauses to prevent unnecessary API calls
             if (!currentAssistant?._id || !user?._id) return;
             if (currentConversation && currentConversation.assistant_id === currentAssistant._id) {
-                setConversationLoading(false); // Reset loading state if we're using existing conversation
+                setConversationLoading(false);
                 return;
             }
             
@@ -245,7 +244,7 @@ const ChatContainer = () => {
             } catch (err) {
                 if (isActive) {
                     console.error('Failed to create conversation:', err);
-                    setError('Failed to create conversation. Please try again.');
+                    setError(t('conversation_initialization_failed'));
                 }
             } finally {
                 if (isActive) {
@@ -260,10 +259,8 @@ const ChatContainer = () => {
         return () => {
             isActive = false;
         };
-    }, [currentAssistant?._id, user?._id]);
+    }, [currentAssistant?._id, user?._id, t]);
 
-
-    // Messages sync effect
     useEffect(() => {
         if (currentConversation?.messages) {
             const conversationMessages = [...currentConversation.messages].reverse();
@@ -271,14 +268,12 @@ const ChatContainer = () => {
         }
     }, [currentConversation?.messages, setMessages]);
 
-    // URL update effect
     useEffect(() => {
         if (currentConversation?._id) {
             router.push(`/dashboard/tenders/chat/${currentConversation._id}`, { scroll: false });
         }
     }, [currentConversation?._id, router]);
 
-    // Scroll management effect
     useEffect(() => {
         if (isAtBottom && chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -293,11 +288,9 @@ const ChatContainer = () => {
         fileInputRef.current?.click();
     };
 
-    // Updated handleSendMessage function
     const handleSendMessage = async () => {
         const trimmedMessage = inputValue.trim();
         
-        // Require text message when files are present
         if (!trimmedMessage || !currentAssistant || !currentConversation) {
             return;
         }
@@ -311,7 +304,6 @@ const ChatContainer = () => {
             fileInputRef.current.value = '';
         }
 
-        // Reset textarea height explicitly
         if (textareaRef.current) {
             textareaRef.current.style.height = '40px';
             setTextareaHeight(40);
@@ -327,7 +319,6 @@ const ChatContainer = () => {
     const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            // Require text message
             if (inputValue.trim()) {
                 handleSendMessage();
             }
@@ -344,7 +335,7 @@ const ChatContainer = () => {
     if (!currentAssistant || !user) {
         return (
             <div className="flex-1 h-full w-full flex items-center justify-center">
-                <p className="text-neutral-400">Wybierz projekt aby rozpocząć konwersację</p>
+                <p className="text-neutral-400">{t('select_project_to_start')}</p>
             </div>
         );
     }
@@ -352,7 +343,7 @@ const ChatContainer = () => {
     if (isInitializing) {
         return (
             <div className="flex-1 h-full w-full flex items-center justify-center">
-                <LoadingSpinner text="Inicjalizowanie konwersacji..." />
+                <LoadingSpinner text={t('initializing_conversation')} />
             </div>
         );
     }
@@ -365,7 +356,7 @@ const ChatContainer = () => {
                     variant="outline" 
                     onClick={() => window.location.reload()}
                 >
-                    Spróbuj ponownie
+                    {tCommon('try_again')}
                 </Button>
             </div>
         );
@@ -383,7 +374,7 @@ const ChatContainer = () => {
                     >
                         {conversationLoading ? (
                             <div className="flex-1 flex items-center justify-center">
-                                <LoadingSpinner text="Ładowanie konwersacji..." />
+                                <LoadingSpinner text={t('loading_conversation')} />
                             </div>
                         ) : messages.length === 0 ? (
                             <EmptyChat />
@@ -428,7 +419,7 @@ const ChatContainer = () => {
                             </Button>
                             <StyledTextarea
                                 ref={textareaRef}
-                                placeholder={selectedFiles.length > 0 ? "Napisz wiadomość aby wysłać plik..." : "Napisz wiadomość..."}
+                                placeholder={selectedFiles.length > 0 ? t('type_message_to_send_file') : t('type_message')}
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyPress}

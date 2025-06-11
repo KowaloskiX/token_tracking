@@ -17,10 +17,12 @@ import { DeletePopup } from '../popup/DeletePopup';
 import { checkOrCreateConversation } from "@/utils/conversationActions";
 import { Users } from 'lucide-react';
 import AssignUsersToAssistantModal from '@/components/dashboard/tenders/AssignUsersToAssistantModal';
+import { useTranslations } from 'next-intl';
+
 let memberIds: string[] | undefined;
 
 export async function getMemberIds(): Promise<string[]> {
-  if (memberIds) return memberIds;          // already cached
+  if (memberIds) return memberIds;
 
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No auth token in localStorage');
@@ -36,10 +38,6 @@ export async function getMemberIds(): Promise<string[]> {
   );
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
-  // ── Accept either shape ────────────────────────────────────────────────
-  // A. { members: [ { id } , … ] }
-  // B. [ { id } , … ]
-  //
   type Member = { id: string };
   type Wrapped = { members?: Member[] };
 
@@ -47,9 +45,9 @@ export async function getMemberIds(): Promise<string[]> {
 
   const list: Member[] = Array.isArray(json)
     ? json
-    : json.members ?? [];        // fallback to empty array
+    : json.members ?? [];
 
-  memberIds = list.map((m) => m.id);  // guaranteed string[]
+  memberIds = list.map((m) => m.id);
   return memberIds;
 }
 
@@ -85,16 +83,12 @@ const AssistantGrid = () => {
 
   const { user, setCurrentAssistant, setCurrentConversation } = useDashboard();
   const router = useRouter();
-  // Utility to fetch org members (you can cache this):
-  async function fetchMemberIds(): Promise<string[]> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/organizations/members`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    // assume data.members = [{ id: '...' }, ...]
-    return (data.members ?? []).map((m: any) => m.id);
-  }
+
+  // Translation hooks
+  const t = useTranslations('dashboard.projects');
+  const tCommon = useTranslations('common');
+  const tErrors = useTranslations('errors.general');
+
   useEffect(() => {
     const fetchAssistants = async () => {
       try {
@@ -102,7 +96,7 @@ const AssistantGrid = () => {
         const fetchedAssistants = await getUserAssistants(user._id, user.org_id || '');
         setAssistants(fetchedAssistants);
       } catch (err) {
-        setError('Failed to load assistants');
+        setError(t('failed_to_load'));
         console.error('Error loading assistants:', err);
       } finally {
         setLoading(false);
@@ -110,7 +104,7 @@ const AssistantGrid = () => {
     };
 
     fetchAssistants();
-  }, [user?._id, user?.org_id]);
+  }, [user?._id, user?.org_id, t]);
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -119,7 +113,7 @@ const AssistantGrid = () => {
   }, [editingId]);
 
   const formatDate = (dateString: string | Date | undefined) => {
-    if (!dateString) return 'No date';
+    if (!dateString) return tCommon('no_data');
     
     try {
       return new Date(dateString).toLocaleDateString('pl', {
@@ -127,7 +121,7 @@ const AssistantGrid = () => {
         day: 'numeric'
       });
     } catch (e) {
-      return `Invalid date: ${e}`;
+      return `${tErrors('invalid_input')}: ${e}`;
     }
   };
 
@@ -225,31 +219,28 @@ const AssistantGrid = () => {
     }
   };
 
-const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
-  e.stopPropagation();
-  const memberIds = await getMemberIds();
-  const isShared = Boolean(assistant.org_id);
+  const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const memberIds = await getMemberIds();
+    const isShared = Boolean(assistant.org_id);
 
-  const updateData: Partial<Assistant> = {
-    org_id:    isShared ? undefined : user?.org_id ?? undefined,
-    assigned_users: isShared ? [] : memberIds,
+    const updateData: Partial<Assistant> = {
+      org_id: isShared ? undefined : user?.org_id ?? undefined,
+      assigned_users: isShared ? [] : memberIds,
+    };
+
+    try {
+      await updateAssistant(assistant, updateData);
+
+      setAssistants(prev =>
+        prev.map(a =>
+          a._id === assistant._id ? { ...a, ...updateData } : a
+        )
+      );
+    } catch (err) {
+      console.error('Error toggling share status:', err);
+    }
   };
-
-  try {
-    // pass the _id and the payload
-    await updateAssistant(assistant, updateData);
-
-    // optimistically update local state
-    setAssistants(prev =>
-      prev.map(a =>
-        a._id === assistant._id ? { ...a, ...updateData } : a
-      )
-    );
-  } catch (err) {
-    console.error('Error toggling share status:', err);
-  }
-};
-
 
   if (loading) {
     return (
@@ -272,11 +263,11 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
       <div className="p-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold">Moje projekty</h1>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="p-2 hover:bg-secondary outline-none rounded-md text-sm flex items-center gap-2">
-                  <span className="text-neutral-600">Posortuj</span>
+                  <span className="text-neutral-600">{tCommon('sort')}</span>
                   <Settings2 className="w-4 h-4" />
                 </button>
               </DropdownMenuTrigger>
@@ -286,7 +277,7 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                   onClick={() => handleSort('name')}
                 >
                   <ArrowUpAZ className="w-4 h-4" />
-                  <span className="flex-1">Sortuj po Nazwie</span>
+                  <span className="flex-1">{tCommon('sort_by_name')}</span>
                   {sortConfig.type === 'name' && (
                     <span className="text-xs text-muted-foreground">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -298,7 +289,7 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                   onClick={() => handleSort('date')}
                 >
                   <CalendarRange className="w-4 h-4" />
-                  <span className="flex-1">Sortuj po Dacie</span>
+                  <span className="flex-1">{tCommon('sort_by_date')}</span>
                   {sortConfig.type === 'date' && (
                     <span className="text-xs text-muted-foreground">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -320,7 +311,7 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                   <Plus className="w-4 h-4 text-primary" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  Stwórz nowy
+                  {t('create_new')}
                 </p>
               </div>
             </Card>
@@ -360,12 +351,12 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                             {(assistant.assigned_users?.length ?? 0) > 0 ? (
                               <>
                                 <X className="w-4 h-4 mr-2" />
-                                Przestań udostępniać
+                                {t('stop_sharing')}
                               </>
                             ) : (
                               <>
                                 <Share2 className="w-4 h-4 mr-2" />
-                                Udostępnij w organizacji
+                                {t('share_in_organization')}
                               </>
                             )}
                           </DropdownMenuItem>
@@ -376,14 +367,14 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                           setAssignModalOpen(true);
                         }}>
                           <Users className="w-4 h-4 mr-2" />
-                          Przypisz użytkowników
+                          {t('assign_users')}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600 focus:text-red-600 focus:bg-secondary"
                           onClick={(e) => handleDeleteClick(assistant, e)}
                         >
                           <Trash className="w-4 h-4 mr-2" />
-                          Usuń
+                          {tCommon('delete')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -425,13 +416,13 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                   )}
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-foreground">
-                      <span className="hidden sm:block">Stworzono</span> {formatDate(assistant.created_at)}
+                      <span className="hidden sm:block">{t('created')}</span> {formatDate(assistant.created_at)}
                     </p>
                     <Badge
                       variant={(assistant.assigned_users?.length ?? 0) > 0 ? "default" : "secondary"}
                       className="text-xs font-medium"
                     >
-                      {(assistant.assigned_users?.length ?? 0) > 0 ? "Udostępnione" : "Prywatne"}
+                      {(assistant.assigned_users?.length ?? 0) > 0 ? t('shared') : t('private')}
                     </Badge>
                   </div>
                 </CardContent>
@@ -450,8 +441,8 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
         isOpen={deleteDialog.isOpen}
         onOpenChange={handleOpenChange} 
         onConfirm={handleDeleteConfirm}
-        title="Usuń Projekt"
-        description="Czy na pewno chcesz usunąć ten projekt? To usunie projekt, wszystkie konwersacje i załączniki. Ta akcja nie może zostać cofnięta."
+        title={t('delete_project')}
+        description={t('delete_project_confirm')}
         isLoading={deleteDialog.isLoading}
       />
      {assistantForAssign && (
@@ -463,7 +454,6 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
          if (!o) setAssistantForAssign(null);
        }}
        onAssignmentsChange={(newIds) => {
-         // update the main list
          setAssistants(prev =>
            prev.map(a =>
              a._id === assistantForAssign._id
@@ -471,7 +461,6 @@ const handleShareToggle = async (assistant: Assistant, e: React.MouseEvent) => {
                : a
            )
          );
-         // also patch the “currently editing” object
          setAssistantForAssign(a =>
            a ? { ...a, assigned_users: newIds } : null
          );

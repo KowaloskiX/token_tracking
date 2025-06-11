@@ -10,20 +10,21 @@ import { useDashboard } from "@/context/DashboardContext";
 import { deleteConversation, updateConversationTitle } from '@/utils/conversationActions';
 import { DeletePopup } from "../popup/DeletePopup";
 import { checkOrCreateConversation } from "@/utils/conversationActions";
+import { useTranslations } from 'next-intl';
 
 const data = {
   actions: [
     [
       {
-        label: "Copy Link",
+        label: "copy_link",
         icon: Link,
       },
       {
-        label: "Rename",
+        label: "rename",
         icon: Pencil,
       },
       {
-        label: "Delete",
+        label: "delete",
         icon: Trash2,
       },
     ]
@@ -36,6 +37,10 @@ export default function Header() {
   const [editedTitle, setEditedTitle] = useState(currentConversation?.title || "");
   const inputRef = useRef<HTMLInputElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
+
+  // Translation hooks
+  const t = useTranslations('dashboard.chat');
+  const tCommon = useTranslations('common');
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -103,7 +108,7 @@ export default function Header() {
                 onChange={(e) => setEditedTitle(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="border rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="Enter title..."
+                placeholder={t('rename_conversation')}
               />
               <Button
                 size="sm"
@@ -129,7 +134,6 @@ export default function Header() {
   );
 }
 
-
 function HeaderActions({
   actions,
   onRename,
@@ -154,6 +158,10 @@ function HeaderActions({
     isOpen: boolean;
     isLoading: boolean;
   }>({ isOpen: false, isLoading: false });
+
+  // Translation hooks
+  const t = useTranslations('dashboard.chat');
+  const tCommon = useTranslations('common');
 
   const handleNewConversation = useCallback(async () => {
     try {
@@ -192,12 +200,25 @@ function HeaderActions({
     }
   };
 
+  const getActionLabel = (label: string) => {
+    switch (label) {
+      case 'copy_link':
+        return t('copy_link');
+      case 'rename':
+        return t('rename_conversation');
+      case 'delete':
+        return t('delete_conversation');
+      default:
+        return label;
+    }
+  };
+
   return (
     <div className="flex items-center gap-4 text-sm">
       <SidebarMenuButton     
         className="h-7 w-7"             
         tooltip={{
-          children: "Nowa konwersacja",
+          children: t('new_conversation'),
           hidden: false,
         }}
         onClick={handleNewConversation}
@@ -221,20 +242,20 @@ function HeaderActions({
                 <DropdownMenuItem 
                   key={itemIndex}
                   onClick={() => {
-                    if (item.label === "Copy Link") handleCopyLink();
-                    if (item.label === "Delete") {
+                    if (item.label === "copy_link") handleCopyLink();
+                    if (item.label === "delete") {
                       setDeleteDialog(prev => ({ ...prev, isOpen: true }));
                     }
-                    if (item.label === "Rename") {
+                    if (item.label === "rename") {
                       onRename();
                     }
                   }}
-                  className={item.label === "Delete" ? "text-red-600 focus:text-red-600 focus:bg-red-100 cursor-pointer" : "cursor-pointer"}
-                  disabled={item.label === "Delete" && deleteDialog.isLoading}
+                  className={item.label === "delete" ? "text-red-600 focus:text-red-600 focus:bg-red-100 cursor-pointer" : "cursor-pointer"}
+                  disabled={item.label === "delete" && deleteDialog.isLoading}
                 >
-                  <item.icon className={`mr-2 h-4 w-4 ${item.label === "Delete" ? "text-red-600" : ""}`} />
+                  <item.icon className={`mr-2 h-4 w-4 ${item.label === "delete" ? "text-red-600" : ""}`} />
                   <span>
-                    {item.label === "Delete" && deleteDialog.isLoading ? "Deleting..." : item.label}
+                    {item.label === "delete" && deleteDialog.isLoading ? tCommon('deleting') : getActionLabel(item.label)}
                   </span>
                 </DropdownMenuItem>
               ))}
@@ -252,8 +273,8 @@ function HeaderActions({
           setDeleteDialog(prev => ({ ...prev, isOpen: open }))
         }
         onConfirm={handleDelete}
-        title="Usuń konwersację"
-        description="Czy jesteś pewien? Ta akcja jest nieodwracalna."
+        title={t('delete_conversation')}
+        description={t('delete_conversation_confirm')}
         isLoading={deleteDialog.isLoading}
       />
     </div>

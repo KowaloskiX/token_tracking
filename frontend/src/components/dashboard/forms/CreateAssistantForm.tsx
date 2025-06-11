@@ -11,11 +11,16 @@ import { createAssistant } from '@/utils/assistantActions';
 import { DialogDescription, DialogTitle } from '@radix-ui/react-dialog';
 import { checkOrCreateConversation } from '@/utils/conversationActions';
 import { DEFAULT_PINECONE_CONFIG } from '@/app/constants/tenders';
+import { useTranslations } from 'next-intl';
 
 const CreateAssistantForm = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const { setCurrentAssistant, user, assistants, setAssistants, setCurrentConversation } = useDashboard();
+    
+    // Translation hooks
+    const t = useTranslations('dashboard.projects');
+    const tCommon = useTranslations('common');
   
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
@@ -30,7 +35,7 @@ const CreateAssistantForm = ({ open, onOpenChange }: { open: boolean; onOpenChan
           model: 'gpt-4-turbo',
           system_prompt: "You are a helpful assistant. You never halucinate and only tell things that you are 100% sure.",
           owner_id: user?._id || '',
-          org_id: user?.org_id || '', // <-- Added org_id from user state
+          org_id: user?.org_id || '',
           tools: [{ type: 'file_search' }],
           temperature: 0.6,
           shared_with: [],
@@ -44,17 +49,23 @@ const CreateAssistantForm = ({ open, onOpenChange }: { open: boolean; onOpenChan
         setAssistants([...assistants, newAssistant]);
         setCurrentAssistant(newAssistant);
         onOpenChange(false);
+        
         const newConversation = await checkOrCreateConversation(
           user?._id,
           newAssistant._id
-      );
-      setCurrentConversation(newConversation);
-      router.push(`/dashboard/tenders/chat/${newConversation._id}`);
+        );
+        
+        setCurrentConversation(newConversation);
+        router.push(`/dashboard/tenders/chat/${newConversation._id}`);
+        
+        toast({
+          description: t('project_created'),
+        });
       } catch (error) {
         console.error('Error creating assistant:', error);
         toast({
           variant: "destructive",
-          description: "Failed to create assistant. Please try again.",
+          description: t('failed_to_create'),
         });
       } finally {
         setLoading(false);
@@ -66,61 +77,31 @@ const CreateAssistantForm = ({ open, onOpenChange }: { open: boolean; onOpenChan
       <DialogContent className="sm:max-w-lg">
         <div className="relative">
           <div className="w-full border-b pb-4 space-y-1">
-            <DialogTitle className="text-xl font-medium">Nowy Projekt</DialogTitle>
+            <DialogTitle className="text-xl font-medium">{t('new_project')}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Nowy projekt, gdzie będziesz współpracować z AI.
+              {t('collaborate_with_ai')}
             </DialogDescription>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-6 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Nazwa</Label>
+              <Label htmlFor="name">{tCommon('name')}</Label>
               <Input
                 id="name"
                 name="name"
-                placeholder="Nazwa projektu"
+                placeholder={t('project_name')}
                 className="w-full"
                 required
                 disabled={loading}
               />
             </div>
-
-            {/* <div className="space-y-2">
-              <Label htmlFor="personality">Personality</Label>
-              <Textarea
-                id="personality"
-                name="personality"
-                placeholder="Describe the assistant's personality and what it is supposed to do. This will directly affect how it behaves and performs."
-                className="min-h-[120px] w-full"
-                required
-                disabled={loading}
-              />
-            </div> */}
             
-            {/* <div className="flex flex-row items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label className="text-base">
-                  Knowledge upload
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Upload files/websites to assistant knowledge.
-                </p>
-              </div>
-              <div>
-                <Switch
-                  checked={fileUpload}
-                  onCheckedChange={setFileUpload}
-                  disabled={loading}
-                />
-              </div>
-            </div> */}
-
             <Button 
               type="submit" 
               className="w-full bg-black text-white hover:bg-gray-800"
               disabled={loading}
             >
-              {loading ? "Tworzenie..." : "Stwórz Projekt"}
+              {loading ? t('creating') : t('create_new')}
             </Button>
           </form>
         </div>

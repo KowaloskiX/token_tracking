@@ -4,9 +4,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertCircle, ChevronsUp } from "lucide-react";
 import { createCheckoutSession } from '@/utils/stripe';
 import { Icons } from "@/components/ui/icons";
+import { useTranslations } from 'next-intl';
 
 const TokenLimitDialog = ({setTokenLimitError, tokenLimitError}: any) => {
     const [isLoading, setIsLoading] = useState(false);
+    
+    // Translation hooks
+    const t = useTranslations('errors.token_limit');
+    const tCommon = useTranslations('common');
 
     const formatResetTime = (isoString: string) => {
         const date = new Date(isoString);
@@ -53,17 +58,17 @@ const TokenLimitDialog = ({setTokenLimitError, tokenLimitError}: any) => {
                 <DialogHeader>
                     <div className="flex items-center gap-2">
                         <AlertCircle className="h-5 w-5" />
-                        <DialogTitle>Limit tokenów darmowego planu</DialogTitle>
+                        <DialogTitle>{t('title')}</DialogTitle>
                     </div>
                 </DialogHeader>
                 <div className="flex flex-col gap-4">
                     <div className="space-y-2">
                         <div className="text-base">
-                            Osiągnięto dzienny limit tokenów dla interakcji AI.
+                            {t('description')}
                         </div>
                         <div className="mt-2 space-y-1">
                             <p className="text-sm text-muted-foreground">
-                                Limit wyzeruje się o: {tokenLimitError?.next_reset ? formatResetTime(tokenLimitError.next_reset) : 'Unknown'}
+                                {t('reset_time')} {tokenLimitError?.next_reset ? formatResetTime(tokenLimitError.next_reset) : t('unknown_reset')}
                             </p>
                         </div>
                     </div>
@@ -75,12 +80,12 @@ const TokenLimitDialog = ({setTokenLimitError, tokenLimitError}: any) => {
                     {isLoading ? (
                         <>
                             <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
-                            Ładowanie...
+                            {tCommon('loading')}
                         </>
                     ) : (
                         <>
                             <ChevronsUp className="mr-2 h-4 w-4" />
-                            Ulepsz plan
+                            {t('upgrade_plan')}
                         </>
                     )}
                 </Button>
@@ -89,7 +94,7 @@ const TokenLimitDialog = ({setTokenLimitError, tokenLimitError}: any) => {
                     onClick={() => window.location.href = '/oferta'}
                     disabled={isLoading}
                 >
-                    Sprawdź ofertę
+                    {t('check_pricing')}
                 </Button>
             </DialogContent>
         </Dialog>

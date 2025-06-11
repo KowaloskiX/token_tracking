@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TenderAnalysisCreateForm } from "@/components/dashboard/tenders/forms/TenderAnalysisCreationForm";
 import { AnalysisCriteria, TenderAnalysisResult } from "@/types/tenders";
+import { useTranslations } from 'next-intl';
 
 const Tenders = () => {
     const { analyses, fetchAnalyses, setSelectedAnalysis, isLoading } = useTender();
@@ -19,8 +20,11 @@ const Tenders = () => {
     const { createAnalysis } = useTender();
     const [currentTenderBoardStatus, setCurrentTenderBoardStatus] = useState<string | null>(null);
 
+    // Translation hooks
+    const t = useTranslations('dashboard.tenders');
+    const tCommon = useTranslations('common');
+
     useEffect(() => {
-        // Only fetch if not initialized
         if (!initialized) {
             const initializeAnalyses = async () => {
                 await fetchAnalyses();
@@ -36,7 +40,7 @@ const Tenders = () => {
         search_phrase: string;
         sources: string[];
         criteria: AnalysisCriteria[];
-      }) => {
+    }) => {
         const transformedData = {
             ...values,
             criteria: values.criteria.map(criterion => ({
@@ -49,13 +53,12 @@ const Tenders = () => {
               subcriteria: criterion.subcriteria || [],
               keywords: criterion.keywords || undefined,
             })),
-          };
+        };
       
         await createAnalysis(transformedData);
         setOpenForm(false);
-      };
+    };
     
-
     useEffect(() => {
         if (initialized && !isLoading && analyses.length > 0) {
             const firstAnalysis = analyses[0];
@@ -75,7 +78,7 @@ const Tenders = () => {
     if (!isLoading && analyses.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] w-full">
-                <h2 className="text-xl font-semibold mb-4">Brak wyszukiwarek</h2>
+                <h2 className="text-xl font-semibold mb-4">{t('no_searches')}</h2>
                 {openForm && (
                     <>
                         <div 
@@ -88,7 +91,7 @@ const Tenders = () => {
                             >
                                 <div className="p-6 pb-0">
                                     <h2 className="text-lg font-semibold">
-                                        Stwórz nową wyszukiwarkę przetargów
+                                        {t('create_new_tender_search')}
                                     </h2>
                                 </div>
                                 <TenderAnalysisCreateForm 
@@ -101,17 +104,14 @@ const Tenders = () => {
                     </>
                 )}
                 <Button onClick={() => setOpenForm(true)}>
-                    Stwórz Nową Wyszukiwarkę
+                    {t('create_new_search')}
                 </Button>
             </div>
         );
     }
 
-
-
     return (
         <div>
-
             <div className="flex-1 flex flex-col overflow-hidden">
                 <div className="flex-none">
                     <TenderHeader />

@@ -35,12 +35,14 @@ import { Badge } from "@/components/ui/badge";
 import { useDashboard } from "@/hooks/useDashboard";
 import { AssignUsersToBoardModal } from "@/components/dashboard/tenders/kanban/AssignUsersToBoardModal";
 import { KanbanBoard } from "@/types/kanban";
+import { useTranslations } from 'next-intl';
+
 type SortType = "name" | "date" | null;
 type SortDirection = "asc" | "desc";
 let memberIds: string[] | undefined;
 
 async function getMemberIds(): Promise<string[]> {
-  if (memberIds) return memberIds;          // already cached
+  if (memberIds) return memberIds;
 
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No auth token in localStorage');
@@ -56,10 +58,6 @@ async function getMemberIds(): Promise<string[]> {
   );
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
-  // ── Accept either shape ────────────────────────────────────────────────
-  // A. { members: [ { id } , … ] }
-  // B. [ { id } , … ]
-  //
   type Member = { id: string };
   type Wrapped = { members?: Member[] };
 
@@ -67,9 +65,9 @@ async function getMemberIds(): Promise<string[]> {
 
   const list: Member[] = Array.isArray(json)
     ? json
-    : json.members ?? [];        // fallback to empty array
+    : json.members ?? [];
 
-  memberIds = list.map((m) => m.id);  // guaranteed string[]
+  memberIds = list.map((m) => m.id);
   return memberIds;
 }
 
@@ -78,7 +76,12 @@ export default function BoardManagementHome() {
   const { boards, isLoading, updateBoardAction, deleteBoardAction, fetchAllBoards } =
     useKanban();
   const router = useRouter();
-  // state to control our "assign users" modal
+
+  // Translation hooks
+  const t = useTranslations('dashboard.tenders');
+  const tKanban = useTranslations('dashboard.kanban');
+  const tCommon = useTranslations('common');
+
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [boardForAssign, setBoardForAssign] = useState<null | typeof boards[0]>(null);
   const [showNewBoardDialog, setShowNewBoardDialog] = useState(false);
@@ -162,64 +165,55 @@ export default function BoardManagementHome() {
     router.push(`/dashboard/tenders/management/${boardId}`);
   };
 
- const handleShareToggle = async (board: KanbanBoard, e: React.MouseEvent) => {
-  e.stopPropagation();
+  const handleShareToggle = async (board: KanbanBoard, e: React.MouseEvent) => {
+    e.stopPropagation();
 
-  const memberIds = await getMemberIds();   // ← typo fixed ("member", not "membar")
+    const memberIds = await getMemberIds();
 
-  try {
-    const updateData: Partial<KanbanBoard> = {
-      // If the board is already shared, clear org_id; otherwise set the user's org
-      org_id: board.org_id ? undefined : user?.org_id,
+    try {
+      const updateData: Partial<KanbanBoard> = {
+        org_id: board.org_id ? undefined : user?.org_id,
+        assigned_users: board.org_id ? [] : memberIds,
+      };
 
-      // If un-sharing, give an empty array (or undefined); else pass memberIds
-      assigned_users: board.org_id ? [] : memberIds,
-    };
+      await updateBoardAction(board.id, updateData);
+      fetchAllBoards();
+    } catch (err) {
+      console.error('Error toggling share status:', err);
+    }
+  };
 
-    await updateBoardAction(board.id, updateData);
-    fetchAllBoards();
-  } catch (err) {
-    console.error('Error toggling share status:', err);
-  }
-};
+  const handleAssignClick = async (
+    e: React.MouseEvent<HTMLDivElement, MouseEvent>,
+    board: KanbanBoard
+  ) => {
+    e.stopPropagation();
 
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/boards/${board.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-const handleAssignClick = async (
-  e: React.MouseEvent<HTMLDivElement, MouseEvent>,
-  board: KanbanBoard
-) => {
-  e.stopPropagation();                 // ← keep the click from bubbling
-
-  try {
-    const token = localStorage.getItem("token");
-    const res = await fetch(
-      // ♦️  use the board's id so it works for any board
-      `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/boards/${board.id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status}`);
       }
-    );
 
-    if (!res.ok) {
-      throw new Error(`Request failed: ${res.status}`);
+      const boardDetails = await res.json();
+      setAssignedUsers(boardDetails.assigned_users ?? boardDetails)
+    } catch (err) {
+      console.error("Error fetching assigned users:", err);
     }
 
-    const boardDetails = await res.json();
-    // assuming the API sends   { …, assigned_users: [ … ] }
-    setAssignedUsers(boardDetails.assigned_users ?? boardDetails)
-  } catch (err) {
-    console.error("Error fetching assigned users:", err);
-  }
-
-  // 🔄 keep your existing UI behaviour
-  setBoardForAssign(board);
-  setAssignModalOpen(true);
-  
-};
-
+    setBoardForAssign(board);
+    setAssignModalOpen(true);
+  };
 
   if (isLoading) {
     return (
@@ -235,11 +229,11 @@ const handleAssignClick = async (
         <div className="p-6 w-full align-center">
           <div className="max-w-6xl mx-auto">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-2xl font-bold">Twoje tablice</h1>
+              <h1 className="text-2xl font-bold">{t('your_boards')}</h1>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="p-2 hover:bg-secondary rounded-md text-sm flex items-center gap-2">
-                    <span className="text-neutral-600">Posortuj</span>
+                    <span className="text-neutral-600">{tCommon('sort')}</span>
                     <Settings2 className="w-4 h-4" />
                   </button>
                 </DropdownMenuTrigger>
@@ -249,7 +243,7 @@ const handleAssignClick = async (
                     onClick={() => handleSort("name")}
                   >
                     <ArrowUpAZ className="w-4 h-4" />
-                    <span className="flex-1">Sortuj po nazwie</span>
+                    <span className="flex-1">{tCommon('sort_by_name')}</span>
                     {sortConfig.type === "name" && (
                       <span className="text-xs text-muted-foreground">
                         {sortConfig.direction === "asc" ? "↑" : "↓"}
@@ -261,7 +255,7 @@ const handleAssignClick = async (
                     onClick={() => handleSort("date")}
                   >
                     <CalendarDays className="w-4 h-4" />
-                    <span className="flex-1">Sortuj po dacie</span>
+                    <span className="flex-1">{tCommon('sort_by_date')}</span>
                     {sortConfig.type === "date" && (
                       <span className="text-xs text-muted-foreground">
                         {sortConfig.direction === "asc" ? "↑" : "↓"}
@@ -282,17 +276,13 @@ const handleAssignClick = async (
                     <Plus className="w-4 h-4 text-primary" />
                   </div>
                   <p className="text-sm font-medium text-foreground">
-                    Utwórz nową tablicę
+                    {tKanban('new_board')}
                   </p>
                 </div>
               </Card>
 
-              {/* Existing boards */}
               {sortedBoards.map((board) => {
-                // -----------------------------------------
-                // Visibility: show menu only if owner/admin
-                // -----------------------------------------
-                const isOwner = board.user_id === user?._id; // 🔄  adjust if your schema uses another prop (e.g. board.user_id)
+                const isOwner = board.user_id === user?._id;
                 const isAdmin = user?.role === "admin";
                 const canManage = isOwner || isAdmin;
 
@@ -308,7 +298,6 @@ const handleAssignClick = async (
                           <Proportions className="w-4 h-4 text-primary" />
                         </div>
 
-                        {/* Dropdown menu — visible only to owner or admin */}
                         {canManage && (
                           <DropdownMenu>
                             <DropdownMenuTrigger
@@ -320,7 +309,6 @@ const handleAssignClick = async (
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {/* Assign users */}
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -330,7 +318,7 @@ const handleAssignClick = async (
                                 }}
                               >
                                 <Users className="w-4 h-4 mr-2" />
-                                Przypisz użytkowników
+                                {tKanban('assign_users_to_board')}
                               </DropdownMenuItem>
                               {user?.org_id && (
                                 <DropdownMenuItem
@@ -340,18 +328,17 @@ const handleAssignClick = async (
                                   {board.org_id ? (
                                     <>
                                       <X className="w-4 h-4 mr-2" />
-                                      Przestań udostępniać
+                                      {t('stop_sharing')}
                                     </>
                                   ) : (
                                     <>
                                       <Share2 className="w-4 h-4 mr-2" />
-                                      Udostępnij w organizacji
+                                      {t('share_in_organization')}
                                     </>
                                   )}
                                 </DropdownMenuItem>
                               )}
 
-                              {/* Delete */}
                               <DeleteBoardDialog
                                 boardId={board.id}
                                 boardName={board.name}
@@ -367,7 +354,7 @@ const handleAssignClick = async (
                                   className="text-red-600 focus:text-red-600 focus:bg-secondary"
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
-                                  Usuń
+                                  {tCommon('delete')}
                                 </DropdownMenuItem>
                               </DeleteBoardDialog>
                             </DropdownMenuContent>
@@ -375,7 +362,6 @@ const handleAssignClick = async (
                         )}
                       </div>
 
-                      {/* Board title */}
                       <CardTitle className="text-sm font-semibold truncate relative group">
                         {editingId === board.id ? (
                           <input
@@ -407,18 +393,17 @@ const handleAssignClick = async (
                       </CardTitle>
                     </CardHeader>
 
-                    {/* Card content */}
                     <CardContent className="p-3 pt-0 relative">
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-foreground">
-                        <span className="hidden sm:inline">Utworzono</span>{" "}
+                        <span className="hidden sm:inline">{tCommon('created')}</span>{" "}
                         {formatDate(board.created_at)}
                         </p>
                         <Badge
                           variant={board.org_id ? "default" : "secondary"}
                           className="text-xs font-medium"
                         >
-                          {board.org_id ? "Udostępnione" : "Prywatne"}
+                          {board.org_id ? t('shared') : t('private')}
                         </Badge>
                       </div>
                     </CardContent>
@@ -428,7 +413,6 @@ const handleAssignClick = async (
             </div>
           </div>
 
-          {/* Dialogs & modals */}
           <NewBoardDialog
             open={showNewBoardDialog}
             onOpenChange={(open) => {

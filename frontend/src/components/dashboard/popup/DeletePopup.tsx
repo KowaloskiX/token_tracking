@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from 'next-intl';
 
 interface DeletePopupProps {
   isOpen: boolean;
@@ -27,12 +28,16 @@ export function DeletePopup({
   isOpen,
   onOpenChange,
   onConfirm,
-  title = "Usuń konwersację",
-  description = "Are you sure you want to delete this conversation? This action cannot be undone.",
+  title,
+  description,
   isLoading: externalLoading = false
 }: DeletePopupProps) {
   const [internalLoading, setInternalLoading] = useState(false);
   const isLoading = internalLoading || externalLoading;
+
+  // Translation hooks
+  const t = useTranslations('dashboard.chat');
+  const tCommon = useTranslations('common');
 
   const handleConfirm = async (e: React.MouseEvent) => {
     try {
@@ -43,6 +48,10 @@ export function DeletePopup({
     }
   };
 
+  // Use provided title/description or fallback to translations
+  const dialogTitle = title || t('delete_conversation');
+  const dialogDescription = description || t('delete_conversation_confirm');
+
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => {
       if (!isLoading) {
@@ -51,9 +60,9 @@ export function DeletePopup({
     }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
           <AlertDialogDescription>
-            {description}
+            {dialogDescription}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -61,7 +70,7 @@ export function DeletePopup({
             onClick={(e) => e.stopPropagation()}
             disabled={isLoading}
           >
-            Anuluj
+            {tCommon('cancel')}
           </AlertDialogCancel>
           <Button 
             onClick={handleConfirm}
@@ -71,10 +80,10 @@ export function DeletePopup({
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Usuwanie...
+                {tCommon('deleting')}
               </>
             ) : (
-              'Usuń'
+              tCommon('delete')
             )}
           </Button>
         </AlertDialogFooter>
