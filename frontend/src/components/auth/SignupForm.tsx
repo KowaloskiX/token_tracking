@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast"
 import { useDashboard } from "@/context/DashboardContext"
 import { createCheckoutSession } from '@/utils/stripe'
 import { initializeGoogleAuth, handleGoogleSignIn, renderGoogleButton } from "@/utils/googleAuth"
+import { useAuthTranslations } from "@/hooks/useTranslations"
 
 type SignupFormProps = React.HTMLAttributes<HTMLDivElement>
 
@@ -41,6 +42,7 @@ const fadeInUp = {
 }
 
 export function SignupForm({ className, ...props }: SignupFormProps) {
+  const t = useAuthTranslations()
   const [isLoading, setIsLoading] = React.useState<boolean>(false)
   const [isRedirecting, setIsRedirecting] = React.useState<boolean>(false)
   const [step, setStep] = React.useState<number>(1)
@@ -64,23 +66,23 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
   const router = useRouter();
 
   const validateEmail = (email: string): string => {
-    if (!email) return "Email jest wymagany"
+    if (!email) return t('register.validation.email_required')
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) return "Proszę podać prawidłowy adres email"
+    if (!emailRegex.test(email)) return t('register.validation.email_invalid')
     return ""
   }
 
   const validateName = (name: string): string => {
-    if (!name) return "Imię jest wymagane"
-    if (name.length < 2) return "Imię musi mieć co najmniej 2 znaki"
+    if (!name) return t('register.validation.name_required')
+    if (name.length < 2) return t('register.validation.name_min_length')
     return ""
   }
 
   const validatePassword = (password: string): string => {
-    if (!password) return "Hasło jest wymagane"
-    if (password.length < 8) return "Hasło musi mieć co najmniej 8 znaków"
-    if (!/(?=.*[A-Z])/.test(password)) return "Hasło musi zawierać co najmniej jedną wielką literę"
-    if (!/(?=.*[0-9])/.test(password)) return "Hasło musi zawierać co najmniej jedną cyfrę"
+    if (!password) return t('register.validation.password_required')
+    if (password.length < 8) return t('register.validation.password_min_length')
+    if (!/(?=.*[A-Z])/.test(password)) return t('register.validation.password_uppercase')
+    if (!/(?=.*[0-9])/.test(password)) return t('register.validation.password_number')
     return ""
   }
 
@@ -136,8 +138,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         }
 
         toast({
-          title: "Zalogowano pomyślnie!",
-          description: "Zostałeś automatycznie zalogowany.",
+          title: t('register.account_created'),
+          description: t('register.account_created_desc'),
           variant: "default",
         });
         setTimeout(() => {
@@ -149,8 +151,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         setIsLoading(false);
         localStorage.removeItem('google_auth_in_progress')
         toast({
-          title: "Błąd logowania",
-          description: error instanceof Error ? error.message : "Wystąpił błąd podczas logowania przez Google",
+          title: t('login.login_error'),
+          description: error instanceof Error ? error.message : t('login.login_error'),
           variant: "destructive",
         });
       }
@@ -209,7 +211,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         localStorage.removeItem('google_auth_in_progress')
       }
     };
-  }, [router, setUser]);
+  }, [router, setUser, t]);
 
   // Show loading state if redirecting
   if (isRedirecting) {
@@ -218,7 +220,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         <div className="flex flex-col items-center gap-2">
           <Icons.spinner className="h-8 w-8 animate-spin" />
           <p className="text-sm text-muted-foreground">
-            Przekierowywanie...
+            {t('register.redirecting')}
           </p>
         </div>
       </div>
@@ -270,8 +272,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
       setUser(result.user);
       
       toast({
-        title: "Konto utworzone pomyślnie!",
-        description: "Zostałeś automatycznie zalogowany.",
+        title: t('register.account_created'),
+        description: t('register.account_created_desc'),
         variant: "default",
       });
       
@@ -301,8 +303,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     } catch (error) {
       console.error('Registration error:', error);
       toast({
-        title: "Błąd rejestracji",
-        description: error instanceof Error ? error.message : "Wystąpił nieoczekiwany błąd",
+        title: t('register.registration_error'),
+        description: error instanceof Error ? error.message : t('register.registration_error'),
         variant: "destructive",
       });
     } finally {
@@ -340,12 +342,12 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
               className="grid gap-1"
             >
               <Label className="sr-only" htmlFor="email">
-                Email
+                {t('register.email')}
               </Label>
               <Input
                 id="email"
                 name="email"
-                placeholder="twoj@email.pl"
+                placeholder={t('register.your_email')}
                 type="email"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -374,12 +376,12 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
               className="grid gap-1"
             >
               <Label className="sr-only" htmlFor="name">
-                Imię
+                {t('register.name')}
               </Label>
               <Input
                 id="name"
                 name="name"
-                placeholder="Twoje imię"
+                placeholder={t('register.your_name')}
                 type="text"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -407,12 +409,12 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
               className="grid gap-1"
             >
               <Label className="sr-only" htmlFor="password">
-                Hasło
+                {t('register.password')}
               </Label>
               <Input
                 id="password"
                 name="password"
-                placeholder="Utwórz hasło"
+                placeholder={t('register.create_password')}
                 type="password"
                 autoCapitalize="none"
                 autoComplete="new-password"
@@ -437,10 +439,10 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     }
 
   const getButtonText = () => {
-    if (isLoading) return "Tworzenie konta..."
-    if (step === 1) return "Kontynuuj"
-    if (step === 2) return "Kontynuuj"
-    return "Utwórz konto"
+    if (isLoading) return t('register.creating_account')
+    if (step === 1) return t('register.continue')
+    if (step === 2) return t('register.continue')
+    return t('register.submit')
   }
 
   return (
@@ -475,7 +477,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         </div>
         <div className="relative flex justify-center text-xs uppercase">
           <span className="bg-background px-2 text-muted-foreground">
-            Lub
+            {t('register.or')}
           </span>
         </div>
       </motion.div>

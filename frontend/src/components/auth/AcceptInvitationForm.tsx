@@ -13,12 +13,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { useAuthTranslations } from "@/hooks/useTranslations";
 
 interface AcceptInvitationFormProps {
   token: string; // Invitation token passed from the page component
 }
 
 export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
+  const t = useAuthTranslations();
+  
   // Form state management
   const [name, setName] = useState(""); // Add state for name
   const [email, setEmail] = useState("");
@@ -37,13 +40,13 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
         setEmail(invitation.email);
         setIsFetching(false);
       } catch (err: any) {
-        setError(err.message || "Nie udało się pobrać szczegółów zaproszenia");
+        setError(err.message || t('accept_invitation.fetch_error'));
         setIsFetching(false);
       }
     }
 
     fetchInvitationDetails();
-  }, [token]);
+  }, [token, t]);
 
   /**
    * Handles form submission
@@ -70,7 +73,7 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
       }, 2000);
     } catch (err: any) {
       // Handle error cases
-      setError(err.message || "Wystąpił błąd podczas akceptacji zaproszenia.");
+      setError(err.message || t('accept_invitation.error_desc'));
     } finally {
       setIsLoading(false);
     }
@@ -80,15 +83,15 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
   if (success) {
     return (
       <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative" role="alert">
-        <p className="font-medium">Zaproszenie zaakceptowane!</p>
-        <p className="text-sm">Za chwilę zostaniesz przekierowany do strony głównej.</p>
+        <p className="font-medium">{t('accept_invitation.success')}</p>
+        <p className="text-sm">{t('accept_invitation.success_desc')}</p>
       </div>
     );
   }
 
   // Loading state UI - shown while fetching invitation details
   if (isFetching) {
-    return <div className="text-center py-4">Ładowanie szczegółów zaproszenia...</div>;
+    return <div className="text-center py-4">{t('accept_invitation.loading_details')}</div>;
   }
 
   // Main form UI
@@ -97,7 +100,7 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
       {/* Error alert - shown only when an error occurs */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <p className="font-medium">Błąd</p>
+          <p className="font-medium">{t('accept_invitation.error')}</p>
           <p className="text-sm">{error}</p>
         </div>
       )}
@@ -105,14 +108,14 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
       {/* Name input field - add this before the email field */}
       <div className="space-y-2">
         <Label htmlFor="name" className="text-sm font-medium">
-          Twoje imię i nazwisko
+          {t('accept_invitation.name')}
         </Label>
         <Input
           id="name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Jan Kowalski"
+          placeholder={t('accept_invitation.name_placeholder')}
           required
           className="w-full h-10 px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
         />
@@ -121,7 +124,7 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
       {/* Email input field */}
       <div className="space-y-2">
         <Label htmlFor="email" className="text-sm font-medium">
-          Email
+          {t('accept_invitation.email')}
         </Label>
         <Input
           id="email"
@@ -133,27 +136,27 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
         />
         {/* Helper text for email field */}
         <p className="text-xs text-muted-foreground">
-          To jest adres email, na który zostało wysłane zaproszenie.
+          {t('accept_invitation.email_helper')}
         </p>
       </div>
       
       {/* Password input field */}
       <div className="space-y-2">
         <Label htmlFor="password" className="text-sm font-medium">
-          Hasło
+          {t('accept_invitation.password')}
         </Label>
         <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Minimum 8 znaków"
+          placeholder={t('accept_invitation.password_placeholder')}
           required
           className="w-full h-10 px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
         />
         {/* Helper text for password requirements */}
         <p className="text-xs text-muted-foreground">
-          Hasło powinno zawierać minimum 8 znaków.
+          {t('accept_invitation.password_helper')}
         </p>
       </div>
       
@@ -163,7 +166,7 @@ export function AcceptInvitationForm({ token }: AcceptInvitationFormProps) {
         disabled={isLoading}
         className="w-full h-10 bg-primary hover:bg-primary/90 text-white rounded-md transition-colors"
       >
-        {isLoading ? "Przetwarzanie..." : "Akceptuj zaproszenie"}
+        {isLoading ? t('accept_invitation.processing') : t('accept_invitation.submit')}
       </Button>
     </form>
   );

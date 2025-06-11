@@ -16,9 +16,11 @@ import { loginUser } from "@/utils/userActions"
 import { initializeGoogleAuth, handleGoogleSignIn, renderGoogleButton } from "@/utils/googleAuth"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
+import { useAuthTranslations } from "@/hooks/useTranslations"
 
 export default function LoginForm() {
   const { setUser } = useDashboard()
+  const t = useAuthTranslations()
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [formData, setFormData] = useState({
@@ -50,8 +52,8 @@ export default function LoginForm() {
         setUser(user);
 
         toast({
-          title: "Zalogowano pomyślnie!",
-          description: "Zostałeś automatycznie zalogowany.",
+          title: t('login.login_success'),
+          description: t('login.login_success_desc'),
           variant: "default",
         });
 
@@ -63,8 +65,8 @@ export default function LoginForm() {
         setIsLoading(false);
         localStorage.removeItem('google_auth_in_progress')
         toast({
-          title: "Błąd logowania",
-          description: error instanceof Error ? error.message : "Wystąpił błąd podczas logowania przez Google",
+          title: t('login.login_error'),
+          description: error instanceof Error ? error.message : t('login.login_error'),
           variant: "destructive",
         });
       }
@@ -123,7 +125,7 @@ export default function LoginForm() {
         localStorage.removeItem('google_auth_in_progress')
       }
     };
-  }, [router, setUser]);
+  }, [router, setUser, t]);
 
   if (isRedirecting) {
     return (
@@ -131,7 +133,7 @@ export default function LoginForm() {
         <div className="flex flex-col items-center gap-2">
           <Icons.spinner className="h-8 w-8 animate-spin" />
           <p className="text-sm text-muted-foreground">
-            Przekierowywanie...
+            {t('login.redirecting')}
           </p>
         </div>
       </div>
@@ -156,8 +158,8 @@ export default function LoginForm() {
       setUser(user)
       window.location.href = '/dashboard/tenders/chat';
       toast({
-        title: "Zalogowano pomyślnie!",
-        description: "Zostałeś automatycznie zalogowany.",
+        title: t('login.login_success'),
+        description: t('login.login_success_desc'),
         variant: "default",
       });
     } catch (error) {
@@ -166,14 +168,14 @@ export default function LoginForm() {
       // Check for inactive account (status code 403)
       if (error instanceof Error && error.message.includes('403')) {
         toast({
-          title: "Konto dezaktywowane",
-          description: "Twoje konto zostało dezaktywowane. Skontaktuj się z obsługą klienta, aby uzyskać pomoc.",
+          title: t('login.account_deactivated'),
+          description: t('login.account_deactivated_desc'),
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Błąd logowania",
-          description: error instanceof Error ? error.message : "Wystąpił błąd podczas logowania",
+          title: t('login.login_error'),
+          description: error instanceof Error ? error.message : t('login.login_error'),
           variant: "destructive",
         });
       }
@@ -186,19 +188,19 @@ export default function LoginForm() {
     <div className="fixed top-0 left-0 z-[999] bg-black bg-opacity-50 backdrop-blur-sm flex h-screen w-full items-center justify-center px-4">
       <Card className="mx-auto max-w-md px-4 py-2">
         <CardHeader>
-          <CardTitle className="text-2xl">Zaloguj się</CardTitle>
+          <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
           <CardDescription>
-            Podaj email i hasło lub zaloguj się z Google.
+            {t('login.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-2">
-              <label className="text-sm">Email</label>
+              <label className="text-sm">{t('login.email')}</label>
               <Input
                 id="email"
                 type="email"
-                placeholder="twoj@email.pl"
+                placeholder={t('register.your_email')}
                 required
                 value={formData.email}
                 onChange={handleChange}
@@ -208,12 +210,12 @@ export default function LoginForm() {
             </div>
             <div className="grid gap-2">
               <div className="flex items-center">
-                <label className="text-sm">Hasło</label>
+                <label className="text-sm">{t('login.password')}</label>
                 <Link
                   href="/forgot-password"
                   className="ml-auto inline-block text-xs underline"
                 >
-                  Zapomniałeś hasła?
+                  {t('login.forgot_password')}
                 </Link>
               </div>
               <Input
@@ -235,10 +237,10 @@ export default function LoginForm() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logowanie...
+                  {t('login.logging_in')}
                 </>
               ) : (
-                'Zaloguj się'
+                t('login.submit')
               )}
             </Button>
             <div className="relative">
@@ -247,7 +249,7 @@ export default function LoginForm() {
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">
-                  Lub
+                  {t('login.or')}
                 </span>
               </div>
             </div>
@@ -263,9 +265,9 @@ export default function LoginForm() {
               />
             </div>
             <div className="mt-4 text-center text-sm">
-              Chcesz uzyskać dostęp?{" "}
+              {t('login.no_account')}{" "}
               <Link href="/waitlist" className="underline">
-                Dołącz do oczekujących
+                {t('login.sign_up')}
               </Link>
             </div>
           </form>

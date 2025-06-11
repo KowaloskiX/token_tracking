@@ -4,12 +4,15 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
+import { useTranslations } from 'next-intl';
 
-// Metadata for the page
-export const metadata: Metadata = {
-    title: "Asystent AI - Chcesz zresetować hasło?",
-    description: "Zresetuj hasło do swojego konta na platformie Asystent AI.",
-};
+// Generate metadata based on locale
+export function generateMetadata(): Metadata {
+    return {
+        title: "Asystent AI - Chcesz zresetować hasło?",
+        description: "Zresetuj hasło do swojego konta na platformie Asystent AI.",
+    };
+}
 
 // Forgot Password Page Component
 export default function ForgotPasswordPage() {
@@ -78,7 +81,7 @@ export default function ForgotPasswordPage() {
                 <div className="lg:p-8">
                     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
                         
-                        {/* Page title and subtitle */}
+                        {/* Page title and subtitle - these would need to be in a client component to use translations */}
                         <div className="flex flex-col space-y-2 text-center">
                             <h1 className="text-2xl font-semibold tracking-tight mt-28 sm:mt-0">
                                 Chcesz zresetować hasło?

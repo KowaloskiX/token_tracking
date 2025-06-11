@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { resetPassword } from "@/utils/userActions";
 import { useRouter } from "next/navigation";
+import { useAuthTranslations } from "@/hooks/useTranslations";
 
 interface ResetPasswordFormProps {
     token: string; // Reset token passed from the page component
 }
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+    const t = useAuthTranslations();
+    
     // Form state management
     const [password, setPassword] = useState(""); // State for the new password
     const [confirmPassword, setConfirmPassword] = useState(""); // State for confirming the new password
@@ -29,13 +32,13 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         
         // Validate passwords match
         if (password !== confirmPassword) {
-            setError("Hasła nie są identyczne."); // Set error if passwords do not match
+            setError(t('reset_password.passwords_no_match')); // Set error if passwords do not match
             return;
         }
         
         // Validate password length
         if (password.length < 8) {
-            setError("Hasło powinno zawierać minimum 8 znaków."); // Set error if password is too short
+            setError(t('reset_password.password_too_short')); // Set error if password is too short
             return;
         }
         
@@ -52,7 +55,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             }, 3000);
         } catch (err: any) {
             // Handle errors during password reset
-            setError(err.message || "Wystąpił błąd podczas resetowania hasła.");
+            setError(err.message || t('reset_password.error_desc'));
         } finally {
             setIsLoading(false); // Reset loading state after submission
         }
@@ -62,8 +65,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     if (success) {
         return (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative" role="alert">
-                <p className="font-medium">Hasło zostało zmienione!</p>
-                <p className="text-sm">Za chwilę zostaniesz przekierowany do strony logowania.</p>
+                <p className="font-medium">{t('reset_password.success')}</p>
+                <p className="text-sm">{t('reset_password.success_desc')}</p>
             </div>
         );
     }
@@ -74,7 +77,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             {/* Error alert - shown only when an error occurs */}
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <p className="font-medium">Błąd</p>
+                    <p className="font-medium">{t('reset_password.error')}</p>
                     <p className="text-sm">{error}</p>
                 </div>
             )}
@@ -82,14 +85,14 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             {/* Password input field */}
             <div className="space-y-2">
                 <Label htmlFor="password" className="text-sm font-medium">
-                    Nowe hasło
+                    {t('reset_password.new_password')}
                 </Label>
                 <Input
                     id="password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)} // Update password state on input change
-                    placeholder="Minimum 8 znaków"
+                    placeholder={t('reset_password.password_placeholder')}
                     required
                     className="w-full h-10 px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
@@ -98,19 +101,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             {/* Confirm password input field */}
             <div className="space-y-2">
                 <Label htmlFor="confirmPassword" className="text-sm font-medium">
-                    Potwierdź hasło
+                    {t('reset_password.confirm_password')}
                 </Label>
                 <Input
                     id="confirmPassword"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)} // Update confirmPassword state on input change
-                    placeholder="Powtórz hasło"
+                    placeholder={t('reset_password.confirm_placeholder')}
                     required
                     className="w-full h-10 px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
                 <p className="text-xs text-muted-foreground">
-                    Hasło powinno zawierać minimum 8 znaków.
+                    {t('reset_password.password_requirements')}
                 </p>
             </div>
             
@@ -120,7 +123,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                 disabled={isLoading || !password || !confirmPassword} // Disable button if loading or inputs are empty
                 className="w-full h-10 bg-primary hover:bg-primary/90 text-white rounded-md transition-colors"
             >
-                {isLoading ? "Przetwarzanie..." : "Zmień hasło"} {/* Show loading text if isLoading is true */}
+                {isLoading ? t('reset_password.resetting') : t('reset_password.submit')} {/* Show loading text if isLoading is true */}
             </Button>
         </form>
     );
