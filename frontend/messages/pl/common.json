@@ -78,5 +78,9 @@
   "resources": "Zasoby",
   "upload_files_websites": "Prześlij pliki i strony internetowe, aby AI je zapamiętał",
   "projects": "Projekty",
-  "file": "Prześlij plik"
+  "file": "Prześlij plik",
+    "dates": {
+    "invalidDate": "Nieprawidłowa data"
+  },
+  "language": "pl"
 }

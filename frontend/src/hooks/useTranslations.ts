@@ -35,3 +35,11 @@ export function useSettingsOrganizationTranslations() {
 export function useSettingsNotificationsTranslations() {
   return useNextIntlTranslations('settings.notifications');
 }
+
+export function useTendersTranslations() {
+  return useNextIntlTranslations('tenders');
+}
+
+export function useErrorsTranslations() {
+  return useNextIntlTranslations('errors');
+}

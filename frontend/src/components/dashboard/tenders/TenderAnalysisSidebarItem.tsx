@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useDashboard } from '@/hooks/useDashboard';
 import { AssignUsersModal } from './AssignUsersModal';
 import { useTender } from '@/context/TenderContext';
+import { useDashboardTranslations, useTendersTranslations } from "@/hooks/useTranslations";
 
 interface Props {
   analysis: TenderAnalysis;
@@ -61,6 +62,9 @@ const forceCleanupModals = () => {
 export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = false }: Props) {
   const { user } = useDashboard();
   const { assignUsers } = useTender();
+  const t = useTendersTranslations();
+  const tDashboard = useDashboardTranslations();
+  
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     isLoading: boolean;
@@ -181,6 +185,9 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
     }
   }
 
+  const getDeleteTitle = () => t('tenders.sidebar.deleteSearch');
+  const getDeleteDescription = () => tDashboard('projects.delete_project_confirm');
+
   return (
     <div className="group/analysis relative w-full">
       {/* Main clickable link area */}
@@ -225,7 +232,7 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
                 }}
               >
                 <UserPlus className="mr-2 text-muted-foreground" />
-                <span>Przypisz użytkowników</span>
+                <span>{t('tenders.sidebar.assignUsers')}</span>
               </DropdownMenuItem>
               
               <DropdownMenuItem 
@@ -243,8 +250,8 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
                 )}
                 <span>
                   {isSharing 
-                    ? (isSharedWithOrg ? 'Anulowanie udostępniania...' : 'Udostępnianie...')
-                    : (isSharedWithOrg ? 'Przestań udostępniać' : 'Udostępnij w organizacji')
+                    ? (isSharedWithOrg ? t('tenders.sidebar.cancellingShare') : t('tenders.sidebar.sharing'))
+                    : (isSharedWithOrg ? t('tenders.sidebar.stopSharing') : t('tenders.sidebar.shareInOrganization'))
                   }
                 </span>
               </DropdownMenuItem>
@@ -260,7 +267,7 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
               >
                 <Trash2 className="mr-2" />
                 <span>
-                  {isDeleting || deleteDialog.isLoading ? 'Usuwanie...' : 'Usuń wyszukiwarkę'}
+                  {isDeleting || deleteDialog.isLoading ? t('tenders.sidebar.deleting') : getDeleteTitle()}
                 </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -274,8 +281,8 @@ export function TenderAnalysisSidebarItem({ analysis, onDelete, isDeleting = fal
           setDeleteDialog(prev => ({ ...prev, isOpen: open }))
         }
         onConfirm={handleDelete}
-        title="Usuń wyszukiwarkę"
-        description="Czy jesteś pewien? Ta akcja jest nieodwracalna."
+        title={getDeleteTitle()}
+        description={getDeleteDescription()}
         isLoading={deleteDialog.isLoading}
       />
       

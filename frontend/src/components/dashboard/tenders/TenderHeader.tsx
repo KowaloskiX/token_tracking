@@ -7,10 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Check, Pencil, Settings2, Share2, X } from "lucide-react";
 import { EditTenderAnalysisForm } from "./forms/EditTenderAnalysisForm";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 export default function TenderHeader() {
   const { selectedAnalysis, updateAnalysis, fetchAnalyses, setSelectedAnalysis } = useTender();
   const { user } = useDashboard();
+  const t = useTendersTranslations();
+  const commonT = useCommonTranslations();
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(selectedAnalysis?.name || "");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -105,6 +109,10 @@ export default function TenderHeader() {
       console.error('Failed to toggle sharing status:', error);
     }
   };
+
+  const getNoAnalysisText = () => t('tenders.actions.noTenderSelected');
+  const getPlaceholderText = () => t('tenders.edit.namePlaceholder');
+  const getSettingsText = () => t('tenders.actions.searchSettings');
   
   return (
     <>
@@ -122,7 +130,7 @@ export default function TenderHeader() {
                   onChange={(e) => setEditedTitle(e.target.value)}
                   onKeyDown={handleKeyDown}
                   className="border rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-black"
-                  placeholder="Enter name..."
+                  placeholder={getPlaceholderText()}
                 />
                 <Button
                   size="sm"
@@ -135,7 +143,7 @@ export default function TenderHeader() {
             ) : (
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold">
-                  {selectedAnalysis ? selectedAnalysis.name : 'No analysis selected'}
+                  {selectedAnalysis ? selectedAnalysis.name : getNoAnalysisText()}
                 </h2>
                 {selectedAnalysis && (
                   <Button
@@ -163,7 +171,7 @@ export default function TenderHeader() {
             onClick={() => setIsSettingsOpen(true)}
           >
             <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:block">Ustawienia wyszukiwania</span>
+            <span className="hidden sm:block">{getSettingsText()}</span>
           </Button>
         )}
       </header>
@@ -173,7 +181,9 @@ export default function TenderHeader() {
           <div className="w-full max-w-2xl bg-background rounded-lg mt-10 mb-24 mx-4">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-semibold">Edytuj wyszukiwarkę</h2>
+                <h2 className="text-lg font-semibold">
+                  {t('tenders.edit.title')}
+                </h2>
                 <Button
                   variant="ghost"
                   size="sm"

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import TenderSourceIcon from "./TenderSourceIcon";
 import { TenderAnalysisResult } from "@/types/tenders";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 // Helper function to format date/time
 const formatDateTime = (dateTimeStr: string) => {
@@ -81,6 +82,9 @@ const TenderCard: React.FC<TenderCardProps> = ({
   calculateDaysRemaining,
   calculateProgressPercentage,
 }) => {
+  const t = useTendersTranslations();
+  const commonT = useCommonTranslations();
+  
   const daysRemaining = calculateDaysRemaining(result.tender_metadata.submission_deadline || "");
 
   const voivodeship =
@@ -112,7 +116,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
             variant="outline"
             className="border-zinc-200 text-zinc-400 font-normal"
           >
-            Nieaktywny
+            {t('tenders.status.inactive')}
           </Badge>
         );
       case "active":
@@ -121,7 +125,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
             variant="default"
             className="bg-green-600/80 hover:bg-green-600/80 font-normal"
           >
-            Aktywny
+            {t('tenders.status.active')}
           </Badge>
         );
       case "archived":
@@ -130,11 +134,11 @@ const TenderCard: React.FC<TenderCardProps> = ({
             variant="secondary"
             className="bg-secondary text-primary/70 hover:bg-secondary font-normal"
           >
-            Zarchiwizowany
+            {t('tenders.status.archived')}
           </Badge>
         );
       default:
-        return <Badge variant="outline">Nieznany</Badge>;
+        return <Badge variant="outline">{t('tenders.status.unknown')}</Badge>;
     }
   };
 
@@ -167,6 +171,19 @@ const TenderCard: React.FC<TenderCardProps> = ({
     result.created_at || new Date().toISOString(),
     result.tender_metadata.submission_deadline || ""
   );
+
+  const getDaysRemainingText = () => {
+    if (!result.tender_metadata.submission_deadline ||
+        result.tender_metadata.submission_deadline.includes("NaN") ||
+        isNaN(daysRemaining)) {
+      return "-";
+    }
+    
+    if (daysRemaining < 0) return t('tenders.details.finished');
+    if (daysRemaining === 0) return t('tenders.details.today');
+    if (daysRemaining === 1) return `1 ${t('tenders.details.day')}`;
+    return `${daysRemaining} ${t('tenders.details.days')}`;
+  };
 
   return (
     <div
@@ -202,7 +219,6 @@ const TenderCard: React.FC<TenderCardProps> = ({
                     </h3> 
                   </div>
 
-
                     {/* Notification Badges - now placed here instead of absolute positioning */}
                     {!result.opened_at && (
                       <TooltipProvider>
@@ -213,11 +229,11 @@ const TenderCard: React.FC<TenderCardProps> = ({
                               className="bg-green-400/20 text-green-700 border-green-700/20 px-1 flex items-center justify-center h-5 flex-shrink-0"
                             >
                               <Sparkles className="h-3 w-3 mr-1" />
-                              Nowy
+                              {t('tenders.details.new')}
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top">
-                            <p className="text-xs">Nowy przetarg, nieprzeczytany</p>
+                            <p className="text-xs">{t('tenders.tooltips.newTender')}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -232,13 +248,13 @@ const TenderCard: React.FC<TenderCardProps> = ({
                               className="bg-orange-400/20 text-orange-700 border-orange-700/20 px-1 flex items-center justify-center h-5 flex-shrink-0"
                             >
                               <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                              Zaktualizowany
+                              {t('tenders.details.updated')}
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top">
-                            <p className="text-xs">Zaktualizowano po otwarciu</p>
+                            <p className="text-xs">{t('tenders.tooltips.updatedAfterOpen')}</p>
                             {result.updated_at && (
-                              <p className="text-xs">Aktualizacja: {formatDateTime(result.updated_at)}</p>
+                              <p className="text-xs">{t('tenders.tooltips.updateTime')}: {formatDateTime(result.updated_at)}</p>
                             )}
                           </TooltipContent>
                         </Tooltip>
@@ -290,7 +306,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                   }}
                 >
                   <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
-                  Aktywuj
+                  {t('tenders.status.activate')}
                 </DropdownMenuItem>
               )}
               {result.status === "active" && (
@@ -301,7 +317,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                   }}
                 >
                   <AlertCircle className="mr-2 h-4 w-4 text-gray-500" />
-                  Dezaktywuj
+                  {t('tenders.status.deactivate')}
                 </DropdownMenuItem>
               )}
               {result.status !== "archived" && (
@@ -312,7 +328,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                   }}
                 >
                   <Archive className="mr-2 h-4 w-4 text-gray-700" />
-                  Archiwizuj
+                  {t('tenders.status.archive')}
                 </DropdownMenuItem>
               )}
 
@@ -324,7 +340,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                   }}
                 >
                   <EyeOff className="mr-2 h-4 w-4 text-gray-700" />
-                  Oznacz jako nieprzeczytane
+                  {t('tenders.status.markUnread')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -336,7 +352,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                 disabled={result.status !== "active"}
               >
                 <ListCheck className="mr-2 h-4 w-4" />
-                Dodaj do Kanban
+                {t('tenders.actions.addToKanban')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -346,7 +362,7 @@ const TenderCard: React.FC<TenderCardProps> = ({
                 className="text-destructive focus:text-destructive"
               >
                 <Trash className="mr-2 h-4 w-4" />
-                Usuń
+                {commonT('delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -384,7 +400,9 @@ const TenderCard: React.FC<TenderCardProps> = ({
                     
                     {/* Date labels and remaining days */}
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-stone-500 font-medium">Data publikacji</span>
+                      <span className="text-xs text-stone-500 font-medium">
+                        {t('tenders.details.publicationDate')}
+                      </span>
                       
                       {!result.tender_metadata.submission_deadline ||
                       result.tender_metadata.submission_deadline.includes("NaN") ? null : (
@@ -405,24 +423,20 @@ const TenderCard: React.FC<TenderCardProps> = ({
                                 : "text-green-600 opacity-70"
                             }`}
                           >
-                            {daysRemaining < 0
-                              ? "Zakończony"
-                              : daysRemaining === 0
-                              ? "Dziś"
-                              : daysRemaining === 1
-                              ? "1 dzień"
-                              : `${daysRemaining} dni`}
+                            {getDaysRemainingText()}
                           </span>
                         </Badge>
                       )}
                       
-                      <span className="text-xs text-stone-500 font-medium">Termin zgłoszenia</span>
+                      <span className="text-xs text-stone-500 font-medium">
+                        {t('tenders.details.submissionDate')}
+                      </span>
                     </div>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Upłynęło czasu: {progress.toFixed(0)}%</p>
-                  {daysRemaining > 0 && <p className="text-xs">Pozostało: {daysRemaining} dni</p>}
+                  <p className="text-xs">{t('tenders.details.timeElapsed')}: {progress.toFixed(0)}%</p>
+                  {daysRemaining > 0 && <p className="text-xs">{t('tenders.details.timeRemaining')}: {daysRemaining} {t('tenders.details.days')}</p>}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

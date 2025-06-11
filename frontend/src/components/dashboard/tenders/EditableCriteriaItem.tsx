@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { FileData } from '@/types';
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface EditableCriteriaItemProps {
     resultId: string;
@@ -18,7 +19,7 @@ interface EditableCriteriaItemProps {
     markdownComponents?: Components;
     uploadedFiles?: FileData[];
     onFilePreview?: (file: FileData, citationsForFile: string[]) => void;
-    allCitations?: Citation[]; // All citations from the tender result
+    allCitations?: Citation[];
 }
 
 const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({ 
@@ -35,6 +36,8 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set());
     const [citationsSectionExpanded, setCitationsSectionExpanded] = useState(false);
+    const t = useTendersTranslations();
+    const commonT = useCommonTranslations();
 
     const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -189,7 +192,7 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
             } catch (err) {
-                alert("Nie można pobrać pliku.");
+                alert(t('tenders.files.downloadError'));
             }
         }
     };
@@ -277,10 +280,10 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                 />
               <div className="mt-2 flex gap-2 justify-end">
                 <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? "Zapisywanie..." : "Zapisz"}
+                  {isSaving ? t('tenders.criteria.saving') : commonT('save')}
                 </Button>
                 <Button variant="outline" onClick={handleCancel}>
-                  Anuluj
+                  {commonT('cancel')}
                 </Button>
               </div>
             </>
@@ -306,7 +309,9 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                               <Quote className="h-4 w-4 shrink-0 text-muted-foreground" />
                             </Card>
                             <div className="flex items-center justify-between flex-grow">
-                              <span className="text-sm font-medium text-muted-foreground">Zobacz cytaty z dokumentacji</span>
+                              <span className="text-sm font-medium text-muted-foreground">
+                                {t('tenders.criteria.viewCitations')}
+                              </span>
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="text-xs">
                                   {citations.length}
@@ -338,12 +343,12 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                                         {isExpanded ? (
                                           <>
                                             <ChevronUp className="h-3 w-3" />
-                                            Zwiń
+                                            {t('tenders.criteria.collapse')}
                                           </>
                                         ) : (
                                           <>
                                             <ChevronDown className="h-3 w-3" />
-                                            Rozwiń
+                                            {t('tenders.criteria.expand')}
                                           </>
                                         )}
                                       </button>
@@ -356,13 +361,15 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                                         <button
                                           onClick={() => handleFileClick(matchingFile)}
                                           className="flex items-center text-left gap-1 text-primary hover:text-primary-hover hover:underline transition-colors"
-                                          title={citation.source || 'Nieznane źródło'}
+                                          title={citation.source || t('tenders.criteria.unknownSource')}
                                         >
-                                          <span className="truncate whitespace-nowrap">{truncateSource(citation.source || 'Nieznane źródło')}</span>
+                                          <span className="truncate whitespace-nowrap">
+                                            {truncateSource(citation.source || t('tenders.criteria.unknownSource'))}
+                                          </span>
                                           <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                         </button>
                                       ) : (
-                                        <span>{citation.source || 'Nieznane źródło'}</span>
+                                        <span>{citation.source || t('tenders.criteria.unknownSource')}</span>
                                       )}
                                     </div>
                                     {citation.keyword && (

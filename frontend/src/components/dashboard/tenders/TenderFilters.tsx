@@ -20,7 +20,7 @@ import { AlertCircle, Archive, ArrowUpDown, Calendar as CalendarIcon, CheckCircl
 import { cn } from "@/lib/utils";
 import TenderSourceIcon from "./TenderSourceIcon"; // Assuming TenderSourceIcon is needed/reused
 import { TenderAnalysisResult } from "@/types/tenders"; // Import the type
-
+import { useTendersTranslations } from "@/hooks/useTranslations";
 
 type VoivodeshipKey = keyof Filters['voivodeship'];
 type SourceKey = keyof Filters['source'];
@@ -82,6 +82,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   const [showVoivodeships, setShowVoivodeships] = useState(false);
   const [showSources, setShowSources] = useState(false); // State for source filter expansion
   const [showStatus, setShowStatus] = useState(true); // State for status filter expansion, expanded by default
+  const t = useTendersTranslations();
 
   // Initialize / sync source filters when availableSources changes, but avoid
   // triggering a state update if nothing actually changed to prevent unwanted
@@ -198,13 +199,29 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                            !Object.values(filters.voivodeship).every(Boolean) ||
                            (filters.source && Object.keys(filters.source).length > 0 && !Object.values(filters.source).every(Boolean)); // Check source filter
 
+  const getSortLabel = (field: string) => {
+    switch (field) {
+      case 'submission_deadline':
+        return t('tenders.filters.sortBySubmissionDeadline');
+      case 'tender_score':
+        return t('tenders.filters.sortByRelevance');
+      case 'updated_at':
+        return t('tenders.filters.sortByLastUpdate');
+      case 'created_at':
+        return t('tenders.filters.sortByCreationDate');
+      case 'initiation_date':
+        return t('tenders.filters.sortByPublicationDate');
+      default:
+        return field;
+    }
+  };
 
   return (
     <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 mt-4">
       <div className="relative w-full sm:w-2/3 lg:w-3/4">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Wyszukaj po nazwie, numerze, organizacji, lokalizacji..."
+          placeholder={t('tenders.filters.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9 pr-9"
@@ -231,7 +248,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
               size="sm"
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {selectedDate ? format(selectedDate, "dd.MM.yyyy") : "Wybierz termin"}
+              {selectedDate ? format(selectedDate, "dd.MM.yyyy") : t('tenders.filters.selectDate')}
               {selectedDate && (
                 <button
                   onClick={(e) => {
@@ -248,11 +265,11 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
           <PopoverContent className="w-auto p-0" align="end">
             <div className="p-2 border-b">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Filtruj po:</span>
+                <span className="text-sm font-medium">{t('tenders.filters.filterBy')}:</span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-8 gap-1 text-sm">
-                      {dateFilterType === 'initiation_date' ? 'Dacie publikacji' : 'Terminie zgłoszenia'}
+                      {dateFilterType === 'initiation_date' ? t('tenders.filters.publicationDate') : t('tenders.filters.submissionDeadline')}
                       <ChevronDown className="h-3 w-3 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -260,12 +277,12 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                     <DropdownMenuItem
                       onClick={() => setDateFilterType('initiation_date')}
                     >
-                      Data ogłoszenia
+                      {t('tenders.filters.publicationDate')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => setDateFilterType('submission_deadline')}
                     >
-                      Termin zgłoszenia
+                      {t('tenders.filters.submissionDeadline')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -284,7 +301,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
           <DropdownMenuTrigger asChild>
             <Button className="bg-white/20 shadow" variant="outline" size="sm">
               <Filter className="mr-2 h-4 w-4" />
-              Filtry {hasActiveFilters &&
+              {t('tenders.filters.filters')} {hasActiveFilters &&
                     <span className="ml-1 h-2 w-2 rounded-full bg-primary-hover" />}
             </Button>
           </DropdownMenuTrigger>
@@ -297,7 +314,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
               }}
               className="flex justify-between items-center cursor-pointer px-2"
             >
-              <span className="text-xs text-muted-foreground">Status</span>
+              <span className="text-xs text-muted-foreground">{t('tenders.status.status')}</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${showStatus ? 'rotate-180' : ''}`} />
             </DropdownMenuItem>
 
@@ -311,7 +328,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                   className="flex justify-between items-center cursor-pointer py-1 my-1 bg-secondary/40 px-2"
                 >
                   <div className="truncate text-xs font-medium">
-                    {areAllStatusSelected() ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+                    {areAllStatusSelected() ? t('tenders.filters.deselectAll') : t('tenders.filters.selectAll')}
                   </div>
                 </DropdownMenuItem>
                 <div className="max-h-[180px] overflow-y-auto border-t border-t-muted/20 pt-1">
@@ -320,21 +337,21 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('active'); }}
                     className="px-2 flex items-center"
                   >
-                    <span className="truncate pr-6 pl-6">Aktywne</span>
+                    <span className="truncate pr-6 pl-6">{t('tenders.status.active')}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filters.status.inactive}
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('inactive'); }}
                     className="px-2 flex items-center"
                   >
-                    <span className="truncate pr-6 pl-6">Nieaktywne</span>
+                    <span className="truncate pr-6 pl-6">{t('tenders.status.inactive')}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filters.status.archived}
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('archived'); }}
                     className="px-2 flex items-center"
                   >
-                    <span className="truncate pr-6 pl-6">Zarchiwizowane</span>
+                    <span className="truncate pr-6 pl-6">{t('tenders.status.archived')}</span>
                   </DropdownMenuCheckboxItem>
                   {/* NEW: In Board Filter Option */}
                   <DropdownMenuCheckboxItem
@@ -342,7 +359,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('inBoard'); }}
                     className="px-2 flex items-center"
                   >
-                    <span className="truncate pr-6 pl-6">W tablicy</span>
+                    <span className="truncate pr-6 pl-6">{t('tenders.status.inBoard')}</span>
                   </DropdownMenuCheckboxItem>
                 </div>
                 <DropdownMenuSeparator />
@@ -358,7 +375,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                }}
                className="flex justify-between items-center cursor-pointer px-2"
              >
-               <span className="text-xs text-muted-foreground">Źródła</span>
+               <span className="text-xs text-muted-foreground">{t('tenders.filters.sources')}</span>
                <ChevronDown className={`h-4 w-4 transition-transform ${showSources ? 'rotate-180' : ''}`} />
              </DropdownMenuItem>
 
@@ -372,7 +389,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                    className="flex justify-between items-center cursor-pointer py-1 my-1 bg-secondary/40 px-2"
                  >
                    <div className="truncate text-xs font-medium">
-                     {areAllSourcesSelected() ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+                     {areAllSourcesSelected() ? t('tenders.filters.deselectAll') : t('tenders.filters.selectAll')}
                    </div>
                  </DropdownMenuItem>
 
@@ -390,7 +407,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                      >
                        <div className="flex items-center gap-2 truncate w-full pl-6 pr-6">
                           <TenderSourceIcon source={source} url={''} />
-                          <span className="truncate">{source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Nieznane'}</span>
+                          <span className="truncate">{source ? source.charAt(0).toUpperCase() + source.slice(1) : t('tenders.filters.unknownSource')}</span>
                        </div>
                      </DropdownMenuCheckboxItem>
                    ))}
@@ -400,7 +417,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
              )}
              {/* --------------------- */}
 
-
             {/* Voivodeship section */}
             <DropdownMenuItem
               onSelect={(e) => {
@@ -409,7 +425,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
               }}
               className="flex justify-between items-center cursor-pointer px-2"
             >
-              <span className="text-xs text-muted-foreground">Województwa</span>
+              <span className="text-xs text-muted-foreground">{t('tenders.filters.voivodeships')}</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${showVoivodeships ? 'rotate-180' : ''}`} />
             </DropdownMenuItem>
 
@@ -423,7 +439,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                   className="flex justify-between items-center cursor-pointer py-1 my-1 bg-secondary/40 px-2"
                 >
                   <div className="truncate text-xs font-medium">
-                    {areAllVoivodeshipsSelected() ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+                    {areAllVoivodeshipsSelected() ? t('tenders.filters.deselectAll') : t('tenders.filters.selectAll')}
                   </div>
                 </DropdownMenuItem>
 
@@ -453,29 +469,29 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
           <DropdownMenuTrigger asChild>
             <Button className="bg-white/20 shadow" variant="outline" size="sm">
               <ArrowUpDown className="mr-2 h-4 w-4" />
-              Sortuj
+              {t('tenders.filters.sort')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => handleSort('submission_deadline')} className="flex items-center">
               <CalendarIcon className="mr-2 h-4 w-4" />
-              Termin zgłoszenia {sortConfig?.field === 'submission_deadline' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              {getSortLabel('submission_deadline')} {sortConfig?.field === 'submission_deadline' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleSort('tender_score')} className="flex items-center">
               <Percent className="mr-2 h-4 w-4" />
-              Relewantność {sortConfig?.field === 'tender_score' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              {getSortLabel('tender_score')} {sortConfig?.field === 'tender_score' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleSort('updated_at')} className="flex items-center">
               <RefreshCw className="mr-2 h-4 w-4" />
-              Ostatnia aktualizacja {sortConfig?.field === 'updated_at' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              {getSortLabel('updated_at')} {sortConfig?.field === 'updated_at' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleSort('created_at')} className="flex items-center">
               <Clock className="mr-2 h-4 w-4" />
-              Data utworzenia {sortConfig?.field === 'created_at' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              {getSortLabel('created_at')} {sortConfig?.field === 'created_at' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
             </DropdownMenuItem>
              <DropdownMenuItem onClick={() => handleSort('initiation_date')} className="flex items-center">
                <Clock className="mr-2 h-4 w-4" /> {/* Changed icon for consistency */}
-               Data publikacji {sortConfig?.field === 'initiation_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+               {getSortLabel('initiation_date')} {sortConfig?.field === 'initiation_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
              </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

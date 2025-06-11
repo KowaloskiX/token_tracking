@@ -78,5 +78,9 @@
   "resources": "Resources",
   "upload_files_websites": "Upload files and websites for AI to remember",
   "projects": "Projects",
-  "file": "Send file"
+  "file": "Send file",
+    "dates": {
+    "invalidDate": "Invalid date"
+  },
+  "language": "en"
 }

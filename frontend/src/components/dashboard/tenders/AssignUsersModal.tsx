@@ -17,6 +17,7 @@ import { Loader2, Check, Shield, Info, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTender } from '@/context/TenderContext';
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 type OrgMember = {
   id: string;
@@ -49,11 +50,13 @@ const forceCleanupDialog = () => {
     if (!portal.hasChildNodes() || portal.children.length === 0) portal.remove();
   });
   void document.body.offsetHeight;
-
 };
 
 export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersModalProps) => {
   const { assignUsers } = useTender();
+  const t = useTendersTranslations();
+  const commonT = useCommonTranslations();
+  
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -115,7 +118,7 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
       setOrgMembers(data.members || []);
     } catch (err) {
       console.error('Error fetching org members:', err);
-      setError('Error fetching organization members. Please try again.');
+      setError(t('tenders.edit.assignUsers.fetchError'));
     } finally {
       setIsLoading(false);
     }
@@ -129,27 +132,24 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
   };
 
   const handleSave = async () => {
-  // ─── Guard against missing ID ───────────────────────────────
-  if (!analysis._id) {
-    setError('Analiza nie ma identyfikatora.');
-    return;
-  }
+    if (!analysis._id) {
+      setError(t('tenders.edit.assignUsers.noIdError'));
+      return;
+    }
 
-  setIsSaving(true);
-  setError(null);
+    setIsSaving(true);
+    setError(null);
 
-  try {
-    // Safe non-null assertion now that we've returned on undefined
-    await assignUsers(analysis._id, selectedUsers);
-    handleClose(false);
-  } catch (err) {
-    console.error('Error assigning users:', err);
-    setError('Error saving user assignments. Please try again.');
-  } finally {
-    setIsSaving(false);
-  }
-};
-
+    try {
+      await assignUsers(analysis._id, selectedUsers);
+      handleClose(false);
+    } catch (err) {
+      console.error('Error assigning users:', err);
+      setError(t('tenders.edit.assignUsers.saveError'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleCancel = () => handleClose(false);
 
@@ -162,10 +162,12 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
         onAnimationEnd={() => !open && setTimeout(forceCleanupDialog, 0)}
       >
         <DialogHeader>
-          <DialogTitle>Przypisz użytkowników do wyszukiwarki</DialogTitle>
+          <DialogTitle>{t('tenders.edit.assignUsers')}</DialogTitle>
         </DialogHeader>
         <div className="py-4">
-          <h3 className="text-sm font-medium mb-2">Wyszukiwarka: {analysis.name}</h3>
+          <h3 className="text-sm font-medium mb-2">
+            {t('tenders.sidebar.search')}: {analysis.name}
+          </h3>
           {isLoading ? (
             <div className="flex justify-center items-center h-32">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -173,13 +175,15 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
           ) : error ? (
             <div className="text-destructive text-sm p-2">{error}</div>
           ) : orgMembers.length === 0 ? (
-            <div className="text-muted-foreground text-sm p-2">Brak dostępnych użytkowników w organizacji.</div>
+            <div className="text-muted-foreground text-sm p-2">
+              {t('tenders.edit.noUsers')}
+            </div>
           ) : (
             <>
               <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
                 <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-muted-foreground">
-                  Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej wyszukiwarki i jej wyników.
+                  {t('tenders.edit.assignInfo')}
                 </div>
               </div>
               <ScrollArea className="max-h-[300px] pr-4 pb-4 overflow-y-auto">
@@ -203,7 +207,7 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
                           <div className="flex flex-col">
                             <div className="flex items-center">
                               <span className="font-medium">{member.name || member.email.split('@')[0]}</span>
-                              {member.isCurrentUser && <Badge variant="outline" className="ml-2 text-xs">Ty</Badge>}
+                              {member.isCurrentUser && <Badge variant="outline" className="ml-2 text-xs">{commonT('user')}</Badge>}
                               {member.role === 'admin' && <Badge variant="secondary" className="ml-2 text-xs"><Shield className="h-3 w-3 mr-1"/>Admin</Badge>}
                               {isOwner && (
                                 <TooltipProvider>
@@ -211,11 +215,11 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
                                     <TooltipTrigger>
                                       <Badge variant="default" className="ml-2 text-xs">
                                         <User className="h-3 w-3 mr-1" />
-                                        Właściciel
+                                        {t('tenders.edit.ownerBadge')}
                                       </Badge>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p className="text-xs">Właściciel zawsze ma dostęp</p>
+                                      <p className="text-xs">{t('tenders.edit.ownerAlwaysAccess')}</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
@@ -234,7 +238,7 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            Anuluj
+            {commonT('cancel')}
           </Button>
           <Button
             onClick={handleSave}
@@ -245,7 +249,7 @@ export const AssignUsersModal = ({ analysis, open, onOpenChange }: AssignUsersMo
             ) : (
               <Check className="h-4 w-4 mr-2" />
             )}
-            Zapisz
+            {commonT('save')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -25,5 +25,10 @@
     "timeout": "Przekroczono limit czasu",
     "invalid_input": "Nieprawidłowe dane wejściowe",
     "required_field": "To pole jest wymagane"
+  },
+  "not_found": {
+    "title": "404 Strony nie znaleziono",
+    "description": "Uups... ta strona nie istnieje",
+    "back_home": "Wróc na stronę główną"
   }
 }

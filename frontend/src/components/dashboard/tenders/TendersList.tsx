@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback, startTransition} from "react";
+import { useEffect, useState, useRef, useMemo, useCallback, startTransition } from "react";
 import AllTendersPopup from "./AllTendersPopup";
 import {
   Table,
@@ -55,6 +55,7 @@ import { AddToKanbanDialog } from "./AddToKanbanDialog";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TenderFilters, Filters } from "./TenderFilters";
 import TenderPageInput from "./TenderPageInput"
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 const LOCAL_ITEMS_PER_PAGE = 10;
 
@@ -97,11 +98,13 @@ interface TendersListProps {
   setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAllResults,setCurrentTenderBoardStatus }) => {
-  const { 
-    results, 
-    selectedAnalysis, 
-    selectedResult, 
+const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAllResults, setCurrentTenderBoardStatus }) => {
+  const t = useTendersTranslations();
+  const commonT = useCommonTranslations();
+  const {
+    results,
+    selectedAnalysis,
+    selectedResult,
     setSelectedResult,
     deleteTenderResult,
     markAsOpened,
@@ -114,7 +117,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const requestedPage = parseInt(searchParams.get("page") ?? "1", 10) || 1;
   const requestedTenderId = searchParams.get("tenderId") || null;
   const hasAutoOpenedRef = useRef(false);
-  
+
   const initialPageRef = useRef<number>(requestedPage);
   // and store whether we've applied it:
   const initialPageAppliedRef = useRef<boolean>(false);
@@ -136,28 +139,28 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
   const [addToKanbanSuccess, setAddToKanbanSuccess] = useState<boolean | null>(null);
-  
+
   // Track if we've already handled the initial URL page parameter
   const urlPageHandledRef = useRef(false);
-  
+
   // Add kanban boards state
   const [kanbanBoards, setKanbanBoards] = useState<KanbanBoard[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
-  
+
   // Function to safely get page number from URL
   const getPageFromUrl = useCallback(() => {
     const pageParam = searchParams.get('page');
     const parsedPage = pageParam ? parseInt(pageParam, 10) : 1;
     return isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
   }, [searchParams]);
-  
+
   const [sortConfig, setSortConfig] = useState<{
     field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date';
     direction: 'asc' | 'desc';
   } | null>(null);
   const [filters, setFilters] = useState<Filters>({
     onlyQualified: false,
-    status: { inactive: true, active: true, archived: false,  inBoard: true  },
+    status: { inactive: true, active: true, archived: false, inBoard: true },
     voivodeship: {
       "Dolnośląskie": true,
       "Kujawsko-pomorskie": true,
@@ -183,7 +186,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [lastKnownPage, setLastKnownPage] = useState(1);
   const [includeHistorical, setIncludeHistorical] = useState(false);
-  
+
   // Function to fetch kanban boards
   const fetchKanbanBoards = useCallback(async () => {
     try {
@@ -191,14 +194,14 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       const token = localStorage.getItem("token") || "";
       const url = `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/boards`;
       console.log("Fetching kanban boards from:", url);
-      
+
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
-      
+
       if (response.ok) {
         const boards = await response.json();
         console.log("Successfully fetched boards:", boards);
@@ -246,10 +249,10 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   useEffect(() => {
     fetchKanbanBoards();
   }, [fetchKanbanBoards]);
-  
+
   const updateCurrentPage = useCallback((newPage: number, isUserTriggered = false) => {
     setCurrentPage(newPage);
-    
+
     if (isUserTriggered) {
       // ← FIXED: Only defer URL update for user-triggered events to avoid DOM conflicts
       startTransition(() => {
@@ -257,7 +260,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
           // Update URL without reloading the page
           const params = new URLSearchParams(window.location.search);
           params.set('page', newPage.toString());
-          
+
           // Use router.replace to update URL without adding to browser history
           router.replace(`?${params.toString()}`, { scroll: false });
         }, 0);
@@ -273,13 +276,13 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const calculateDaysRemaining = (deadlineStr: string): number => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     let deadline: Date;
     // Return NaN for obviously invalid inputs early
     if (!deadlineStr || typeof deadlineStr !== 'string' || deadlineStr.toLowerCase().includes('nan')) {
-      return NaN; 
+      return NaN;
     }
-    
+
     if (deadlineStr.includes('-')) { // ISO-like format (YYYY-MM-DD or YYYY-MM-DD HH:MM...)
       const isoStr = deadlineStr.includes(' ') ? deadlineStr.replace(' ', 'T') : deadlineStr;
       deadline = new Date(isoStr);
@@ -293,15 +296,15 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       const month = parseInt(parts[1]);
       const day = parseInt(parts[0]);
       // Basic validation for month and day
-      if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return NaN; 
+      if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return NaN;
       deadline = new Date(year, month - 1, day);
     } else if (deadlineStr.includes('/')) { // DD/MM/YYYY or MM/DD/YYYY format with possible timezone
       // Remove timezone info in parentheses if present
       const cleanDeadlineStr = deadlineStr.replace(/\([^)]*\)/g, '').trim();
-      
+
       // Try to parse with built-in Date constructor first
       deadline = new Date(cleanDeadlineStr);
-      
+
       // If that fails, try more specific parsing
       if (isNaN(deadline.getTime())) {
         const parts = cleanDeadlineStr.split('/');
@@ -309,7 +312,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
           // Handle both DD/MM/YYYY and MM/DD/YYYY possibilities
           // Assume European format DD/MM/YYYY first
           let day, month, year;
-          
+
           // If the first part is > 12, it's likely a day (DD/MM/YYYY)
           // Otherwise, try MM/DD/YYYY format
           if (parseInt(parts[0]) > 12) {
@@ -322,7 +325,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
             day = parseInt(parts[1]);
             year = parseInt(parts[2].split(' ')[0]); // Remove time part if present
           }
-          
+
           if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year > 1900) {
             deadline = new Date(year, month - 1, day);
           } else {
@@ -333,20 +336,20 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         }
       }
     } else {
-       return NaN; // Unrecognized format
+      return NaN; // Unrecognized format
     }
-    
+
     // Final check if date parsing resulted in a valid date
-    if (isNaN(deadline.getTime())) { 
+    if (isNaN(deadline.getTime())) {
       return NaN;
     }
-    
+
     deadline.setHours(0, 0, 0, 0); // Normalize deadline to start of day
-    
+
     const diffTime = deadline.getTime() - today.getTime();
     // Use floor for days remaining to correctly handle deadlines ending today
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
     return diffDays;
   };
 
@@ -358,7 +361,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       setTotalFetched(0);
       return;
     }
-  
+
     let isCancelled = false;
     const fetchPage = async (page: number, limit: number) => {
       const token = localStorage.getItem("token") || "";
@@ -380,44 +383,44 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         total: number;
       }>;
     };
-  
+
     const loadAllPages = async () => {
       try {
         setIsLoading(true);
         setAllResults([]);
         setTotalTendersCount(null);
         setTotalFetched(0);
-  
+
         let page = 1;
         const limit = 200;
         let combined: TenderAnalysisResult[] = [];
         let currentTotal = 0;
         let lastBatchSize = 0;
-  
+
         const firstResp = await fetchPage(page, limit);
         if (isCancelled) return;
-  
+
         combined = firstResp.results;
         currentTotal = firstResp.total;
         lastBatchSize = firstResp.results.length;
         setTotalTendersCount(currentTotal);
         setTotalFetched(combined.length);
-  
+
         while (lastBatchSize === limit && !isCancelled) {
           page += 1;
           const nextResp = await fetchPage(page, limit);
           if (isCancelled) break;
-          
+
           combined = [...combined, ...nextResp.results];
           lastBatchSize = nextResp.results.length;
           setTotalFetched(combined.length);
-  
+
           if (nextResp.total !== currentTotal) {
             setTotalTendersCount(nextResp.total);
             currentTotal = nextResp.total;
           }
         }
-  
+
         if (!isCancelled) {
           setAllResults(combined);
         }
@@ -425,7 +428,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         console.error("Error loading all pages:", err);
         if (!isCancelled) {
           setAllResults([]);
-         router.replace("/dashboard/tenders/");
+          router.replace("/dashboard/tenders/");
         }
       } finally {
         if (!isCancelled) {
@@ -433,9 +436,9 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         }
       }
     };
-  
+
     loadAllPages();
-  
+
     return () => {
       isCancelled = true;
       setIsLoading(false);
@@ -473,121 +476,121 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     return localTender;
   }) : [];
 
-const filteredResults = mergedData.filter((result) => {
-  if (filters.onlyQualified && result.tender_score < 0.7) return false;
+  const filteredResults = mergedData.filter((result) => {
+    if (filters.onlyQualified && result.tender_score < 0.7) return false;
 
-  const status = result.status || "inactive";
-  const tenderBoards = getTenderBoards(result._id!);
-  const isInBoard = tenderBoards.length > 0;
-  
-  // Check if any status filter matches
-  const statusMatches = 
-    (filters.status.inactive && status === 'inactive') ||
-    (filters.status.active && status === 'active') ||
-    (filters.status.archived && status === 'archived') ||
-    (filters.status.inBoard && isInBoard);
-  
-  // If no status filter is selected at all, show everything
-  const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard;
-  
-  if (anyStatusFilterSelected && !statusMatches) {
-    return false;
-  }
+    const status = result.status || "inactive";
+    const tenderBoards = getTenderBoards(result._id!);
+    const isInBoard = tenderBoards.length > 0;
 
-  // Rest of your existing filtering logic remains the same...
-  if (result.location?.voivodeship && result.location.voivodeship !== "UNKNOWN") {
-    let voivodeshipFormatted = result.location.voivodeship;
-    
-    if (voivodeshipFormatted === voivodeshipFormatted.toUpperCase()) {
-      voivodeshipFormatted = 
-        voivodeshipFormatted.charAt(0).toUpperCase() + 
-        voivodeshipFormatted.slice(1).toLowerCase();
-    }
-    
-    if (!filters.voivodeship[voivodeshipFormatted as VoivodeshipKey]) {
+    // Check if any status filter matches
+    const statusMatches =
+      (filters.status.inactive && status === 'inactive') ||
+      (filters.status.active && status === 'active') ||
+      (filters.status.archived && status === 'archived') ||
+      (filters.status.inBoard && isInBoard);
+
+    // If no status filter is selected at all, show everything
+    const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard;
+
+    if (anyStatusFilterSelected && !statusMatches) {
       return false;
     }
-  }
-  const searchLower = searchQuery.toLowerCase();
-  if (searchQuery) {
-    const nameMatch = result.tender_metadata.name.toLowerCase().includes(searchLower);
-    const organizationMatch = result.tender_metadata.organization.toLowerCase().includes(searchLower);
 
-    let locationMatch = false;
-    if (result.location != null) {
-      const fullLocation =
-        "#"+result?.order_number+
-        result.location.country +
-        result.location.voivodeship +
-        result.location.city;
-      locationMatch = fullLocation.toLowerCase().includes(searchLower);
+    // Rest of your existing filtering logic remains the same...
+    if (result.location?.voivodeship && result.location.voivodeship !== "UNKNOWN") {
+      let voivodeshipFormatted = result.location.voivodeship;
+
+      if (voivodeshipFormatted === voivodeshipFormatted.toUpperCase()) {
+        voivodeshipFormatted =
+          voivodeshipFormatted.charAt(0).toUpperCase() +
+          voivodeshipFormatted.slice(1).toLowerCase();
+      }
+
+      if (!filters.voivodeship[voivodeshipFormatted as VoivodeshipKey]) {
+        return false;
+      }
+    }
+    const searchLower = searchQuery.toLowerCase();
+    if (searchQuery) {
+      const nameMatch = result.tender_metadata.name.toLowerCase().includes(searchLower);
+      const organizationMatch = result.tender_metadata.organization.toLowerCase().includes(searchLower);
+
+      let locationMatch = false;
+      if (result.location != null) {
+        const fullLocation =
+          "#" + result?.order_number +
+          result.location.country +
+          result.location.voivodeship +
+          result.location.city;
+        locationMatch = fullLocation.toLowerCase().includes(searchLower);
+      }
+
+      if (!nameMatch && !organizationMatch && !locationMatch) {
+        return false;
+      }
     }
 
-    if (!nameMatch && !organizationMatch && !locationMatch) {
+    if (selectedDate) {
+      const dateField = dateFilterType === 'initiation_date'
+        ? result.tender_metadata.initiation_date
+        : result.tender_metadata.submission_deadline;
+
+      if (!dateField || dateField.includes('NaN')) return false;
+
+      let fieldDate: Date;
+      if (dateField.includes('-')) {
+        const isoStr = dateField.includes(' ') ? dateField.replace(' ', 'T') : dateField;
+        fieldDate = new Date(isoStr);
+      } else if (dateField.includes('.')) {
+        const [day, month, year] = dateField.split('.').map(Number);
+        fieldDate = new Date(year, month - 1, day);
+      } else {
+        return false;
+      }
+
+      if (isNaN(fieldDate.getTime())) return false;
+
+      const selectedDateOnly = new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate()
+      );
+
+      const fieldDateOnly = new Date(
+        fieldDate.getFullYear(),
+        fieldDate.getMonth(),
+        fieldDate.getDate()
+      );
+
+      if (selectedDateOnly.getTime() !== fieldDateOnly.getTime()) {
+        return false;
+      }
+    }
+
+    if (result.source && filters.source && !filters.source[result.source]) {
       return false;
     }
-  }
 
-  if (selectedDate) {
-    const dateField = dateFilterType === 'initiation_date' 
-      ? result.tender_metadata.initiation_date
-      : result.tender_metadata.submission_deadline;
-      
-    if (!dateField || dateField.includes('NaN')) return false;
-    
-    let fieldDate: Date;
-    if (dateField.includes('-')) {
-      const isoStr = dateField.includes(' ') ? dateField.replace(' ', 'T') : dateField;
-      fieldDate = new Date(isoStr);
-    } else if (dateField.includes('.')) {
-      const [day, month, year] = dateField.split('.').map(Number);
-      fieldDate = new Date(year, month - 1, day);
-    } else {
-      return false;
-    }
-    
-    if (isNaN(fieldDate.getTime())) return false;
-    
-    const selectedDateOnly = new Date(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate()
-    );
-    
-    const fieldDateOnly = new Date(
-      fieldDate.getFullYear(),
-      fieldDate.getMonth(),
-      fieldDate.getDate()
-    );
-    
-    if (selectedDateOnly.getTime() !== fieldDateOnly.getTime()) {
-      return false;
-    }
-  }
-
-  if (result.source && filters.source && !filters.source[result.source]) {
-      return false;
-  }
-
-  return true;
-});
+    return true;
+  });
 
   const sortByTimeIfDateFiltered = (results: TenderAnalysisResult[]) => {
     if (!selectedDate) return results;
-    
+
     return [...results].sort((a, b) => {
-      const aDateStr = dateFilterType === 'initiation_date' 
-        ? a.tender_metadata.initiation_date 
+      const aDateStr = dateFilterType === 'initiation_date'
+        ? a.tender_metadata.initiation_date
         : a.tender_metadata.submission_deadline;
-        
-      const bDateStr = dateFilterType === 'initiation_date' 
-        ? b.tender_metadata.initiation_date 
+
+      const bDateStr = dateFilterType === 'initiation_date'
+        ? b.tender_metadata.initiation_date
         : b.tender_metadata.submission_deadline;
-      
+
       if (!aDateStr || !bDateStr) return 0;
-      
+
       let aTime: number, bTime: number;
-      
+
       if (aDateStr.includes('-')) {
         const isoStr = aDateStr.includes(' ') ? aDateStr.replace(' ', 'T') : aDateStr;
         aTime = new Date(isoStr).getTime();
@@ -597,7 +600,7 @@ const filteredResults = mergedData.filter((result) => {
       } else {
         return 0;
       }
-      
+
       if (bDateStr.includes('-')) {
         const isoStr = bDateStr.includes(' ') ? bDateStr.replace(' ', 'T') : bDateStr;
         bTime = new Date(isoStr).getTime();
@@ -607,7 +610,7 @@ const filteredResults = mergedData.filter((result) => {
       } else {
         return 0;
       }
-      
+
       return sortConfig?.direction === 'asc' ? aTime - bTime : bTime - aTime;
     });
   };
@@ -616,8 +619,8 @@ const filteredResults = mergedData.filter((result) => {
   if (sortConfig) {
     sortedResults = [...filteredResults].sort((a, b) => {
       if (sortConfig.field === 'tender_score') {
-        const cmp = sortConfig.direction === 'asc' 
-          ? a.tender_score - b.tender_score 
+        const cmp = sortConfig.direction === 'asc'
+          ? a.tender_score - b.tender_score
           : b.tender_score - a.tender_score;
         if (cmp !== 0) return cmp;
         const aUpdated = new Date(a.updated_at || '').getTime();
@@ -635,19 +638,19 @@ const filteredResults = mergedData.filter((result) => {
           if (!deadlineStr || deadlineStr.includes('NaN')) {
             return { status: 'invalid', days: Infinity }; // Treat invalid as furthest away
           }
-          
+
           // Calculate days remaining, this handles different date formats
           const days = calculateDaysRemaining(deadlineStr);
-          
+
           if (isNaN(days)) {
             // If calculation results in NaN, it's invalid
             return { status: 'invalid', days: Infinity };
           } else if (days < 0) {
             // Negative days means the deadline is in the past
-            return { status: 'past', days: days }; 
+            return { status: 'past', days: days };
           } else {
             // Zero or positive days means the deadline is today or in the future
-            return { status: 'future', days: days }; 
+            return { status: 'future', days: days };
           }
         };
 
@@ -660,26 +663,26 @@ const filteredResults = mergedData.filter((result) => {
         // Compare based on status first
         const aOrder = statusOrder[aStatus.status];
         const bOrder = statusOrder[bStatus.status];
-        
+
         let cmp = 0;
-        
+
         // Always prioritize by status category: future < past < invalid
         cmp = aOrder - bOrder;
 
         if (cmp === 0) {
           // If statuses are the same, compare based on days remaining, considering direction
           if (aStatus.status === 'future') {
-             // Asc: Nearest future first (smaller days). Desc: Furthest future first (larger days).
-            cmp = sortConfig.direction === 'asc' 
-              ? aStatus.days - bStatus.days  
-              : bStatus.days - aStatus.days; 
+            // Asc: Nearest future first (smaller days). Desc: Furthest future first (larger days).
+            cmp = sortConfig.direction === 'asc'
+              ? aStatus.days - bStatus.days
+              : bStatus.days - aStatus.days;
           } else if (aStatus.status === 'past') {
             // Asc: Most recent past first (less negative days). Desc: Most distant past first (more negative days).
             // Since days are negative, b-a gives ascending (e.g., -1 vs -5 => -1 - (-5) = 4)
             // Since days are negative, a-b gives descending (e.g., -1 vs -5 => -5 - (-1) = -4)
-            cmp = sortConfig.direction === 'asc' 
-              ? bStatus.days - aStatus.days  
-              : aStatus.days - bStatus.days; 
+            cmp = sortConfig.direction === 'asc'
+              ? bStatus.days - aStatus.days
+              : aStatus.days - bStatus.days;
           }
           // 'invalid' status dates are considered equal regarding deadline time, rely on tie-breaker
         }
@@ -689,7 +692,7 @@ const filteredResults = mergedData.filter((result) => {
           const aUpdated = new Date(a.updated_at || '').getTime();
           const bUpdated = new Date(b.updated_at || '').getTime();
           // Always sort by most recent update first as tie-breaker regardless of direction
-          cmp = bUpdated - aUpdated; 
+          cmp = bUpdated - aUpdated;
         }
 
         return cmp;
@@ -701,7 +704,7 @@ const filteredResults = mergedData.filter((result) => {
         const aDateStr = a.tender_metadata.initiation_date;
         const bDateStr = b.tender_metadata.initiation_date;
         let aDate: number, bDate: number;
-        
+
         if (aDateStr && !aDateStr.includes('NaN')) {
           if (aDateStr.includes('-')) {
             const isoStr = aDateStr.includes(' ') ? aDateStr.replace(' ', 'T') : aDateStr;
@@ -715,7 +718,7 @@ const filteredResults = mergedData.filter((result) => {
         } else {
           aDate = 0;
         }
-        
+
         if (bDateStr && !bDateStr.includes('NaN')) {
           if (bDateStr.includes('-')) {
             const isoStr = bDateStr.includes(' ') ? bDateStr.replace(' ', 'T') : bDateStr;
@@ -729,7 +732,7 @@ const filteredResults = mergedData.filter((result) => {
         } else {
           bDate = 0;
         }
-        
+
         const cmp = sortConfig.direction === 'asc' ? aDate - bDate : bDate - aDate;
         if (cmp !== 0) return cmp;
         const aUpdated = new Date(a.updated_at || '').getTime();
@@ -764,10 +767,10 @@ const filteredResults = mergedData.filter((result) => {
   };
 
   const handlePopupClose = () => {
-  setPopupOpen(false);
-  setAddToKanbanSuccess(null); // Reset the success state
-  router.push("/dashboard/tenders/management");
-};
+    setPopupOpen(false);
+    setAddToKanbanSuccess(null); // Reset the success state
+    router.push("/dashboard/tenders/management");
+  };
 
   const handleRowClick = async (result: TenderAnalysisResult) => {
     // Store current page before opening drawer
@@ -776,13 +779,13 @@ const filteredResults = mergedData.filter((result) => {
     }
     const tenderBoards = getTenderBoards(result._id!);
     const boardStatus = tenderBoards.length
-  ? tenderBoards.length === 1
-    ? tenderBoards[0]
-    : `${tenderBoards[0].length > 10 
-        ? tenderBoards[0].slice(0, 10) + '…' 
-        : tenderBoards[0]}+${tenderBoards.length - 1}`
-  : null;
-  
+      ? tenderBoards.length === 1
+        ? tenderBoards[0]
+        : `${tenderBoards[0].length > 10
+          ? tenderBoards[0].slice(0, 10) + '…'
+          : tenderBoards[0]}+${tenderBoards.length - 1}`
+      : null;
+
     setCurrentTenderBoardStatus(boardStatus); // passing status up
     console.log("[TendersList] Row clicked, setting selected result:", {
       tenderId: result._id,
@@ -810,65 +813,65 @@ const filteredResults = mergedData.filter((result) => {
       console.log("[TendersList] Fetching full data in background for:", result._id);
 
       const fullResult = await fetchTenderResultById(result._id!);
-        
-        console.log("[TendersList] Background fetch completed:", {
-          success: !!fullResult,
-          hasFullData: !!fullResult?.criteria_analysis && Array.isArray(fullResult.criteria_analysis) && fullResult.criteria_analysis.length > 0
-        });
-        
-        if (fullResult) {
-          // Update with the full data in the allResults list
-          setAllResults(prev => 
-            prev.map(item => 
-              item._id === result._id 
-                ? { ...item, ...fullResult } 
-                : item
-            )
-          );
-          
-          // Update the selected result with complete data
-          setSelectedResult(fullResult);
-        }
+
+      console.log("[TendersList] Background fetch completed:", {
+        success: !!fullResult,
+        hasFullData: !!fullResult?.criteria_analysis && Array.isArray(fullResult.criteria_analysis) && fullResult.criteria_analysis.length > 0
+      });
+
+      if (fullResult) {
+        // Update with the full data in the allResults list
+        setAllResults(prev =>
+          prev.map(item =>
+            item._id === result._id
+              ? { ...item, ...fullResult }
+              : item
+          )
+        );
+
+        // Update the selected result with complete data
+        setSelectedResult(fullResult);
+      }
+    } catch (err) {
+      console.error("[TendersList] Error fetching data in background:", err);
+    }
+
+    // Mark as opened if needed
+    const hasUpdate = isUpdatedAfterOpened(result);
+    if (!result.opened_at || hasUpdate) {
+      try {
+        console.log("[TendersList] Marking tender as opened:", result._id);
+        await markAsOpened(result._id!);
+
+        setAllResults(prev =>
+          prev.map(item =>
+            item._id === result._id
+              ? { ...item, opened_at: new Date().toISOString() }
+              : item
+          )
+        );
+
+        result.opened_at = new Date().toISOString();
+        console.log("[TendersList] Tender marked as opened successfully:", result._id);
       } catch (err) {
-        console.error("[TendersList] Error fetching data in background:", err);
+        console.error('[TendersList] Failed to mark as opened:', err);
       }
-
-      // Mark as opened if needed
-      const hasUpdate = isUpdatedAfterOpened(result);
-      if (!result.opened_at || hasUpdate) {
-        try {
-          console.log("[TendersList] Marking tender as opened:", result._id);
-          await markAsOpened(result._id!);
-          
-          setAllResults(prev => 
-            prev.map(item => 
-              item._id === result._id 
-                ? { ...item, opened_at: new Date().toISOString() } 
-                : item
-            )
-          );
-
-          result.opened_at = new Date().toISOString();
-          console.log("[TendersList] Tender marked as opened successfully:", result._id);
-        } catch (err) {
-          console.error('[TendersList] Failed to mark as opened:', err);
-        }
-      }
-    };
+    }
+  };
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
     if (result.opened_at && result.opened_at !== "") {
       try {
         await markAsUnopened(result._id!);
-        
-        setAllResults(prev => 
-          prev.map(item => 
-            item._id === result._id 
-              ? { ...item, opened_at: "" } 
+
+        setAllResults(prev =>
+          prev.map(item =>
+            item._id === result._id
+              ? { ...item, opened_at: "" }
               : item
           )
         );
-        
+
         result.opened_at = "";
       } catch (err) {
         console.error('Failed to mark as unopened:', err);
@@ -881,21 +884,21 @@ const filteredResults = mergedData.filter((result) => {
     event.stopPropagation();
     if (!resultId) return;
     try {
-        drawerRef.current?.setVisibility(false); 
-        
-        setAllResults(prev =>
-          prev.filter((tender) => tender._id !== resultId)
-        );
-        if (selectedResult?._id === resultId) {
-          closeDrawer();
-        }
-        await deleteTenderResult(resultId);
+      drawerRef.current?.setVisibility(false);
+
+      setAllResults(prev =>
+        prev.filter((tender) => tender._id !== resultId)
+      );
+      if (selectedResult?._id === resultId) {
+        closeDrawer();
+      }
+      await deleteTenderResult(resultId);
     } catch (error) {
       console.error('Error deleting result:', error);
     }
   };
 
- 
+
 
   const isUpdatedAfterOpened = (result: TenderAnalysisResult) => {
     if (!result.updated_at || !result.opened_at) return false;
@@ -906,7 +909,7 @@ const filteredResults = mergedData.filter((result) => {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr.includes('NaN')) return '-';
-  
+
     let date: Date;
     if (dateStr.includes('-')) {
       const isoStr = dateStr.includes(' ') ? dateStr.replace(' ', 'T') : dateStr;
@@ -917,17 +920,17 @@ const filteredResults = mergedData.filter((result) => {
     } else if (dateStr.includes('/')) {
       // Remove timezone info in parentheses if present
       const cleanDateStr = dateStr.replace(/\([^)]*\)/g, '').trim();
-      
+
       // Try direct parsing first
       date = new Date(cleanDateStr);
-      
+
       // If that fails, try manual parsing
       if (isNaN(date.getTime())) {
         const parts = cleanDateStr.split('/');
         if (parts.length === 3) {
           // Try to determine if it's DD/MM/YYYY or MM/DD/YYYY
           let day, month, year;
-          
+
           if (parseInt(parts[0]) > 12) {
             // Likely DD/MM/YYYY
             day = parseInt(parts[0]);
@@ -939,7 +942,7 @@ const filteredResults = mergedData.filter((result) => {
             day = parseInt(parts[1]);
             year = parseInt(parts[2].split(' ')[0]); // Remove time part
           }
-          
+
           date = new Date(year, month - 1, day);
         } else {
           return '-';
@@ -948,7 +951,7 @@ const filteredResults = mergedData.filter((result) => {
     } else {
       return '-';
     }
-  
+
     if (isNaN(date.getTime())) return '-';
     const d = String(date.getDate()).padStart(2, '0');
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -969,10 +972,10 @@ const filteredResults = mergedData.filter((result) => {
   const calculateProgressPercentage = (createdAt: string, deadlineStr: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const created = new Date(createdAt);
     created.setHours(0, 0, 0, 0);
-    
+
     let deadline;
     if (deadlineStr.includes('-')) {
       const isoStr = deadlineStr.includes(' ') ? deadlineStr.replace(' ', 'T') : deadlineStr;
@@ -980,24 +983,24 @@ const filteredResults = mergedData.filter((result) => {
     } else if (deadlineStr.includes('.')) {
       const parts = deadlineStr.split('.');
       deadline = new Date(
-        parseInt(parts[2]), 
-        parseInt(parts[1]) - 1, 
+        parseInt(parts[2]),
+        parseInt(parts[1]) - 1,
         parseInt(parts[0])
       );
     } else if (deadlineStr.includes('/')) {
       // Remove timezone info in parentheses if present
       const cleanDeadlineStr = deadlineStr.replace(/\([^)]*\)/g, '').trim();
-      
+
       // Try direct parsing first
       deadline = new Date(cleanDeadlineStr);
-      
+
       // If that fails, try manual parsing
       if (isNaN(deadline.getTime())) {
         const parts = cleanDeadlineStr.split('/');
         if (parts.length === 3) {
           // Try to determine if it's DD/MM/YYYY or MM/DD/YYYY
           let day, month, year;
-          
+
           if (parseInt(parts[0]) > 12) {
             // Likely DD/MM/YYYY
             day = parseInt(parts[0]);
@@ -1009,7 +1012,7 @@ const filteredResults = mergedData.filter((result) => {
             day = parseInt(parts[1]);
             year = parseInt(parts[2].split(' ')[0]); // Remove time part
           }
-          
+
           deadline = new Date(year, month - 1, day);
         } else {
           return 100; // Default to 100% if format can't be parsed
@@ -1018,19 +1021,19 @@ const filteredResults = mergedData.filter((result) => {
     } else {
       return 100; // Default to 100% if format isn't recognized
     }
-    
+
     if (isNaN(deadline.getTime())) {
       return 100; // Default to 100% if date is invalid
     }
-    
+
     deadline.setHours(0, 0, 0, 0);
 
     const totalDuration = deadline.getTime() - created.getTime();
     const elapsedDuration = today.getTime() - created.getTime();
-    
+
     if (totalDuration <= 0) return 100;
     if (elapsedDuration <= 0) return 0;
-    
+
     const progress = (elapsedDuration / totalDuration) * 100;
     return Math.min(100, Math.max(0, progress));
   };
@@ -1040,16 +1043,16 @@ const filteredResults = mergedData.filter((result) => {
     if (boardsLoading) {
       return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">Wczytywanie...</Badge>;
     }
-    
+
     const boardNames = getTenderBoards(result._id!);
     if (boardNames.length > 0) {
-      const displayText = boardNames.length === 1 
+      const displayText = boardNames.length === 1
         ? truncateText(boardNames[0], 15)
         : `${truncateText(boardNames[0], 10)}+${boardNames.length - 1}`;
-      
+
       return (
-        <Badge 
-          variant="outline" 
+        <Badge
+          variant="outline"
           className="border-transparent bg-secondary-hover text-primary shadow"
           title={boardNames.length > 1 ? `W tablicach: ${boardNames.join(', ')}` : boardNames[0]}
         >
@@ -1057,16 +1060,16 @@ const filteredResults = mergedData.filter((result) => {
         </Badge>
       );
     }
-    
+
     // If not in any board, show status as fallback
     const status = result.status || 'inactive';
     switch (status) {
       case 'inactive':
-        return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">Nieaktywny</Badge>;
+        return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">{t('tenders.status.inactive')}</Badge>;
       case 'active':
-        return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600/80 font-normal">Aktywny</Badge>;
+        return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600/80 font-normal">{t('tenders.status.active')}</Badge>;
       case 'archived':
-        return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">Zarchiwizowany</Badge>;
+        return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">{t('tenders.status.archived')}</Badge>;
       default:
         return <Badge variant="outline">Nieznany</Badge>;
     }
@@ -1076,8 +1079,8 @@ const filteredResults = mergedData.filter((result) => {
     try {
       await updateTenderStatus(resultId, newStatus);
       // Update local state without affecting pagination
-      setAllResults((prevResults) => 
-        prevResults.map((tender) => 
+      setAllResults((prevResults) =>
+        prevResults.map((tender) =>
           tender._id === resultId
             ? { ...tender, status: newStatus }
             : tender
@@ -1096,7 +1099,7 @@ const filteredResults = mergedData.filter((result) => {
     }
     setSelectedResult(null);
     drawerRef.current?.setVisibility(false);
-    
+
     // ← FIXED: Defer URL update to avoid DOM conflicts
     startTransition(() => {
       setTimeout(() => {
@@ -1117,7 +1120,7 @@ const filteredResults = mergedData.filter((result) => {
     return Array.from(sources);
   }, [allResults]);
 
-   // Set the page only after data is loaded and validated
+  // Set the page only after data is loaded and validated
   useEffect(() => {
     // once loading is done and we haven't yet applied the initial page...
     if (!isLoading && !initialPageAppliedRef.current) {
@@ -1134,91 +1137,91 @@ const filteredResults = mergedData.filter((result) => {
     }
   }, [isLoading, filteredResults.length]);
   useEffect(() => {
-  // only act after initial load of allResults
-  if (!isLoading && requestedTenderId && !selectedResult) {
-    const match = allResults.find(r => r._id === requestedTenderId);
-    if (match) {
-      handleRowClick(match);
-    } else {
-      // fallback: fetch it fresh if it wasn't in the initial page
-      fetchTenderResultById(requestedTenderId)
-        .then(full => {
-          if (full) {
-            setAllResults(prev => [...prev, full]);
-            handleRowClick(full);
-          }
-        })
-        .catch(console.error);
+    // only act after initial load of allResults
+    if (!isLoading && requestedTenderId && !selectedResult) {
+      const match = allResults.find(r => r._id === requestedTenderId);
+      if (match) {
+        handleRowClick(match);
+      } else {
+        // fallback: fetch it fresh if it wasn't in the initial page
+        fetchTenderResultById(requestedTenderId)
+          .then(full => {
+            if (full) {
+              setAllResults(prev => [...prev, full]);
+              handleRowClick(full);
+            }
+          })
+          .catch(console.error);
+      }
     }
-  }
-}, [isLoading, requestedTenderId, allResults]);
+  }, [isLoading, requestedTenderId, allResults]);
 
 
 
-// Track previous values to detect what changed
-const prevSearchQuery = useRef(searchQuery);
-const prevFilters = useRef(filters);
-const prevSelectedDate = useRef(selectedDate);
-const prevDateFilterType = useRef(dateFilterType);
+  // Track previous values to detect what changed
+  const prevSearchQuery = useRef(searchQuery);
+  const prevFilters = useRef(filters);
+  const prevSelectedDate = useRef(selectedDate);
+  const prevDateFilterType = useRef(dateFilterType);
 
-const pageBeforeSearch = useRef(currentPage);
+  const pageBeforeSearch = useRef(currentPage);
 
-useEffect(() => {
-  // Only act after initial load is complete
-  if (!initialPageAppliedRef.current || isLoading) {
-    // Update refs for next comparison
+  useEffect(() => {
+    // Only act after initial load is complete
+    if (!initialPageAppliedRef.current || isLoading) {
+      // Update refs for next comparison
+      prevSearchQuery.current = searchQuery;
+      prevFilters.current = filters;
+      prevSelectedDate.current = selectedDate;
+      prevDateFilterType.current = dateFilterType;
+      return;
+    }
+
+    const searchChanged = prevSearchQuery.current !== searchQuery;
+    const filtersChanged = JSON.stringify(prevFilters.current) !== JSON.stringify(filters);
+    const dateChanged = prevSelectedDate.current !== selectedDate;
+    const dateTypeChanged = prevDateFilterType.current !== dateFilterType;
+
+    if (searchChanged || filtersChanged || dateChanged || dateTypeChanged) {
+
+      if (searchChanged) {
+        const wasEmpty = prevSearchQuery.current.trim() === '';
+        const isNowEmpty = searchQuery.trim() === '';
+
+        if (!wasEmpty && isNowEmpty) {
+          const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
+          const targetPage = Math.min(pageBeforeSearch.current, totalFilteredPages);
+          updateCurrentPage(targetPage, false);
+        } else if (wasEmpty && !isNowEmpty) {
+          pageBeforeSearch.current = currentPage;
+          updateCurrentPage(1, false);
+        } else if (!wasEmpty && !isNowEmpty) {
+          updateCurrentPage(1, false);
+        }
+      } else {
+        const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
+
+        if (currentPage > totalFilteredPages) {
+          updateCurrentPage(totalFilteredPages, false);
+        }
+      }
+    }
+
     prevSearchQuery.current = searchQuery;
     prevFilters.current = filters;
     prevSelectedDate.current = selectedDate;
     prevDateFilterType.current = dateFilterType;
-    return;
-  }
 
-  const searchChanged = prevSearchQuery.current !== searchQuery;
-  const filtersChanged = JSON.stringify(prevFilters.current) !== JSON.stringify(filters);
-  const dateChanged = prevSelectedDate.current !== selectedDate;
-  const dateTypeChanged = prevDateFilterType.current !== dateFilterType;
-
-  if (searchChanged || filtersChanged || dateChanged || dateTypeChanged) {
-    
-    if (searchChanged) {
-      const wasEmpty = prevSearchQuery.current.trim() === '';
-      const isNowEmpty = searchQuery.trim() === '';
-      
-      if (!wasEmpty && isNowEmpty) {
-        const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
-        const targetPage = Math.min(pageBeforeSearch.current, totalFilteredPages);
-        updateCurrentPage(targetPage, false);
-      } else if (wasEmpty && !isNowEmpty) {
-        pageBeforeSearch.current = currentPage;
-        updateCurrentPage(1, false);
-      } else if (!wasEmpty && !isNowEmpty) {
-        updateCurrentPage(1, false);
-      }
-    } else {
-      const totalFilteredPages = Math.max(1, Math.ceil(filteredResults.length / LOCAL_ITEMS_PER_PAGE));
-      
-      if (currentPage > totalFilteredPages) {
-        updateCurrentPage(totalFilteredPages, false);
-      }
-    }
-  }
-
-  prevSearchQuery.current = searchQuery;
-  prevFilters.current = filters;
-  prevSelectedDate.current = selectedDate;
-  prevDateFilterType.current = dateFilterType;
-
-}, [
-  searchQuery, 
-  filters, 
-  selectedDate, 
-  dateFilterType, 
-  currentPage, 
-  filteredResults.length, 
-  isLoading, 
-  updateCurrentPage
-]);
+  }, [
+    searchQuery,
+    filters,
+    selectedDate,
+    dateFilterType,
+    currentPage,
+    filteredResults.length,
+    isLoading,
+    updateCurrentPage
+  ]);
 
 
   // Listen for URL changes (browser back/forward) and update page accordingly
@@ -1230,10 +1233,10 @@ useEffect(() => {
         setCurrentPage(newPageFromUrl);
       }
     };
-    
+
     // Listen for route change events
     window.addEventListener('popstate', handleRouteChange);
-    
+
     return () => {
       window.removeEventListener('popstate', handleRouteChange);
     };
@@ -1266,12 +1269,54 @@ useEffect(() => {
     }, [isLoading, targetPage, navigate]);
   }
   useNavigateOnLoad(isLoading, requestedPage, updateCurrentPage);
-   // In your rendering pagination code, make sure to use updateCurrentPage
+  // In your rendering pagination code, make sure to use updateCurrentPage
   const renderPaginationItems = () => {
-  const items = [];
-  
-  if (totalPages <= 5) {
-    for (let i = 1; i <= totalPages; i++) {
+    const items = [];
+
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) {
+        items.push(
+          <PaginationItem key={i}>
+            <PaginationLink
+              onClick={() => updateCurrentPage(i, true)}
+              isActive={currentPage === i}
+            >
+              {i}
+            </PaginationLink>
+          </PaginationItem>
+        );
+      }
+      return items;
+    }
+
+    items.push(
+      <PaginationItem key={1}>
+        <PaginationLink
+          onClick={() => updateCurrentPage(1, true)}
+          isActive={currentPage === 1}
+        >
+          1
+        </PaginationLink>
+      </PaginationItem>
+    );
+
+    if (currentPage > 3) {
+      items.push(
+        <PaginationItem key="ellipsis-left">
+          <div className="flex items-center justify-center h-9 w-9">
+            <TenderPageInput
+              totalPages={totalPages}
+              onPageJump={(page) => updateCurrentPage(page, true)}
+            />
+          </div>
+        </PaginationItem>
+      );
+    }
+
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+    for (let i = startPage; i <= endPage; i++) {
       items.push(
         <PaginationItem key={i}>
           <PaginationLink
@@ -1283,83 +1328,41 @@ useEffect(() => {
         </PaginationItem>
       );
     }
+
+    if (currentPage < totalPages - 2) {
+      items.push(
+        <PaginationItem key="ellipsis-right">
+          <div className="flex items-center justify-center h-9 w-9">
+            <TenderPageInput
+              totalPages={totalPages}
+              onPageJump={(page) => updateCurrentPage(page, true)}
+            />
+          </div>
+        </PaginationItem>
+      );
+    }
+
+    if (totalPages > 1) {
+      items.push(
+        <PaginationItem key={totalPages}>
+          <PaginationLink
+            onClick={() => updateCurrentPage(totalPages, true)}
+            isActive={currentPage === totalPages}
+          >
+            {totalPages}
+          </PaginationLink>
+        </PaginationItem>
+      );
+    }
+
     return items;
-  }
-
-  items.push(
-    <PaginationItem key={1}>
-      <PaginationLink
-        onClick={() => updateCurrentPage(1, true)}
-        isActive={currentPage === 1}
-      >
-        1
-      </PaginationLink>
-    </PaginationItem>
-  );
-
-  if (currentPage > 3) {
-    items.push(
-      <PaginationItem key="ellipsis-left">
-        <div className="flex items-center justify-center h-9 w-9">
-          <TenderPageInput
-            totalPages={totalPages}
-            onPageJump={(page) => updateCurrentPage(page, true)}
-          />
-        </div>
-      </PaginationItem>
-    );
-  }
-
-  const startPage = Math.max(2, currentPage - 1);
-  const endPage = Math.min(totalPages - 1, currentPage + 1);
-
-  for (let i = startPage; i <= endPage; i++) {
-    items.push(
-      <PaginationItem key={i}>
-        <PaginationLink
-          onClick={() => updateCurrentPage(i, true)}
-          isActive={currentPage === i}
-        >
-          {i}
-        </PaginationLink>
-      </PaginationItem>
-    );
-  }
-
-  if (currentPage < totalPages - 2) {
-    items.push(
-      <PaginationItem key="ellipsis-right">
-        <div className="flex items-center justify-center h-9 w-9">
-          <TenderPageInput
-            totalPages={totalPages}
-            onPageJump={(page) => updateCurrentPage(page, true)}
-          />
-        </div>
-      </PaginationItem>
-    );
-  }
-
-  if (totalPages > 1) {
-    items.push(
-      <PaginationItem key={totalPages}>
-        <PaginationLink
-          onClick={() => updateCurrentPage(totalPages, true)}
-          isActive={currentPage === totalPages}
-        >
-          {totalPages}
-        </PaginationLink>
-      </PaginationItem>
-    );
-  }
-
-  return items;
-};
+  };
 
   useEffect(() => {
     if (hasAutoOpenedRef.current) return;
     if (isLoading || !requestedTenderId) return;
     const idx = sortedResults.findIndex(r => r._id === requestedTenderId);
-    if (idx === -1) return; 
+    if (idx === -1) return;
     const pageOfTender = Math.floor(idx / LOCAL_ITEMS_PER_PAGE) + 1;
     if (currentPage !== pageOfTender) {
       updateCurrentPage(pageOfTender);
@@ -1388,22 +1391,30 @@ useEffect(() => {
               <div className="flex items-center gap-2">
                 <CardTitle className="text-xl sm:text-2xl leading-tight">{selectedAnalysis?.name}</CardTitle>
                 {selectedAnalysis && (
-                  <Badge 
+                  <Badge
                     variant={(selectedAnalysis.assigned_users?.length ?? 0) > 1 ? "default" : "secondary"}
                     className="text-xs font-medium ml-2"
                   >
-                    {(selectedAnalysis.assigned_users?.length ?? 0) > 1 ? "Udostępniane" : "Prywatne"}
-                  </Badge>
+                    {(selectedAnalysis.assigned_users?.length ?? 0) > 1
+                      ? t('tenders.edit.share.sharedBadge')
+                      : t('tenders.edit.share.privateBadge')}                  
+                    </Badge>
                 )}
               </div>
               <CardDescription className="mt-1">
                 {isLoading
-                  ? `Wczytywanie ${totalFetched}${totalTendersCount !== null ? ` z ${totalTendersCount}` : ''} przetargów...`
-                  : `Wczytano ${allResults?.length || 0} przetargów${includeHistorical ? ' (w tym historycznych)' : ''}.`
+                  ? t('tenders.list.loading', {
+                    fetched: totalFetched,
+                    total: totalTendersCount !== null ? ` / ${totalTendersCount}` : ''
+                  })
+                  : t('tenders.list.loaded', {
+                    count: allResults?.length || 0,
+                    historical: includeHistorical ? ` ${t('tenders.list.historical')}` : ''
+                  })
                 }
               </CardDescription>
             </div>
-            
+
             <div className="flex gap-2">
               <Button
                 variant={includeHistorical ? "default" : "outline"}
@@ -1413,11 +1424,13 @@ useEffect(() => {
                 className="whitespace-nowrap"
               >
                 <Clock className="h-4 w-4 mr-2" />
-                {includeHistorical ? "Ukryj historyczne" : "Wczytaj historyczne"}
+                {includeHistorical
+                  ? t('tenders.list.hideHistorical')
+                  : t('tenders.list.loadHistorical')}
               </Button>
             </div>
           </div>
-          
+
           <TenderFilters
             filters={filters}
             setFilters={setFilters}
@@ -1437,22 +1450,22 @@ useEffect(() => {
             <Table className="w-full table-fixed">
               <TableHeader className="bg-white/20 shadow">
                 <TableRow>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[5%]")}>Źródło</TableHead>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[45%]" : "w-[25%]")}>Zamówienie</TableHead>
-                  {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">Zamawiający</TableHead>}
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[5%]")}>{t('tenders.list.source')}</TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[45%]" : "w-[25%]")}>{t('tenders.list.order')}</TableHead>
+                  {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">{t('tenders.details.client')}</TableHead>}
                   {tableWidth >= 700 && (
                     <TableHead className="text-xs w-[20%]">
                       <div className="flex justify-between items-center pr-4">
-                        <p>Data publikacji</p>
-                        <p>Termin zgłoszenia</p>
+                        <p>{t('tenders.details.publicationDate')}</p>
+                        <p>{t('tenders.details.submissionDeadline')}</p>
                       </div>
                     </TableHead>
                   )}
                   {tableWidth < 700 && (
                     <TableHead className="text-xs w-[20%]">Termin zgłoszenia</TableHead>
                   )}
-                  {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">Tablica / Status</TableHead>}
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>Relewantność</TableHead>
+                  {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">{t('tenders.list.boardStatus')}</TableHead>}
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>{t('tenders.list.relevance')}</TableHead>
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[5%]" : "w-[5%]")}></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1463,15 +1476,18 @@ useEffect(() => {
                       <div className="flex flex-col w-full h-full items-center justify-center space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
                         <p className="text-sm text-muted-foreground">
-                          Wczytywanie przetargów... ({totalFetched}{totalTendersCount !== null ? ` / ${totalTendersCount}` : ''})
+                          {t('tenders.list.loading', {
+                            fetched: totalFetched,
+                            total: totalTendersCount !== null ? ` / ${totalTendersCount}` : ''
+                          })}
                         </p>
                         {totalTendersCount !== null && totalTendersCount > 0 && (
-                           <div className="w-1/4 h-1 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-1 bg-primary transition-all duration-300" 
-                              style={{ width: `${(totalFetched / totalTendersCount) * 100}%`}}
+                          <div className="w-1/4 h-1 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-1 bg-primary transition-all duration-300"
+                              style={{ width: `${(totalFetched / totalTendersCount) * 100}%` }}
                             />
-                           </div>
+                          </div>
                         )}
                       </div>
                     </TableCell>
@@ -1480,10 +1496,10 @@ useEffect(() => {
                   <TableRow>
                     <TableCell colSpan={tableWidth >= 700 ? 7 : 5} className="text-center text-muted-foreground py-20">
                       {allResults.length > 0 ?
-                        "Brak przetargów spełniających wybrane kryteria filtrowania." : 
-                       selectedAnalysis ?
-                        "Analiza nie zwróciła żadnych wyników lub przetargi są jeszcze analizowane. Odwiedź tę stronę później." :
-                        "Wybierz analizę, aby zobaczyć wyniki."
+                        t('tenders.list.noTenders') :
+                        selectedAnalysis ?
+                          t('tenders.list.noResults') :
+                          t('tenders.list.selectAnalysis')
                       }
                     </TableCell>
                   </TableRow>
@@ -1491,13 +1507,13 @@ useEffect(() => {
                   currentResults.map((result: TenderAnalysisResult) => {
                     const hasUpdate = isUpdatedAfterOpened(result);
                     const daysRemaining = calculateDaysRemaining(result.tender_metadata.submission_deadline);
-                                        
-                    const voivodeship = result.location?.voivodeship && 
-                                        result.location.voivodeship !== "UNKNOWN" ? 
-                                        result.location.voivodeship.charAt(0).toUpperCase() + 
-                                        result.location.voivodeship.slice(1).toLowerCase() : 
-                                        "-";
-                                          
+
+                    const voivodeship = result.location?.voivodeship &&
+                      result.location.voivodeship !== "UNKNOWN" ?
+                      result.location.voivodeship.charAt(0).toUpperCase() +
+                      result.location.voivodeship.slice(1).toLowerCase() :
+                      "-";
+
                     return (
                       <TableRow
                         key={result._id}
@@ -1505,16 +1521,16 @@ useEffect(() => {
                           "cursor-pointer hover:bg-secondary/70 transition-colors",
                           selectedResult?._id === result._id
                             ? "bg-secondary-hover"
-                            : ( (!result.opened_at || result.opened_at === "")
-                            ? "bg-green-600/5 font-semibold"
-                            : hasUpdate
-                            ? "bg-orange-700/5"
-                            : "bg-background"),
+                            : ((!result.opened_at || result.opened_at === "")
+                              ? "bg-green-600/5 font-semibold"
+                              : hasUpdate
+                                ? "bg-orange-700/5"
+                                : "bg-background"),
                           !result.opened_at && selectedResult?._id !== result._id
                             ? "!border-l-2 !border-l-green-600/70 shadow-sm"
                             : hasUpdate && result.opened_at && selectedResult?._id !== result._id
-                            ? "!border-l-2 !border-l-orange-600"
-                            : ""
+                              ? "!border-l-2 !border-l-orange-600"
+                              : ""
                         )}
                         onClick={() => handleRowClick(result)}
                       >
@@ -1530,7 +1546,7 @@ useEffect(() => {
                                   </div>
                                 </TooltipTrigger>
                                 <TooltipContent side="right">
-                                  <p className="text-xs">Zaktualizowano: {formatDateTime(result.updated_at!)}</p>
+                                  <p className="text-xs">{t('tenders.tooltips.updated', { time: formatDateTime(result.updated_at!) })}</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -1558,54 +1574,51 @@ useEffect(() => {
                                 <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
                                   {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
                                 </span>
-                                
+
                                 <div className="w-24 sm:w-28 bg-secondary-hover rounded-full h-2">
                                   <div
-                                    className={`h-2 rounded-full ${
-                                      !result.tender_metadata.submission_deadline || 
+                                    className={`h-2 rounded-full ${!result.tender_metadata.submission_deadline ||
                                       result.tender_metadata.submission_deadline.includes('NaN') ? "bg-gray-400" :
                                       daysRemaining < 0 ? "bg-gray-400" :
-                                      daysRemaining <= 3 ? "bg-red-600 opacity-70" :
-                                      daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
-                                      daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
-                                      "bg-green-600 opacity-70"
-                                    }`}
+                                        daysRemaining <= 3 ? "bg-red-600 opacity-70" :
+                                          daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
+                                            daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
+                                              "bg-green-600 opacity-70"
+                                      }`}
                                     style={{
-                                      width: `${
-                                        !result.tender_metadata.submission_deadline || 
+                                      width: `${!result.tender_metadata.submission_deadline ||
                                         result.tender_metadata.submission_deadline.includes('NaN') ? "100" :
                                         calculateProgressPercentage(result.created_at, result.tender_metadata.submission_deadline)
-                                      }%`
+                                        }%`
                                     }}
                                   ></div>
                                 </div>
-                                
+
                                 <div className="flex items-center">
                                   <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
-                                    {!result.tender_metadata.submission_deadline || 
-                                    result.tender_metadata.submission_deadline.includes('NaN') ? 
+                                    {!result.tender_metadata.submission_deadline ||
+                                      result.tender_metadata.submission_deadline.includes('NaN') ?
                                       "-" : formatDate(result.tender_metadata.submission_deadline)}
                                   </span>
                                   <Badge className="ml-1 text-xs px-1 py-0" variant="outline">
-                                    <span className={`text-xs ${
-                                      !result.tender_metadata.submission_deadline || 
+                                    <span className={`text-xs ${!result.tender_metadata.submission_deadline ||
                                       result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
                                       daysRemaining < 0 ? "text-gray-600 opacity-70" :
-                                      daysRemaining <= 3 ? "text-red-600 opacity-70" :
-                                      daysRemaining <= 10 ? "text-amber-600 opacity-70" :
-                                      daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
-                                      "text-green-600 opacity-70"
-                                    }`}>
-                                      {!result.tender_metadata.submission_deadline || 
-                                      result.tender_metadata.submission_deadline.includes('NaN') || 
-                                      isNaN(daysRemaining) ? 
-                                        '-' : 
-                                        daysRemaining < 0 ? 
-                                          'Zak.' : 
-                                          daysRemaining === 0 ? 
-                                            'Dziś' : 
-                                            daysRemaining === 1 ? 
-                                              '1d' : 
+                                        daysRemaining <= 3 ? "text-red-600 opacity-70" :
+                                          daysRemaining <= 10 ? "text-amber-600 opacity-70" :
+                                            daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
+                                              "text-green-600 opacity-70"
+                                      }`}>
+                                      {!result.tender_metadata.submission_deadline ||
+                                        result.tender_metadata.submission_deadline.includes('NaN') ||
+                                        isNaN(daysRemaining) ?
+                                        '-' :
+                                        daysRemaining < 0 ?
+                                          'Zak.' :
+                                          daysRemaining === 0 ?
+                                            'Dziś' :
+                                            daysRemaining === 1 ?
+                                              '1d' :
                                               `${daysRemaining}d`}
                                     </span>
                                   </Badge>
@@ -1618,26 +1631,25 @@ useEffect(() => {
                           <TableCell>
                             <div className="flex items-center justify-start">
                               <Badge className="text-xs px-2 py-1" variant="outline">
-                                <span className={`text-xs font-medium ${
-                                  !result.tender_metadata.submission_deadline || 
+                                <span className={`text-xs font-medium ${!result.tender_metadata.submission_deadline ||
                                   result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
                                   daysRemaining < 0 ? "text-gray-600 opacity-70" :
-                                  daysRemaining <= 3 ? "text-red-600 opacity-70" :
-                                  daysRemaining <= 10 ? "text-amber-600 opacity-70" :
-                                  daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
-                                  "text-green-600 opacity-70"
-                                }`}>
-                                  {!result.tender_metadata.submission_deadline || 
-                                  result.tender_metadata.submission_deadline.includes('NaN') || 
-                                  isNaN(daysRemaining) ? 
-                                    '-' : 
-                                    daysRemaining < 0 ? 
-                                      'Zakończony' : 
-                                      daysRemaining === 0 ? 
-                                        'Dziś' : 
-                                        daysRemaining === 1 ? 
-                                          '1 dzień' : 
-                                          `${daysRemaining} dni`}
+                                    daysRemaining <= 3 ? "text-red-600 opacity-70" :
+                                      daysRemaining <= 10 ? "text-amber-600 opacity-70" :
+                                        daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
+                                          "text-green-600 opacity-70"
+                                  }`}>
+                                  {!result.tender_metadata.submission_deadline ||
+                                    result.tender_metadata.submission_deadline.includes('NaN') ||
+                                    isNaN(daysRemaining) ?
+                                    '-' :
+                                    daysRemaining < 0 ?
+                                      t('tenders.details.finished') :
+                                      daysRemaining === 0 ?
+                                        t('tenders.details.today') :
+                                        daysRemaining === 1 ?
+                                          `1 ${t('tenders.details.day')}` :
+                                          `${daysRemaining} ${t('tenders.details.days')}`}
                                 </span>
                               </Badge>
                             </div>
@@ -1656,34 +1668,34 @@ useEffect(() => {
                               {result.status !== 'active' && (
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(result._id!, 'active'); }}>
                                   <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
-                                  Aktywuj
+                                  {t('tenders.status.activate')}
                                 </DropdownMenuItem>
                               )}
                               {result.status === 'active' && (
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(result._id!, 'inactive'); }}>
                                   <AlertCircle className="mr-2 h-4 w-4 text-gray-500" />
-                                  Dezaktywuj
+                                  {commonT('delete')}
                                 </DropdownMenuItem>
                               )}
                               {result.status !== 'archived' && (
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(result._id!, 'archived'); }}>
                                   <Archive className="mr-2 h-4 w-4 text-gray-700" />
-                                  Archiwizuj
+                                  {t('tenders.status.archive')}
                                 </DropdownMenuItem>
                               )}
-                              
+
                               {(result.opened_at && result.opened_at !== '') && (
-                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleUnopened(result);}}>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleUnopened(result); }}>
                                   <EyeOff className="mr-2 h-4 w-4 text-gray-700" />
-                                  Oznacz jako nieprzeczytane
+                                  {t('tenders.status.markUnread')}
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={(e) => handleDelete(e, result._id)} className="text-destructive focus:text-destructive">
                                 <Trash className="mr-2 h-4 w-4" />
-                                Usuń
+                                {t('tenders.status.delete')}
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedResult(result);
@@ -1692,7 +1704,7 @@ useEffect(() => {
                                 disabled={result.status !== 'active'}
                               >
                                 <ListCheck className="mr-2 h-4 w-4" />
-                                Dodaj do Kanban
+                                {t('tenders.kanban.addToKanban')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1721,82 +1733,86 @@ useEffect(() => {
           )}
         </CardContent>
       </Card>
-{selectedResult && (
-  <AddToKanbanDialog 
-    open={showKanbanDialog}
-    onOpenChange={(isOpen) => {
-      setShowKanbanDialog(isOpen);
-      if (!isOpen) {
-        setSelectedResult(null);
+      {
+        selectedResult && (
+          <AddToKanbanDialog
+            open={showKanbanDialog}
+            onOpenChange={(isOpen) => {
+              setShowKanbanDialog(isOpen);
+              if (!isOpen) {
+                setSelectedResult(null);
+              }
+            }}
+            tender={selectedResult}
+            onAddSuccess={(boardId) => {
+              setShowKanbanDialog(false);
+              setSelectedResult(null);
+              setTimeout(() => {
+                setPopupMessage(t('tenders.kanban.addSuccess'));
+                setAddToKanbanSuccess(true);
+                setPopupOpen(true);
+                // Refresh kanban boards to update the display
+                fetchKanbanBoards();
+              }, 100);
+            }}
+            onAddError={(error) => {
+              // Close the Kanban dialog on error
+              setShowKanbanDialog(false);
+              setSelectedResult(null);
+              // Small delay before showing error popup
+              setTimeout(() => {
+                setPopupMessage(t('tenders.kanban.addError'));
+                setAddToKanbanSuccess(false);
+                setPopupOpen(true);
+              }, 100);
+            }}
+          />
+        )
       }
-    }}
-    tender={selectedResult}
-    onAddSuccess={(boardId) => {
-      setShowKanbanDialog(false);
-      setSelectedResult(null);
-      setTimeout(() => {
-        setPopupMessage("Przetarg pomyślnie dodano do Kanban board");
-        setAddToKanbanSuccess(true);
-        setPopupOpen(true);
-        // Refresh kanban boards to update the display
-        fetchKanbanBoards();
-      }, 100);
-    }}
-    onAddError={(error) => {
-      // Close the Kanban dialog on error
-      setShowKanbanDialog(false);
-      setSelectedResult(null);
-      // Small delay before showing error popup
-      setTimeout(() => {
-        setPopupMessage("Error adding tender to Kanban board");
-        setAddToKanbanSuccess(false);
-        setPopupOpen(true);
-      }, 100);
-    }}
-  />
-)}
-      {popupOpen && (
-        <Dialog open={popupOpen} onOpenChange={setPopupOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className={`rounded-full p-3 ${addToKanbanSuccess ? 'bg-success/15' : 'bg-destructive/15'}`}>
-                  {addToKanbanSuccess ? (
-                    <CheckCircle2 className="h-8 w-8 text-success" strokeWidth={1.5} />
-                  ) : (
-                    <XCircle className="h-8 w-8 text-destructive" strokeWidth={1.5} />
-                  )}
+      {
+        popupOpen && (
+          <Dialog open={popupOpen} onOpenChange={setPopupOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className={`rounded-full p-3 ${addToKanbanSuccess ? 'bg-success/15' : 'bg-destructive/15'}`}>
+                    {addToKanbanSuccess ? (
+                      <CheckCircle2 className="h-8 w-8 text-success" strokeWidth={1.5} />
+                    ) : (
+                      <XCircle className="h-8 w-8 text-destructive" strokeWidth={1.5} />
+                    )}
+                  </div>
+                  <DialogTitle className="text-lg font-semibold leading-none tracking-tight">
+                    {popupMessage}
+                  </DialogTitle>
                 </div>
-                <DialogTitle className="text-lg font-semibold leading-none tracking-tight">
-                  {popupMessage}
-                </DialogTitle>
-              </div>
-            </DialogHeader>
-            <DialogFooter className="sm:justify-center gap-2">
-              {addToKanbanSuccess && (
-                <Button 
-                  onClick={handlePopupClose}
-                  variant="default"
+              </DialogHeader>
+              <DialogFooter className="sm:justify-center gap-2">
+                {addToKanbanSuccess && (
+                  <Button
+                    onClick={handlePopupClose}
+                    variant="default"
+                    className="px-6"
+                  >
+                    {t('tenders.kanban.showAllBoards')}
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    setPopupOpen(false);
+                    setAddToKanbanSuccess(null); // Reset the success state
+                  }}
+                  variant={addToKanbanSuccess ? "outline" : "default"}
                   className="px-6"
                 >
-                  Pokaż wszystkie tablice
+                  {addToKanbanSuccess ? t('tenders.kanban.stayHere') : t('tenders.kanban.exit')}
                 </Button>
-              )}
-              <Button 
-  onClick={() => {
-    setPopupOpen(false);
-    setAddToKanbanSuccess(null); // Reset the success state
-  }}
-  variant={addToKanbanSuccess ? "outline" : "default"}
-  className="px-6"
->
-  {addToKanbanSuccess ? "Zostań tutaj" : "Zamknij"}
-</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )
+      }
+    </div >
   );
 };
 

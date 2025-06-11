@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, ArrowRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTendersTranslations } from "@/hooks/useTranslations";
 
 interface AddToKanbanDialogProps {
   open: boolean;
@@ -41,6 +42,7 @@ export function AddToKanbanDialog({
   onAddError
 }: AddToKanbanDialogProps) {
   const { user } = useDashboard();
+  const t = useTendersTranslations();
   const { 
     boards, 
     createBoardAction, 
@@ -177,11 +179,11 @@ export function AddToKanbanDialog({
   };
 
   const getBoardName = () => {
-    return boards.find(b => b.id === selectedBoardId)?.name || "Wybrana tablica";
+    return boards.find(b => b.id === selectedBoardId)?.name || t('tenders.kanban.selectedBoard');
   };
 
   const getColumnName = () => {
-    return selectedBoardColumns.find(c => c.id === selectedColumnId)?.name || "Wybrana kolumna";
+    return selectedBoardColumns.find(c => c.id === selectedColumnId)?.name || t('tenders.kanban.selectColumn');
   };
 
   return (
@@ -194,7 +196,7 @@ export function AddToKanbanDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Dodaj do Kanban</DialogTitle>
+          <DialogTitle>{t('tenders.kanban.addToKanban')}</DialogTitle>
         </DialogHeader>
 
         {/* Step 1: Board Selection */}
@@ -206,20 +208,20 @@ export function AddToKanbanDialog({
             >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="existing" disabled={boards.length === 0}>
-                  Istniejąca tablica
+                  {t('tenders.kanban.existingBoard')}
                 </TabsTrigger>
-                <TabsTrigger value="new">Nowa tablica</TabsTrigger>
+                <TabsTrigger value="new">{t('tenders.kanban.newBoard')}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="existing" className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Wybierz tablicę</Label>
+                  <Label>{t('tenders.kanban.selectBoard')}</Label>
                   <Select
                     value={selectedBoardId}
                     onValueChange={handleBoardChange}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Wybierz tablicę" />
+                      <SelectValue placeholder={t('tenders.kanban.selectBoard')} />
                     </SelectTrigger>
                     <SelectContent>
                       {boards.map((board) => (
@@ -234,11 +236,11 @@ export function AddToKanbanDialog({
               
               <TabsContent value="new" className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Nazwa nowej tablicy</Label>
+                  <Label>{t('tenders.kanban.newBoardName')}</Label>
                   <Input
                     value={newBoardName}
                     onChange={(e) => setNewBoardName(e.target.value)}
-                    placeholder="Wpisz nazwę tablicy"
+                    placeholder={t('tenders.kanban.enterBoardName')}
                   />
                 </div>
               </TabsContent>
@@ -246,14 +248,14 @@ export function AddToKanbanDialog({
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Anuluj
+                {t('tenders.kanban.cancel')}
               </Button>
               <Button 
                 onClick={handleBoardSelectionNext}
                 disabled={(boardSelectionType === "existing" && !selectedBoardId) || 
                          (boardSelectionType === "new" && !newBoardName.trim())}
               >
-                Dalej <ArrowRight className="ml-2 h-4 w-4" />
+                {t('tenders.kanban.next')} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </DialogFooter>
           </div>
@@ -263,7 +265,7 @@ export function AddToKanbanDialog({
         {currentStep === 2 && (
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground mb-2">
-              Tablica: <span className="font-medium text-foreground">{getBoardName()}</span>
+              {t('tenders.kanban.board')}: <span className="font-medium text-foreground">{getBoardName()}</span>
             </div>
 
             <Tabs 
@@ -272,20 +274,20 @@ export function AddToKanbanDialog({
             >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="existing" disabled={selectedBoardColumns.length === 0}>
-                  Istniejąca kolumna
+                  {t('tenders.kanban.existingColumn')}
                 </TabsTrigger>
-                <TabsTrigger value="new">Nowa kolumna</TabsTrigger>
+                <TabsTrigger value="new">{t('tenders.kanban.newColumn')}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="existing" className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Wybierz kolumnę</Label>
+                  <Label>{t('tenders.kanban.selectColumn')}</Label>
                   <Select
                     value={selectedColumnId}
                     onValueChange={setSelectedColumnId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Wybierz kolumnę" />
+                      <SelectValue placeholder={t('tenders.kanban.selectColumn')} />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedBoardColumns.map((col) => (
@@ -300,11 +302,11 @@ export function AddToKanbanDialog({
               
               <TabsContent value="new" className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Nazwa nowej kolumny</Label>
+                  <Label>{t('tenders.kanban.newColumnName')}</Label>
                   <Input
                     value={newColumnName}
                     onChange={(e) => setNewColumnName(e.target.value)}
-                    placeholder="Wpisz nazwę kolumny"
+                    placeholder={t('tenders.kanban.enterColumnName')}
                   />
                 </div>
               </TabsContent>
@@ -312,14 +314,14 @@ export function AddToKanbanDialog({
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                Wstecz
+                {t('tenders.kanban.back')}
               </Button>
               <Button 
                 onClick={handleColumnSelectionFinish}
                 disabled={(columnSelectionType === "existing" && !selectedColumnId) || 
                          (columnSelectionType === "new" && !newColumnName.trim())}
               >
-                Dodaj do Kanban
+                {t('tenders.kanban.addToKanban')}
               </Button>
             </DialogFooter>
           </div>

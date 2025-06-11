@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Comment } from '@/types/comments';
 import { createComment, deleteComment, getComments, updateComment } from '@/utils/commentActions';
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 // Extended comment interface to include user-specific fields for UI
 interface CommentWithUser extends Comment {
@@ -30,11 +31,10 @@ interface CommentWithUser extends Comment {
 
 interface CommentSectionProps {
     tenderId: string;
-    refreshTrigger?: boolean; // Add optional prop to trigger refresh
+    refreshTrigger?: boolean;
 }
 
 const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigger }) => {
-    // State variables for managing comments, loading states, and form inputs
     const [comments, setComments] = useState<CommentWithUser[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,8 +42,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
     const [newComment, setNewComment] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
-    const { user } = useDashboard(); // Current logged-in user
-    const { toast } = useToast(); // Toast notifications
+    const { user } = useDashboard();
+    const { toast } = useToast();
+    const t = useTendersTranslations();
+    const commonT = useCommonTranslations();
 
     // Fetch comments for the given tender ID
     const fetchComments = async () => {
@@ -66,8 +68,8 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
         } catch (error) {
             console.error('Failed to fetch comments:', error);
             toast({
-                title: "Nie udało się pobrać komentarzy",
-                description: "Wystąpił problem podczas ładowania komentarzy. Spróbuj ponownie później.",
+                title: t('tenders.comments.fetchError'),
+                description: t('tenders.comments.fetchErrorDesc'),
                 variant: "destructive",
             });
         } finally {
@@ -87,22 +89,17 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
             const commentWithUser = {
                 ...newCommentData,
                 user_name: user?.name || 'You',
-                user_avatar: undefined // User doesn't have avatar property
+                user_avatar: undefined
             };
 
             setComments(prev => [commentWithUser, ...prev]);
             setNewComment('');
 
-            // Remove this toast notification
-            // toast({
-            //     title: "Komentarz dodany",
-            //     description: "Twój komentarz został pomyślnie dodany.",
-            // });
         } catch (error) {
             console.error('Failed to add comment:', error);
             toast({
-                title: "Nie udało się dodać komentarza",
-                description: "Wystąpił problem podczas dodawania komentarza. Spróbuj ponownie później.",
+                title: t('tenders.comments.addError'),
+                description: t('tenders.comments.addErrorDesc'),
                 variant: "destructive",
             });
         } finally {
@@ -130,14 +127,14 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
             setEditText('');
 
             toast({
-                title: "Komentarz zaktualizowany",
-                description: "Twój komentarz został pomyślnie zaktualizowany.",
+                title: t('tenders.comments.updateSuccess'),
+                description: t('tenders.comments.updateSuccessDesc'),
             });
         } catch (error) {
             console.error('Failed to edit comment:', error);
             toast({
-                title: "Nie udało się zaktualizować komentarza",
-                description: "Wystąpił problem podczas aktualizacji komentarza. Spróbuj ponownie później.",
+                title: t('tenders.comments.updateError'),
+                description: t('tenders.comments.updateErrorDesc'),
                 variant: "destructive",
             });
         } finally {
@@ -153,14 +150,14 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
             setComments(prev => prev.filter(comment => comment._id !== commentId));
 
             toast({
-                title: "Komentarz usunięty",
-                description: "Komentarz został pomyślnie usunięty.",
+                title: t('tenders.comments.deleteSuccess'),
+                description: t('tenders.comments.deleteSuccessDesc'),
             });
         } catch (error) {
             console.error('Failed to delete comment:', error);
             toast({
-                title: "Nie udało się usunąć komentarza",
-                description: "Wystąpił problem podczas usuwania komentarza. Spróbuj ponownie później.",
+                title: t('tenders.comments.deleteError'),
+                description: t('tenders.comments.deleteErrorDesc'),
                 variant: "destructive",
             });
         } finally {
@@ -173,14 +170,14 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
         if (tenderId) {
             fetchComments();
         }
-    }, [tenderId, refreshTrigger]); // Add refreshTrigger to dependencies
+    }, [tenderId, refreshTrigger]);
 
     // Format date strings for display
     const formatDate = (dateString: string): string => {
         try {
             return format(new Date(dateString), "dd.MM.yyyy, HH:mm");
         } catch (e) {
-            return "Invalid date";
+            return t('common.dates.invalidDate');
         }
     };
 
@@ -188,17 +185,17 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
         <div className="space-y-4">
             {/* Header with refresh button */}
             <div className="flex justify-between items-center">
-                <h3 className="font-semibold">Komentarze</h3>
+                <h3 className="font-semibold">{t('tenders.comments.title')}</h3>
                 <Button
                     variant="ghost"
                     size="sm"
                     onClick={fetchComments}
                     disabled={isLoading}
                     className="h-8 w-8 p-0"
-                    title="Refresh comments"
+                    title={t('tenders.comments.refreshComments')}
                 >
                     <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    <span className="sr-only">Odśwież komentarze</span>
+                    <span className="sr-only">{t('tenders.comments.refreshComments')}</span>
                 </Button>
             </div>
 
@@ -206,13 +203,13 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
             <div className="flex gap-3">
                 <div className="flex-shrink-0">
                     <Avatar className="h-8 w-8">
-                        <AvatarImage src="" /> {/* Remove user?.avatar_img */}
+                        <AvatarImage src="" />
                         <AvatarFallback>{user?.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
                 </div>
                 <div className="flex-grow space-y-2">
                     <Textarea
-                        placeholder="Dodaj komentarz..."
+                        placeholder={t('tenders.comments.addCommentPlaceholder')}
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
                         className="min-h-[80px] resize-none"
@@ -226,10 +223,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                             {isSubmitting ? (
                                 <>
                                     <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
-                                    Dodawanie...
+                                    {t('tenders.comments.adding')}
                                 </>
                             ) : (
-                                "Dodaj komentarz"
+                                t('tenders.comments.addComment')
                             )}
                         </Button>
                     </div>
@@ -241,7 +238,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                 {isLoading && comments.length === 0 ? (
                     <div className="text-sm text-muted-foreground p-2 flex items-center justify-center">
                         <span className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin mr-2" />
-                        Ładowanie komentarzy...
+                        {t('tenders.comments.loading')}
                     </div>
                 ) : comments.length > 0 ? (
                     comments.map(comment => (
@@ -262,7 +259,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                                             </span>
                                             {comment.updated_at && (
                                                 <Badge variant="outline" className="ml-2 text-[10px] px-1 py-0">
-                                                    edytowany
+                                                    {t('tenders.comments.edited')}
                                                 </Badge>
                                             )}
                                         </div>
@@ -282,7 +279,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                                                         setEditText(comment.text);
                                                     }}>
                                                         <Edit className="mr-2 h-4 w-4" />
-                                                        <span>Edytuj</span>
+                                                        <span>{t('tenders.comments.edit')}</span>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem
                                                         onClick={() => handleDeleteComment(comment._id)}
@@ -292,12 +289,12 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                                                         {isDeleting === comment._id ? (
                                                             <>
                                                                 <span className="w-4 h-4 border-2 border-destructive/20 border-t-destructive rounded-full animate-spin mr-2" />
-                                                                <span>Usuwanie...</span>
+                                                                <span>{t('tenders.comments.deleting')}</span>
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <Trash className="mr-2 h-4 w-4" />
-                                                                <span>Usuń</span>
+                                                                <span>{t('tenders.comments.delete')}</span>
                                                             </>
                                                         )}
                                                     </DropdownMenuItem>
@@ -323,7 +320,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                                                     }}
                                                     disabled={isSubmitting}
                                                 >
-                                                    Anuluj
+                                                    {commonT('cancel')}
                                                 </Button>
                                                 <Button
                                                     size="sm"
@@ -333,10 +330,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                                                     {isSubmitting ? (
                                                         <>
                                                             <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
-                                                            Zapisywanie...
+                                                            {t('tenders.comments.saving')}
                                                         </>
                                                     ) : (
-                                                        "Zapisz"
+                                                        commonT('save')
                                                     )}
                                                 </Button>
                                             </div>
@@ -351,7 +348,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ tenderId, refreshTrigge
                 ) : (
                     <div className="text-center py-6 text-muted-foreground">
                         <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                        <p className="text-sm">Brak komentarzy. Dodaj pierwszy!</p>
+                        <p className="text-sm">{t('tenders.comments.noComments')}</p>
                     </div>
                 )}
             </div>

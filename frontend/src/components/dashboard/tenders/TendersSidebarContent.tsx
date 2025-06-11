@@ -21,6 +21,7 @@ import { usePathname, useRouter, useParams } from 'next/navigation';
 import { ConversationsHistory } from '../sidebar/conversation-history/ConversationHistory';
 import { KanbanColumn } from './kanban/KanbanColumn';
 import { AnalysisCriteria } from '@/types/tenders';
+import { useTendersTranslations, useNavigationTranslations } from "@/hooks/useTranslations";
 
 const ANALYSIS_LIMIT = 10;
 
@@ -35,6 +36,9 @@ export function TendersSidebarContent() {
   const pathname = usePathname();
   const params = useParams();
   const chatId = params?.chatId as string;
+  
+  const t = useTendersTranslations();
+  const navT = useNavigationTranslations();
   
   const isChatDetailPage = pathname?.includes('/tenders/chat/') && chatId && chatId !== 'new';
   
@@ -98,7 +102,7 @@ export function TendersSidebarContent() {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Przetargi</SidebarGroupLabel>
+      <SidebarGroupLabel>{navT('tenders')}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="w-full space-y-1">
           <Collapsible 
@@ -117,7 +121,7 @@ export function TendersSidebarContent() {
                 className={`w-full text-sidebar-foreground ${activeTab === 'search' ? 'bg-secondary' : ''}`}
               >
                 <Search className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
-                <span className="flex-1 truncate min-w-0">Wyszukuj</span>
+                <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.search')}</span>
                 <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isSearchOpen ? "rotate-180" : ""}`} />
               </SidebarMenuButton>
             </CollapsibleTrigger>
@@ -129,13 +133,13 @@ export function TendersSidebarContent() {
                     <SidebarMenuItem className="w-full">
                       <SidebarMenuButton className="w-full text-sidebar-foreground/70">
                         <Loader2 className="shrink-0 text-sidebar-foreground h-4 w-4 animate-spin" />
-                        <span className="flex-1 truncate min-w-0">Wczytuję wyszukiwarki...</span>
+                        <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.loadingSearches')}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ) : analyses.length === 0 ? (
                     <SidebarMenuItem className="w-full">
                       <SidebarMenuButton className="w-full text-sidebar-foreground/70">
-                        <span className="flex-1 truncate min-w-0">Brak wyszukiwarek</span>
+                        <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.noSearches')}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ) : (
@@ -164,7 +168,7 @@ export function TendersSidebarContent() {
                       }}
                   >
                       <Plus className="shrink-0 text-sidebar-foreground h-4 w-4" />
-                      <span className="flex-1 truncate min-w-0">Nowa wyszukiwarka</span>
+                      <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.newSearch')}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </div>
@@ -185,7 +189,7 @@ export function TendersSidebarContent() {
                   className={`w-full text-sidebar-foreground ${activeTab === 'analyze' ? 'bg-secondary' : ''}`}
                 >
                   <MessageSquare className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
-                  <span className="flex-1 truncate min-w-0">Analizuj</span>
+                  <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.analyze')}</span>
                   <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isAnalyzeOpen ? "rotate-180" : ""}`} />
                 </SidebarMenuButton>
               </CollapsibleTrigger>
@@ -194,7 +198,10 @@ export function TendersSidebarContent() {
               <SidebarMenuButton onClick={() => {
                   router.push('/dashboard/tenders/chat');
                   setActiveTab('analyze');
-                }}><CircleArrowLeft/>Wróć do projektów</SidebarMenuButton>
+                }}>
+                  <CircleArrowLeft/>
+                  {t('tenders.sidebar.backToProjects')}
+                </SidebarMenuButton>
                 <div className="pl-6 pr-2 pt-2">
                   <ConversationsHistory />
                 </div>
@@ -211,7 +218,7 @@ export function TendersSidebarContent() {
                 }}
               >
                 <MessageSquare className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
-                <span className="flex-1 truncate min-w-0">Analizuj</span>
+                <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.analyze')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
@@ -226,7 +233,7 @@ export function TendersSidebarContent() {
               }}
             >
               <KanbanSquare className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
-              <span className="flex-1 truncate min-w-0">Zarządzaj</span>
+              <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.manage')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -243,7 +250,7 @@ export function TendersSidebarContent() {
           >
             <div className="p-6 pb-0">
               <h2 className="text-lg font-semibold">
-                Stwórz nową wyszukiwarkę przetargów
+                {t('tenders.create.title')}
               </h2>
             </div>
             <TenderAnalysisCreateForm 
@@ -267,19 +274,18 @@ export function TendersSidebarContent() {
             <div className="flex items-center gap-2 mb-4">
               <AlertCircle className="h-5 w-5 text-destructive" />
               <h2 className="text-lg font-semibold">
-                Limit osiągnięty
+                {t('tenders.sidebar.limitReached')}
               </h2>
             </div>
             <p className="text-muted-foreground mb-6">
-              Osiągnięto limit {ANALYSIS_LIMIT} aktywnych wyszukiwarek przetargów. 
-              Aby utworzyć nową wyszukiwarkę, usuń jedną z istniejących.
+              {t('tenders.sidebar.limitMessage', { limit: ANALYSIS_LIMIT })}
             </p>
             <div className="flex justify-end">
               <Button 
                 variant="outline" 
                 onClick={() => setShowLimitDialog(false)}
               >
-                Rozumiem
+                {t('tenders.sidebar.understand')}
               </Button>
             </div>
           </div>

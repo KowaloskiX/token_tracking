@@ -15,6 +15,7 @@ import { Loader2, Check, Shield, Info, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useDashboard } from "@/hooks/useDashboard";
 import { Assistant } from "@/types";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface OrgMember {
   id: string;
@@ -64,6 +65,9 @@ export default function AssignUsersToAssistantModal({
   onAssignmentsChange,
 }: AssignUsersAssistantModalProps) {
   const { assignUsersToAssistant } = useDashboard();
+  const t = useTendersTranslations();
+  const commonT = useCommonTranslations();
+  
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -110,12 +114,12 @@ export default function AssignUsersToAssistantModal({
         setOrgMembers(json.members || []);
       } catch (err) {
         console.error(err);
-        setError("Failed to load organization members.");
+        setError(t('tenders.edit.fetchError'));
       } finally {
         setIsLoading(false);
       }
     })();
-  }, [open, assistant.assigned_users]);
+  }, [open, assistant.assigned_users, t]);
 
   const handleClose = useCallback(
     (newOpen: boolean) => {
@@ -158,7 +162,7 @@ export default function AssignUsersToAssistantModal({
     onAssignmentsChange?.(updated.assigned_users ?? []);
       handleClose(false);
     } catch {
-      setError("Error saving assignments.");
+      setError(t('tenders.edit.saveError'));
     } finally {
       setIsSaving(false);
     }
@@ -168,11 +172,13 @@ export default function AssignUsersToAssistantModal({
     <Dialog open={open} onOpenChange={handleClose} modal>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Przypisz użytkowników do projektu</DialogTitle>
+          <DialogTitle>{t('dashboard.projects.assign_users')}</DialogTitle>
         </DialogHeader>
 
         <div className="py-4">
-          <h3 className="text-sm font-medium mb-2">Projekt: {assistant.name}</h3>
+          <h3 className="text-sm font-medium mb-2">
+            {t('common.projects')}: {assistant.name}
+          </h3>
 
           {isLoading ? (
             <div className="flex justify-center h-32 items-center">
@@ -182,14 +188,14 @@ export default function AssignUsersToAssistantModal({
             <div className="text-destructive p-2">{error}</div>
           ) : orgMembers.length === 0 ? (
             <div className="text-muted-foreground p-2">
-              Brak użytkowników w organizacji.
+              {t('tenders.edit.noUsers')}
             </div>
           ) : (
             <>
               <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
                 <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-muted-foreground">
-                  Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej analizy i jej wyników. Posiadacz analizy zawsze ma dostęp.
+                  {t('tenders.edit.assignInfo')}
                 </div>
               </div>
 
@@ -225,7 +231,7 @@ export default function AssignUsersToAssistantModal({
                               </span>
                               {m.isCurrentUser && (
                                 <Badge variant="outline" className="ml-2 text-xs">
-                                  Ty
+                                  {commonT('user')}
                                 </Badge>
                               )}
                               {m.role === "admin" && (
@@ -237,7 +243,7 @@ export default function AssignUsersToAssistantModal({
                               {isOwner && (
                                 <Badge variant="default" className="ml-2 text-xs">
                                   <User className="h-3 w-3 mr-1" />
-                                  Właściciel
+                                  {t('tenders.edit.ownerBadge')}
                                 </Badge>
                               )}
                             </div>
@@ -257,7 +263,7 @@ export default function AssignUsersToAssistantModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)}>
-            Anuluj
+            {commonT('cancel')}
           </Button>
           <Button onClick={handleSave} disabled={isLoading || isSaving || !hasChanges}>
             {isSaving ? (
@@ -265,7 +271,7 @@ export default function AssignUsersToAssistantModal({
             ) : (
               <Check className="h-4 w-4 mr-2" />
             )}
-            Zapisz
+            {commonT('save')}
           </Button>
         </DialogFooter>
       </DialogContent>
