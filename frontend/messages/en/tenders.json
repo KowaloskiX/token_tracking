@@ -2,31 +2,19 @@
   "tenders": {
     "edit": {
       "title": "Edit tender search",
-      "share": {
-        "shareInOrg": "Share within organization",
-        "stopSharing": "Stop sharing within organization",
-        "sharing": "Sharing...",
-        "stopSharingLoading": "Stopping sharing...",
-        "sharedBadge": "Shared",
-        "privateBadge": "Private"
-      },
-      "assignUsers": "Assign users",
-      "hideAssignUsers": "Hide assignment",
-      "noUsers": "No users",
-      "assignInfo": "Users selected below will have access to this analysis and its results. The analysis owner always has access.",
-      "ownerBadge": "Owner",
       "nameLabel": "Name",
       "namePlaceholder": "Name your search...",
       "companyDescriptionLabel": "Which tenders do you want to search?",
       "companyDescriptionPlaceholder": "Describe the tenders you're looking for and your company so AI knows what interests you...",
       "companyDescriptionTooltip": "Describe your company, industry, and the type of services/products you offer. AI will use this information to pre-select tenders based on their titles.",
-      "searchPhraseLabel": "Keywords",
+      "searchPhraseLabel": "Keywords", 
       "searchPhrasePlaceholder": "e.g. Road infrastructure construction",
       "searchPhraseTooltip": "Enter the main keywords that appear in the titles of tenders you're interested in. AI will use this information to search for tenders.",
       "sourcesLabel": "Sources",
       "selectSources": "Select sources...",
       "selectedSources": "Selected {count, plural, one {# source} other {# sources}}",
       "criteriaLabel": "Analysis criteria",
+      "criterionDescription": "Criterion description",
       "emptyCriteriaError": "You cannot create a search without criteria. Add at least one criterion.",
       "addCriterion": "+ Add new criterion",
       "saveChanges": "Save changes",
@@ -46,10 +34,30 @@
       "keywordsTooltip": "Enter keywords separated by commas, e.g. \"certification, ISO, budget\"",
       "subcriteriaLabel": "Additional queries",
       "addSubquery": "+ Add query",
+      "assignUsers": "Assign users",
+      "hideAssignUsers": "Hide assignment",
+      "noUsers": "No users",
+      "assignInfo": "Users selected below will have access to this analysis and its results. The analysis owner always has access.",
+      "ownerBadge": "Owner",
       "fetchError": "Error fetching organization members. Please try again.",
       "noIdError": "Analysis has no identifier.",
       "saveError": "Error saving user assignments. Please try again.",
-      "ownerAlwaysAccess": "Owner always has access"
+      "ownerAlwaysAccess": "Owner always has access",
+      "share": {
+        "shareInOrg": "Share within organization",
+        "stopSharing": "Stop sharing within organization", 
+        "sharing": "Sharing...",
+        "stopSharingLoading": "Stopping sharing...",
+        "sharedBadge": "Shared",
+        "privateBadge": "Private"
+      },
+      "emailNotifications": {
+        "title": "Email Notifications",
+        "description": "Select who should receive emails about new tenders. By default, all assigned users receive notifications.",
+        "recipients": "Email notification recipients",
+        "enableAll": "Enable all",
+        "disableAll": "Disable all"
+      }
     },
     "create": {
       "title": "Create new tender search",
@@ -69,7 +77,15 @@
       "maxCriteriaError": "You can add up to 20 criteria",
       "addCriterion": "+ Add new criterion",
       "createSearch": "Create search",
-      "creating": "Creating..."
+      "creating": "Creating...",
+      "instructionLabel": "Instruction for AI",
+      "instructionPlaceholder": "e.g. 'Check the exact budget amount and consider the criterion met if the budget exceeds 500,000 PLN'",
+      "instructionTooltip": "Additional instructions for the AI clarifying how to analyze this criterion and when to deem it met.",
+      "keywordsLabel": "Keywords",
+      "keywordsPlaceholder": "Enter keywords separated by commas, e.g. 'certification, ISO, budget'",
+      "keywordsTooltip": "Enter keywords separated by commas, e.g. \"certification, ISO, budget\"",
+      "subcriteriaLabel": "Additional queries",
+      "addSubquery": "+ Add query"
     },
     "kanban": {
       "addToKanban": "Add to Kanban",
@@ -184,7 +200,8 @@
       "sortByRelevance": "Relevance",
       "sortByLastUpdate": "Last update",
       "sortByCreationDate": "Creation date",
-      "sortByPublicationDate": "Publication date"
+      "sortByPublicationDate": "Publication date",
+      "noTenders": "No tenders matching the selected filtering criteria."
     },
     "sidebar": {
       "search": "Search",

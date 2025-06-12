@@ -2,31 +2,19 @@
   "tenders": {
     "edit": {
       "title": "Edytuj wyszukiwarkę",
-      "share": {
-        "shareInOrg": "Udostępnij w organizacji",
-        "stopSharing": "Przestań udostępniać w organizacji",
-        "sharing": "Udostępnianie...",
-        "stopSharingLoading": "Anulowanie udostępniania...",
-        "sharedBadge": "Udostępniane",
-        "privateBadge": "Prywatne"
-      },
-      "assignUsers": "Przypisz użytkowników",
-      "hideAssignUsers": "Ukryj przypisywanie",
-      "noUsers": "Brak użytkowników",
-      "assignInfo": "Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej analizy i jej wyników. Posiadacz analizy zawsze ma dostęp.",
-      "ownerBadge": "Właściciel",
       "nameLabel": "Nazwa",
       "namePlaceholder": "Nazwij wyszukiwarkę...",
       "companyDescriptionLabel": "Jakie przetargi chcesz wyszukiwać?",
       "companyDescriptionPlaceholder": "Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje...",
       "companyDescriptionTooltip": "Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.",
       "searchPhraseLabel": "Słowa kluczowe",
-      "searchPhrasePlaceholder": "Np. Budowa infrastruktury drogowej",
+      "searchPhrasePlaceholder": "Np. Budowa infrastruktury drogowej", 
       "searchPhraseTooltip": "Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. AI będzie używało tych informacji do wyszukiwania przetargów.",
       "sourcesLabel": "Źródła",
       "selectSources": "Wybierz źródła...",
       "selectedSources": "Wybrano {count, plural, one {# źródło} few {# źródła} other {# źródeł}}",
       "criteriaLabel": "Kryteria analizy",
+      "criterionDescription": "Opis kryterium",
       "emptyCriteriaError": "Nie można stworzyć wyszukiwarki bez kryteriów. Dodaj przynajmniej jedno kryterium.",
       "addCriterion": "+ Dodaj nowe kryterium",
       "saveChanges": "Zapisz zmiany",
@@ -34,7 +22,7 @@
       "weightLabel": "Waga (1-5)",
       "disqualifying": "Kryterium dyskwalifikujące",
       "disqualifyingDescription": "Niespełnienie tego kryterium dyskwalifikuje przetarg",
-      "excludeFromScore": "Wyklucz z oceny",
+      "excludeFromScore": "Wyklucz z oceny", 
       "excludeFromScoreDescription": "Nie uwzględniaj przy wyliczaniu relewantności",
       "showOptional": "Pokaż opcjonalne",
       "hideOptional": "Ukryj opcjonalne",
@@ -46,10 +34,30 @@
       "keywordsTooltip": "Wprowadź słowa kluczowe oddzielone przecinkami, np. \"certyfikacja, ISO, budżet\"",
       "subcriteriaLabel": "Dodatkowe zapytania",
       "addSubquery": "+ Dodaj zapytanie",
+      "assignUsers": "Przypisz użytkowników",
+      "hideAssignUsers": "Ukryj przypisywanie",
+      "noUsers": "Brak użytkowników",
+      "assignInfo": "Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej analizy i jej wyników. Posiadacz analizy zawsze ma dostęp.",
+      "ownerBadge": "Właściciel",
       "fetchError": "Błąd podczas pobierania członków organizacji. Spróbuj ponownie.",
       "noIdError": "Analiza nie ma identyfikatora.",
       "saveError": "Błąd podczas zapisywania przypisań użytkowników. Spróbuj ponownie.",
-      "ownerAlwaysAccess": "Właściciel zawsze ma dostęp"
+      "ownerAlwaysAccess": "Właściciel zawsze ma dostęp",
+      "share": {
+        "shareInOrg": "Udostępnij w organizacji",
+        "stopSharing": "Przestań udostępniać w organizacji",
+        "sharing": "Udostępnianie...",
+        "stopSharingLoading": "Anulowanie udostępniania...",
+        "sharedBadge": "Udostępniane",
+        "privateBadge": "Prywatne"
+      },
+      "emailNotifications": {
+        "title": "Powiadomienia email",
+        "description": "Wybierz kto powinien otrzymywać emaile o nowych przetargach. Domyślnie wszyscy przypisani użytkownicy otrzymują powiadomienia.",
+        "recipients": "Odbiorcy powiadomień email",
+        "enableAll": "Włącz wszystkich",
+        "disableAll": "Wyłącz wszystkich"
+      }
     },
     "create": {
       "title": "Stwórz nową wyszukiwarkę",
@@ -69,7 +77,15 @@
       "maxCriteriaError": "Możesz dodać maks. 20 kryteriów",
       "addCriterion": "+ Dodaj nowe kryterium",
       "createSearch": "Stwórz wyszukiwarkę",
-      "creating": "Tworzę..."
+      "creating": "Tworzę...",
+      "instructionLabel": "Instrukcja dla AI",
+      "instructionPlaceholder": "Np. 'Sprawdź dokładną kwotę budżetu i uznaj kryterium za spełnione, jeśli budżet przekracza 500 000 PLN'",
+      "instructionTooltip": "Dodatkowe wskazówki dla AI, które doprecyzowują, jak analizować to kryterium i kiedy uznać je za spełnione.",
+      "keywordsLabel": "Słowa kluczowe",
+      "keywordsPlaceholder": "Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'",
+      "keywordsTooltip": "Wprowadź słowa kluczowe oddzielone przecinkami, np. \"certyfikacja, ISO, budżet\"",
+      "subcriteriaLabel": "Dodatkowe zapytania",
+      "addSubquery": "+ Dodaj zapytanie"
     },
     "kanban": {
       "addToKanban": "Dodaj do Kanban",
@@ -184,7 +200,8 @@
       "sortByRelevance": "Relewantność",
       "sortByLastUpdate": "Ostatnia aktualizacja",
       "sortByCreationDate": "Data utworzenia",
-      "sortByPublicationDate": "Data publikacji"
+      "sortByPublicationDate": "Data publikacji",
+      "noTenders": "Brak przetargów spełniających wybrane kryteria filtrowania."
     },
     "sidebar": {
       "search": "Wyszukuj",
