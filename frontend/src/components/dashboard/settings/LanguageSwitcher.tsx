@@ -16,7 +16,8 @@ interface Language {
 
 const languages: Language[] = [
   { code: 'pl', name: 'Polish', nativeName: 'Polski' },
-  { code: 'en', name: 'English', nativeName: 'English' }
+  { code: 'en', name: 'English', nativeName: 'English' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch' }
 ];
 
 export function LanguageSwitcher() {
@@ -34,7 +35,7 @@ export function LanguageSwitcher() {
         .split('; ')
         .find(row => row.startsWith('locale='))
         ?.split('=')[1];
-      setCurrentLocale(cookieValue || 'pl');
+      setCurrentLocale(cookieValue || 'de'); // Changed default to German
     }
   }, []);
 
@@ -44,13 +45,15 @@ export function LanguageSwitcher() {
     setIsLoading(true);
     try {
       // Set the locale cookie
-      document.cookie = `locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}`;
+      document.cookie = `locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
       
       setCurrentLocale(newLocale);
       
+      const selectedLanguage = languages.find(l => l.code === newLocale);
+      
       toast({
-        title: "Język zmieniony",
-        description: `Język zmieniony na ${languages.find(l => l.code === newLocale)?.nativeName}`,
+        title: t('success'),
+        description: t('success') + `: ${selectedLanguage?.nativeName}`,
       });
 
       // Reload the page to apply the new locale
@@ -62,11 +65,25 @@ export function LanguageSwitcher() {
       console.error('Error changing language:', error);
       toast({
         variant: "destructive",
-        title: "Błąd",
-        description: "Nie udało się zmienić języka. Spróbuj ponownie.",
+        title: t('error'),
+        description: t('error'),
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getLanguageDisplayName = (language: Language) => {
+    // Use translations for language names when available
+    switch (language.code) {
+      case 'pl':
+        return t('polish');
+      case 'en':
+        return t('english');
+      case 'de':
+        return t('german');
+      default:
+        return language.nativeName;
     }
   };
 
@@ -76,9 +93,9 @@ export function LanguageSwitcher() {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
-            <h3 className="font-medium text-sm">Język aplikacji</h3>
+            <h3 className="font-medium text-sm">Anwendungssprache</h3>
           </div>
-          <div className="text-sm text-muted-foreground">Ładowanie...</div>
+          <div className="text-sm text-muted-foreground">Lädt...</div>
         </div>
       </div>
     );
@@ -113,7 +130,7 @@ export function LanguageSwitcher() {
                 htmlFor={language.code} 
                 className={`cursor-pointer ${isLoading ? 'opacity-50' : ''}`}
               >
-                <span className="font-medium">{language.nativeName}</span>
+                <span className="font-medium">{getLanguageDisplayName(language)}</span>
                 <span className="text-muted-foreground ml-2">({language.name})</span>
               </Label>
             </div>
@@ -122,7 +139,9 @@ export function LanguageSwitcher() {
 
         {isLoading && (
           <div className="text-sm text-muted-foreground">
-            Zastosowywanie zmian języka...
+            {currentLocale === 'de' ? 'Sprachänderungen werden angewendet...' : 
+             currentLocale === 'en' ? 'Applying language changes...' : 
+             'Zastosowywanie zmian języka...'}
           </div>
         )}
       </div>

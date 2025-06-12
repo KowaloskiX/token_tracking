@@ -79,11 +79,12 @@
     "copied": "Skopiowano",
     "copied_description": "Klucz API został skopiowany do schowka."
   },
-  "language_selection": {
+"language_selection": {
     "title": "Język aplikacji",
     "description": "Wybierz język interfejsu aplikacji",
     "polish": "Polski",
     "english": "English",
+    "german": "Deutsch",
     "save": "Zapisz język",
     "success": "Język został zmieniony",
     "error": "Nie udało się zmienić języka"

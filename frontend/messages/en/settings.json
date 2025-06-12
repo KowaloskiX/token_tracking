@@ -14,7 +14,7 @@
       "description": "Manage your team and invite new members to collaborate."
     },
     "notifications": {
-      "title": "Notifications", 
+      "title": "Notifications",
       "description": "Configure how you receive notifications."
     },
     "language": {
@@ -84,6 +84,7 @@
     "description": "Choose your preferred interface language",
     "polish": "Polski",
     "english": "English",
+    "german": "Deutsch",
     "save": "Save Language",
     "success": "Language has been changed",
     "error": "Failed to change language"
