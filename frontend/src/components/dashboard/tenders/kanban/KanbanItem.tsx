@@ -22,13 +22,13 @@ import { KanbanTenderItem } from "@/types/kanban";
 import { TenderAnalysisResult } from "@/types/tenders";
 import { format } from "date-fns";
 import TenderSourceIcon from "../TenderSourceIcon";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 // Helper function to safely format dates
 const safeFormatDate = (dateString: string | null | undefined): string | null => {
   if (!dateString) return null;
   
   const date = new Date(dateString);
-  // Check if date is valid before formatting
   return !isNaN(date.getTime()) ? format(date, "dd.MM.yyyy") : null;
 };
 
@@ -52,17 +52,17 @@ export function KanbanItem({
   const router = useRouter();
   const tender = activeTenders.find(t => t._id === item.tender_analysis_result_id);
   const tenderName = tender?.tender_metadata?.name || "Loading...";
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
   
   // Format dates if they exist and are valid
   const initiationDate = safeFormatDate(tender?.tender_metadata?.initiation_date);
   const submissionDeadline = safeFormatDate(tender?.tender_metadata?.submission_deadline);
 
   const handleClick = () => {
-    // If onTenderSelect is provided, use it to show the sidebar
     if (onTenderSelect && item.tender_analysis_result_id) {
       onTenderSelect(item.tender_analysis_result_id);
     } else {
-      // Otherwise fallback to navigation (original behavior)
       router.push(`/dashboard/tenders/${item.tender_analysis_result_id}`);
     }
   };
@@ -119,7 +119,7 @@ export function KanbanItem({
                   onClick={handleDeleteClick}
                 >
                   <Trash className="mr-2 h-4 w-4" />
-                  Usuń
+                  {tCommon('delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -147,13 +147,13 @@ export function KanbanItem({
             {initiationDate && (
               <div className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                <span>Opublikowano: {initiationDate}</span>
+                <span>{tCommon('published')}: {initiationDate}</span>
               </div>
             )}
             {submissionDeadline && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                <span>Termin: {submissionDeadline}</span>
+                <span>{tCommon('deadline')}: {submissionDeadline}</span>
               </div>
             )}
           </div>

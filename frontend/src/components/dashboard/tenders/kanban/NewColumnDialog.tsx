@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { DEFAULT_COLUMN_COLOR } from "@/types/kanban";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface NewColumnDialogProps {
   boardId: string;
@@ -19,6 +20,8 @@ export function NewColumnDialog({ boardId, open, onOpenChange }: NewColumnDialog
   const { createColumnAction, selectedBoard } = useKanban();
   const [name, setName] = React.useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
   const handleCreateColumn = async () => {
     if (!name.trim()) return;
@@ -40,13 +43,13 @@ export function NewColumnDialog({ boardId, open, onOpenChange }: NewColumnDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Utwórz nową kolumnę</DialogTitle>
+          <DialogTitle>{t('tenders.board.newColumn')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label htmlFor="columnName">Nazwa kolumny</Label>
+          <Label htmlFor="columnName">{t('tenders.board.columnName')}</Label>
           <Input
             id="columnName"
-            placeholder="np. Do przejrzenia"
+            placeholder="e.g. To review"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreateColumn()}
@@ -54,10 +57,10 @@ export function NewColumnDialog({ boardId, open, onOpenChange }: NewColumnDialog
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Anuluj
+            {tCommon('cancel')}
           </Button>
           <Button onClick={handleCreateColumn} disabled={isCreating}>
-            {isCreating ? "Tworzenie..." : "Utwórz"}
+            {isCreating ? tCommon('creating') : t('tenders.board.createColumn')}
           </Button>
         </DialogFooter>
       </DialogContent>

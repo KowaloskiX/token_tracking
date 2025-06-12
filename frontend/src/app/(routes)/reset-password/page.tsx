@@ -4,21 +4,38 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
+import { getTranslations } from 'next-intl/server';
 
-export const metadata: Metadata = {
-    title: "Asystent AI - Resetowanie hasła",
-    description: "Ustaw nowe hasło do swojego konta na platformie Asystent AI.",
-};
+// Generate metadata based on locale
+export async function generateMetadata(): Promise<Metadata> {
+    const t = await getTranslations('auth.reset_password');
+    
+    return {
+        title: `Asystent AI - ${t('title')}`,
+        description: t('description'),
+    };
+}
 
 export default async function ResetPasswordPage({ searchParams }: { searchParams: any }) {
-    // Safely resolve searchParams in case it's a Promise, similar to accept-invitation/page.tsx.
+    // Safely resolve searchParams in case it's a Promise
     const params = await Promise.resolve(searchParams);
     const token = params.token;
+    
+    const t = await getTranslations('auth');
+    const tCommon = await getTranslations('common');
 
     if (!token) {
         return (
             <div className="h-[100svh] flex items-center justify-center">
-                <p className="text-red-500">Nieprawidłowy lub brakujący token resetowania hasła.</p>
+                <div className="text-center">
+                    <p className="text-red-500 mb-4">{t('common.invalid_token')}</p>
+                    <Link
+                        href="/dashboard/tenders/chat"
+                        className={cn(buttonVariants({ variant: "outline" }))}
+                    >
+                        {t('common.go_to_login')}
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -34,9 +51,9 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
                         buttonVariants({ variant: "ghost" }),
                         "absolute right-4 top-4 md:right-8 md:top-8"
                     )}
-                    aria-label="Przejdź do strony logowania"
+                    aria-label={t('common.go_to_login')}
                 >
-                    Zaloguj się
+                    {t('login.submit')}
                 </Link>
 
                 {/* Left sidebar with background image (hidden on mobile) */}
@@ -88,10 +105,10 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
                         {/* Page title and subtitle */}
                         <div className="flex flex-col space-y-2 text-center">
                             <h1 className="text-2xl font-semibold tracking-tight mt-28 sm:mt-0">
-                                Resetowanie hasła
+                                {t('reset_password.title')}
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Wprowadź nowe hasło dla swojego konta.
+                                {t('reset_password.description')}
                             </p>
                         </div>
                         

@@ -18,7 +18,9 @@
   "filter": "Filtruj",
   "sort": "Sortuj",
   "create": "Utwórz",
+  "creating": "Tworzenie...",
   "update": "Aktualizuj",
+  "updating": "Aktualizacja...",
   "remove": "Usuń",
   "add": "Dodaj",
   "upload": "Wgraj",
@@ -79,8 +81,12 @@
   "upload_files_websites": "Prześlij pliki i strony internetowe, aby AI je zapamiętał",
   "projects": "Projekty",
   "file": "Prześlij plik",
-    "dates": {
+  "dates": {
     "invalidDate": "Nieprawidłowa data"
   },
-  "language": "pl"
+  "language": "pl",
+  "optional": "opcjonalne",
+  "required": "wymagane",
+  "published": "Opublikowano",
+  "deadline": "Termin"
 }

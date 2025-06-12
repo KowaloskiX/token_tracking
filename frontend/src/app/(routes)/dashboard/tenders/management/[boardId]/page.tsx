@@ -14,11 +14,13 @@ import { Input } from "@/components/ui/input";
 import { DeleteBoardDialog } from "@/components/dashboard/tenders/kanban/DeleteBoardDialog";
 import { TenderAnalysisResult } from "@/types/tenders";
 import { getBoards } from "@/utils/kanbanActions";
+import { useTendersTranslations } from "@/hooks/useTranslations";
 
 export default function BoardManagementPage() {
   const router = useRouter();
   const { boardId } = useParams();
   const { user } = useDashboard();
+  const t = useTendersTranslations();
   const { 
     boards,
     selectedBoard,
@@ -119,7 +121,6 @@ export default function BoardManagementPage() {
       try {
         const token = localStorage.getItem("token");
         
-        // Send the ID as a direct array, not wrapped in an object
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-results/batch`,
           {
@@ -128,7 +129,7 @@ export default function BoardManagementPage() {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify([tenderResultId]) // Just send the array directly
+            body: JSON.stringify([tenderResultId])
           }
         );
         
@@ -137,7 +138,6 @@ export default function BoardManagementPage() {
         }
         
         const data = await response.json();
-        // The batch endpoint returns an array, so we need to take the first item
         if (data && data.length > 0) {
           setSelectedTenderResult(data[0]);
           drawerRef.current?.setVisibility(true);
@@ -203,16 +203,12 @@ export default function BoardManagementPage() {
                 </Button>
               </h1>
             )}
-            {/* Only show delete if owner or admin */}
             {canManage && (
               <DeleteBoardDialog
                 boardId={selectedBoard.id}
                 boardName={selectedBoard.name}
                 onDeleted={async () => {
-                // Store the current ID to compare after refresh
                   const currentBoardId = selectedBoard.id;
-                
-                // Get fresh boards data directly
                   const freshBoards = await getBoards();
                 
                   if (freshBoards.length > 0) {
@@ -224,7 +220,6 @@ export default function BoardManagementPage() {
                     }
                   } else {
                     router.push('/dashboard/tenders/management');
-                  // Wait for navigation to complete
                     setTimeout(() => setShowNewBoardDialog(true), 100);
                   }
                 }}
@@ -232,7 +227,7 @@ export default function BoardManagementPage() {
             )}
           </>
         ) : (
-          <h1 className="text-xl font-semibold">Board Management</h1>
+          <h1 className="text-xl font-semibold">{t('tenders.board.management')}</h1>
         )}
       </header>
 
@@ -249,9 +244,9 @@ export default function BoardManagementPage() {
 
       {boardNotFound ? (
         <div className="p-4 text-center space-y-4">
-          <h2 className="text-xl">Board not found</h2>
+          <h2 className="text-xl">{t('tenders.board.notFound')}</h2>
           <Button onClick={() => setShowNewBoardDialog(true)}>
-            Create new board
+            {t('tenders.board.createNewBoard')}
           </Button>
         </div>
       ) : selectedBoard ? (
@@ -279,7 +274,7 @@ export default function BoardManagementPage() {
         </div>
       ) : (
         <div className="p-4 text-center">
-          <p className="text-muted-foreground">Select or create a board to get started</p>
+          <p className="text-muted-foreground">{t('tenders.board.selectCreateBoard')}</p>
         </div>
       )}
 

@@ -18,7 +18,9 @@
   "filter": "Filter",
   "sort": "Sort",
   "create": "Create",
+  "creating": "Creating...",
   "update": "Update",
+  "updating": "Updating...",
   "remove": "Remove",
   "add": "Add",
   "upload": "Upload",
@@ -79,8 +81,12 @@
   "upload_files_websites": "Upload files and websites for AI to remember",
   "projects": "Projects",
   "file": "Send file",
-    "dates": {
+  "dates": {
     "invalidDate": "Invalid date"
   },
-  "language": "en"
+  "language": "en",
+  "optional": "optional",
+  "required": "required",
+  "published": "Published",
+  "deadline": "Deadline"
 }

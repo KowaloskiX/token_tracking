@@ -9,14 +9,15 @@ import { useTender } from "@/context/TenderContext";
 import { toast } from "@/hooks/use-toast";
 import { TenderAnalysisResult } from "@/types/tenders";
 import { useKanban } from "@/context/KanbanContext";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 const serverUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL;
 
 interface KanbanLayoutProps {
   board: KanbanBoard;
   onBoardUpdated: () => Promise<void>;
-  onTenderSelect?: (tenderResultId: string) => void; // Add this prop
-  drawerRef?: React.RefObject<{ setVisibility: (value: boolean) => void }>; // Add this prop
+  onTenderSelect?: (tenderResultId: string) => void;
+  drawerRef?: React.RefObject<{ setVisibility: (value: boolean) => void }>;
 }
 
 async function saveColumnsOrderToDB(
@@ -131,11 +132,13 @@ export function KanbanLayout({
 
   const columnsCount = columns.length;
   const isEmpty = columnsCount === 0;
+  
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
   // This effect synchronizes the columns state with the latest data from context or props
   useEffect(() => {
     if (pendingServerOperations === 0) {
-      // If we have the same board in context, prefer that one as it might have optimistic updates
       if (selectedBoard && selectedBoard.id === board.id) {
         const sorted = [...(selectedBoard.columns || [])].sort(
           (a, b) => (a.order ?? 0) - (b.order ?? 0)
@@ -157,7 +160,6 @@ export function KanbanLayout({
   useEffect(() => {
     const checkOverflow = () => {
       if (scrollContainerRef.current) {
-        // Compare scrollWidth (total content width) with clientWidth (visible width)
         const isActuallyOverflowing = 
           scrollContainerRef.current.scrollWidth > scrollContainerRef.current.clientWidth;
         
@@ -165,13 +167,9 @@ export function KanbanLayout({
       }
     };
     
-    // Check initially
     checkOverflow();
-    
-    // Check on window resize
     window.addEventListener('resize', checkOverflow);
     
-    // Check when columns change
     if (columns) {
       checkOverflow();
     }
@@ -201,7 +199,6 @@ export function KanbanLayout({
     e: React.DragEvent<HTMLDivElement>,
     columnId: string
   ) => {
-    // Only handle column drag if we're not dragging a tender
     if (!isDraggingTender) {
       setDraggedColumnId(columnId);
       e.dataTransfer.effectAllowed = "move";
@@ -218,49 +215,41 @@ export function KanbanLayout({
     dropTargetId: string
   ) => {
     e.preventDefault();
-    // Only handle column reordering if we're dragging a column
     if (draggedColumnId && draggedColumnId !== dropTargetId && !isDraggingTender) {
       const draggedIndex = columns.findIndex((c) => c.id === draggedColumnId);
       const dropIndex = columns.findIndex((c) => c.id === dropTargetId);
       if (draggedIndex === -1 || dropIndex === -1) return;
 
-      // Make a copy of columns to apply optimistic update
       const newColumns = [...columns];
       const [draggedColumn] = newColumns.splice(draggedIndex, 1);
       newColumns.splice(dropIndex, 0, draggedColumn);
 
-      // Apply order numbers
       const reordered = newColumns.map((col, idx) => ({
         ...col,
         order: idx + 1,
       }));
 
-      // Optimistically update UI immediately
       setColumns(reordered);
       setDraggedColumnId(null);
 
-      // Track that we have a pending operation
       setPendingServerOperations(prev => prev + 1);
 
-      // Save to backend asynchronously
       try {
         const success = await saveColumnsOrderToDB(board, board.id, reordered);
         if (!success) {
-          // If failed, show toast and revert
           toast({
-            title: "Failed to save column order",
-            description: "Changes will be reverted on the next refresh",
+            title: t('tenders.board.columnOrderSaveFailed'),
+            description: t('tenders.board.changesRevertedOnRefresh'),
             variant: "destructive",
           });
         }
         
-        // Silently update in the background
         onBoardUpdated().catch(console.error);
       } catch (err) {
         console.error("Drag-drop error:", err);
         toast({
-          title: "Failed to save column order",
-          description: "Changes will be reverted on the next refresh",
+          title: t('tenders.board.columnOrderSaveFailed'),
+          description: t('tenders.board.changesRevertedOnRefresh'),
           variant: "destructive",
         });
       } finally {
@@ -274,17 +263,14 @@ export function KanbanLayout({
     targetColumnId: string
   ) => {
     e.preventDefault();
-    e.stopPropagation(); // Stop event from bubbling up to column drop handler
+    e.stopPropagation();
     
-    // Handle tender drop between columns
     if (isDraggingTender && draggedTenderId && draggedFromColumnId && draggedFromColumnId !== targetColumnId) {
-      // Reset drag state immediately
       setDraggedTenderId(null);
       setDraggedFromColumnId(null);
       setIsDraggingTender(false);
       
       try {
-        // Use our optimistic update action
         await moveTenderItemAction(
           board.id,
           draggedTenderId,
@@ -294,8 +280,8 @@ export function KanbanLayout({
       } catch (error) {
         console.error("Move failed:", error);
         toast({
-          title: "Failed to move item",
-          description: "The change will be reverted",
+          title: t('tenders.board.moveItemFailed'),
+          description: t('tenders.board.changeReverted'),
           variant: "destructive",
         });
       }
@@ -310,7 +296,6 @@ export function KanbanLayout({
 
   const renderColumns = () => (
     <div className="relative flex">
-      {/* Scrollable columns container */}
       <div
         ref={scrollContainerRef}
         className="overflow-x-auto pb-4 flex-1 scrollbar-hide"
@@ -321,7 +306,7 @@ export function KanbanLayout({
           }`}
           style={{
             width: isEmpty ? "100%" : "auto",
-            paddingRight: isEmpty ? "0" : "72px", // Reduce padding, just enough for the button
+            paddingRight: isEmpty ? "0" : "72px",
           }}
         >
           {columns.map((column) => (
@@ -331,7 +316,6 @@ export function KanbanLayout({
               onDragStart={(e) => handleDragStart(e, column.id)}
               onDragOver={handleDragOver}
               onDrop={(e) => {
-                // Determine which drop handler to use based on what's being dragged
                 if (isDraggingTender) {
                   handleTenderDrop(e, column.id);
                 } else if (draggedColumnId) {
@@ -348,7 +332,6 @@ export function KanbanLayout({
                   setIsDraggingTender(true);
                 }}
                 onTenderOrderUpdated={async (localUpdatedItems: any[]) => {
-                  // Update column's tender items optimistically
                   const updatedColumns = columns.map(col => {
                     if (col.id === column.id) {
                       return {
@@ -360,20 +343,16 @@ export function KanbanLayout({
                   });
                   
                   setColumns(updatedColumns);
-                  
-                  // Increment pending operations counter
                   setPendingServerOperations(prev => prev + 1);
                   
-                  // Perform background update
                   try {
                     await saveTendersOrderToDB(board.id, column, localUpdatedItems);
-                    // Silently update in background
                     onBoardUpdated().catch(console.error);
                   } catch (err) {
                     console.error("Failed to update tender order:", err);
                     toast({
-                      title: "Failed to save order",
-                      description: "Changes will be reverted on the next refresh",
+                      title: t('tenders.board.saveOrderFailed'),
+                      description: t('tenders.board.changesRevertedOnRefresh'),
                       variant: "destructive",
                     });
                   } finally {
@@ -381,26 +360,25 @@ export function KanbanLayout({
                   }
                 }}
                 activeTenders={allTenders}
-                onTenderSelect={handleTenderItemClick} // Pass the handler down
-                drawerRef={drawerRef} // Pass the drawer ref
-                onDropFromDifferentColumn={handleTenderDrop} // Add this prop
+                onTenderSelect={handleTenderItemClick}
+                drawerRef={drawerRef}
+                onDropFromDifferentColumn={handleTenderDrop}
               />
             </div>
           ))}
         </div>
       </div>
 
-      {/* Fixed add column button that looks like a column */}
       {!isEmpty && (
         <div 
           className="sticky right-0 pr-4 pl-0 h-56"
-          style={{ width: "288px" }} // Width of a column + gap
+          style={{ width: "288px" }}
         >
           <div className="w-72 h-full flex flex-col justify-center items-center p-4 bg-background/50 backdrop-blur-sm rounded-md border-2 border-dashed border-stone-300 hover:border-primary/40 transition-all duration-200 shadow-sm hover:shadow cursor-pointer group"
             onClick={() => setShowNewColumnDialog(true)}
           >
             <CirclePlus className="h-8 w-8 mb-2 text-muted-foreground/70 group-hover:text-primary/70 transition-colors" />
-            <span className="text-sm font-medium text-muted-foreground/80 group-hover:text-foreground transition-colors">Dodaj kolumnę</span>
+            <span className="text-sm font-medium text-muted-foreground/80 group-hover:text-foreground transition-colors">{t('tenders.board.addColumn')}</span>
           </div>
         </div>
       )}
@@ -421,7 +399,7 @@ export function KanbanLayout({
             onClick={() => setShowNewColumnDialog(true)}
           >
             <CirclePlus className="h-6 w-6" />
-            <span className="text-sm">Dodaj kolumnę</span>
+            <span className="text-sm">{t('tenders.board.addColumn')}</span>
           </Button>
         </div>
       ) : (
@@ -437,7 +415,7 @@ export function KanbanLayout({
       {pendingServerOperations > 0 && (
         <div className="fixed bottom-4 left-4 bg-background shadow-md rounded-full py-1 px-3 text-xs flex items-center gap-2 border z-50">
           <div className="animate-spin h-3 w-3 border border-primary border-t-transparent rounded-full"></div>
-          <span>Synchronizing changes...</span>
+          <span>{t('tenders.board.synchronizingChanges')}</span>
         </div>
       )}
     </div>

@@ -16,29 +16,29 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useKanban } from "@/context/KanbanContext";
 import { Trash, Loader2 } from "lucide-react";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface DeleteBoardDialogProps {
   boardId: string;
-  boardName: string; // Add this prop
-  onDeleted: () => void; // Change from onDelete to onDeleted to match usage
+  boardName: string;
+  onDeleted: () => void;
   children?: React.ReactNode;
 }
 
 export function DeleteBoardDialog({ boardId, boardName, onDeleted, children }: DeleteBoardDialogProps) {
   const router = useRouter();
   const { deleteBoardAction } = useKanban();
-
   const [isDeleting, setIsDeleting] = useState(false);
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
-  // Update to accept an event parameter
   const handleDelete = async (e: React.MouseEvent) => {
-    // Stop event propagation to prevent card onClick from firing
     e.stopPropagation();
     
     try {
       setIsDeleting(true);
       await deleteBoardAction(boardId);
-      onDeleted(); // Call the callback when deletion is successful
+      onDeleted();
     } catch (error) {
       console.error("Failed to delete board:", error);
     } finally {
@@ -56,20 +56,19 @@ export function DeleteBoardDialog({ boardId, boardName, onDeleted, children }: D
             className="text-destructive/80 hover:text-destructive hover:bg-destructive/10"
           >
             <Trash className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Usuń tablicę</span>
+            <span className="hidden sm:inline">{t('tenders.board.deleteBoard')}</span>
           </Button>
         )}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Czy jesteś pewien?</AlertDialogTitle>
+          <AlertDialogTitle>{t('tenders.board.deleteConfirm')}</AlertDialogTitle>
           <AlertDialogDescription>
-            Tej akcji nie można cofnąć. Spowoduje to trwałe usunięcie tablicy
-            oraz wszystkich jej kolumn i elementów.
+            {t('tenders.board.deleteWarning')}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Anuluj</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>{tCommon('cancel')}</AlertDialogCancel>
 
           <AlertDialogAction
             disabled={isDeleting}
@@ -79,12 +78,12 @@ export function DeleteBoardDialog({ boardId, boardName, onDeleted, children }: D
             {isDeleting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Usuwanie...
+                {tCommon('deleting')}
               </>
             ) : (
               <>
                 <Trash className="h-4 w-4 mr-2" />
-                Potwierdź usunięcie
+                {t('tenders.board.confirmDelete')}
               </>
             )}
           </AlertDialogAction>

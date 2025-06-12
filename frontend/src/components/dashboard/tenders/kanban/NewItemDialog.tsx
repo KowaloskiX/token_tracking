@@ -18,6 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { KanbanTenderItem } from "@/types/kanban";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface NewItemDialogProps {
   boardId: string;
@@ -43,6 +44,9 @@ export function NewItemDialog({
 
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
+  
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
   useEffect(() => {
     if (open) {
@@ -71,11 +75,11 @@ export function NewItemDialog({
         name: selectedTender.tender_metadata?.name,
         order: 0,
       });
-      setPopupMessage("Tender successfully added");
+      setPopupMessage(t('tenders.board.tenderSuccessfullyAdded'));
       setPopupOpen(true);
     } catch (err) {
       console.error("Error creating item:", err);
-      setPopupMessage("Error adding tender");
+      setPopupMessage(t('tenders.board.errorAddingTender'));
       setPopupOpen(true);
     }
   };
@@ -91,12 +95,12 @@ export function NewItemDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Wybierz aktywny przetarg</DialogTitle>
+            <DialogTitle>{t('tenders.board.selectActiveTender')}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
             <Input
-              placeholder="Wyszukaj przetarg..."
+              placeholder={t('tenders.board.searchTender')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -109,7 +113,7 @@ export function NewItemDialog({
               <ScrollArea className="h-64">
                 {filteredTenders.length === 0 ? (
                   <div className="text-center py-4 text-muted-foreground">
-                    Brak aktywnych przetargów
+                    {t('tenders.board.noActiveTenders')}
                   </div>
                 ) : (
                   filteredTenders.map((tender) => (
@@ -125,7 +129,7 @@ export function NewItemDialog({
                         )}
                       >
                         <h3 className="font-medium">
-                          {tender.tender_metadata?.name || "Unnamed Tender"}
+                          {tender.tender_metadata?.name || t('tenders.board.unnamedTender')}
                         </h3>
                         <p className="text-sm text-muted-foreground">
                           {tender.tender_metadata?.organization}
@@ -140,10 +144,10 @@ export function NewItemDialog({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Anuluj
+              {tCommon('cancel')}
             </Button>
             <Button onClick={handleCreateItem} disabled={!selectedTender}>
-              Utwórz
+              {t('tenders.board.create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -155,8 +159,8 @@ export function NewItemDialog({
             <DialogTitle>{popupMessage}</DialogTitle>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={handlePopupClose}>Go to Boards</Button>
-            <Button onClick={() => setPopupOpen(false)}>Close</Button>
+            <Button onClick={handlePopupClose}>{t('tenders.board.goToBoards')}</Button>
+            <Button onClick={() => setPopupOpen(false)}>{t('tenders.board.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

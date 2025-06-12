@@ -5,17 +5,23 @@ import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 
 // Generate metadata based on locale
-export function generateMetadata(): Metadata {
+export async function generateMetadata(): Promise<Metadata> {
+    const t = await getTranslations('auth.forgot_password');
+    
     return {
-        title: "Asystent AI - Chcesz zresetować hasło?",
-        description: "Zresetuj hasło do swojego konta na platformie Asystent AI.",
+        title: `Asystent AI - ${t('title')}`,
+        description: t('description'),
     };
 }
 
 // Forgot Password Page Component
-export default function ForgotPasswordPage() {
+export default async function ForgotPasswordPage() {
+    const t = await getTranslations('auth');
+    const tCommon = await getTranslations('common');
+
     return (
         <div className="h-[100svh]">
             {/* Main container */}
@@ -28,9 +34,9 @@ export default function ForgotPasswordPage() {
                         buttonVariants({ variant: "ghost" }),
                         "absolute right-4 top-4 md:right-8 md:top-8"
                     )}
-                    aria-label="Przejdź do strony logowania"
+                    aria-label={t('common.go_to_login')}
                 >
-                    Zaloguj się
+                    {t('login.submit')}
                 </Link>
 
                 {/* Left sidebar with background image (hidden on mobile) */}
@@ -81,13 +87,13 @@ export default function ForgotPasswordPage() {
                 <div className="lg:p-8">
                     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
                         
-                        {/* Page title and subtitle - these would need to be in a client component to use translations */}
+                        {/* Page title and subtitle */}
                         <div className="flex flex-col space-y-2 text-center">
                             <h1 className="text-2xl font-semibold tracking-tight mt-28 sm:mt-0">
-                                Chcesz zresetować hasło?
+                                {t('forgot_password.title')}
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Podaj swój adres email, a wyślemy Ci link do resetowania hasła.
+                                {t('forgot_password.description')}
                             </p>
                         </div>
                         
@@ -100,7 +106,7 @@ export default function ForgotPasswordPage() {
                                 href="/dashboard/tenders/chat"
                                 className="underline underline-offset-4 hover:text-primary"
                             >
-                                Powrót do strony logowania
+                                {t('forgot_password.back_to_login')}
                             </Link>
                         </p>
                     </div>

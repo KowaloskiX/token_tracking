@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useKanban } from "@/context/KanbanContext";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface NewBoardDialogProps {
   open: boolean;
@@ -18,6 +19,8 @@ export function NewBoardDialog({ open, onOpenChange, onBoardCreated }: NewBoardD
   const { user } = useDashboard();
   const { createBoardAction } = useKanban();
   const [name, setName] = useState("");
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
   const handleCreateBoard = async () => {
     if (!name.trim() || !user?._id) return;
@@ -26,7 +29,7 @@ export function NewBoardDialog({ open, onOpenChange, onBoardCreated }: NewBoardD
       const newBoard = await createBoardAction({
         name,
         user_id: user._id,
-        org_id: user?.org_id || null, // Include organization ID for board sharing
+        org_id: user?.org_id || null,
         shared_with: [],
       });
       
@@ -42,23 +45,23 @@ export function NewBoardDialog({ open, onOpenChange, onBoardCreated }: NewBoardD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Utwórz nową tablicę</DialogTitle>
+          <DialogTitle>{t('tenders.board.newBoard')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label htmlFor="boardName">Nazwa tablicy</Label>
+          <Label htmlFor="boardName">{t('tenders.board.boardName')}</Label>
           <Input
             id="boardName"
             value={name}
-            placeholder="np. Nowa tablica"
+            placeholder={t('tenders.board.newBoard')}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreateBoard()}
           />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Anuluj
+            {tCommon('cancel')}
           </Button>
-          <Button onClick={handleCreateBoard}>Utwórz</Button>
+          <Button onClick={handleCreateBoard}>{t('tenders.board.createBoard')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -60,10 +60,10 @@ import {
 import { cn } from "@/lib/utils";
 import { POLISH_SOURCES, TED_SOURCES, CRITERIA_CONFIG} from "@/app/constants/tenders";
 import { Slider } from "@/components/ui/slider";
-import { QuestionMarkIcon } from "@radix-ui/react-icons";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 const criteriaSchema = z.object({
-  name: z.string().min(1, "Kryterium jest wymagane"),
+  name: z.string().min(1, "Criterion is required"),
   description: z.string(),
   weight: z.number().min(1).max(5),
   is_disqualifying: z.boolean().default(false),
@@ -74,13 +74,13 @@ const criteriaSchema = z.object({
 });
 
 const formSchema = z.object({
-  name: z.string().min(1, "Nazwa jest wymagana"),
-  company_description: z.string().min(1, "Opis firmy jest wymagany"),
-  search_phrase: z.string().min(1, "Fraza kluczowa jest wymagana"),
-  sources: z.array(z.string()).min(1, "Wybierz co najmniej jedno źródło"),
+  name: z.string().min(1, "Name is required"),
+  company_description: z.string().min(1, "Company description is required"),
+  search_phrase: z.string().min(1, "Search phrase is required"),
+  sources: z.array(z.string()).min(1, "Select at least one source"),
   criteria: z.array(criteriaSchema)
-    .min(1, "Co najmniej jedno kryterium jest wymagane")
-    .max(20, "Możesz dodać maks. 20 kryteriów"),
+    .min(1, "At least one criterion is required")
+    .max(20, "You can add max 20 criteria"),
   assigned_users: z.array(z.string()).default([]),
 });
 
@@ -100,6 +100,9 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
       return acc;
     }, {} as Record<string, number>)
   );
+  
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -189,10 +192,10 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <Type className="h-4 w-4" />
-                    Nazwa
+                    {t('tenders.create.nameLabel')}
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder="Nazwij wyszukiwarkę..." {...field} />
+                    <Input placeholder={t('tenders.create.namePlaceholder')} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -206,7 +209,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    Jakie przetargi chcesz wyszukiwać?
+                    {t('tenders.create.companyDescriptionLabel')}
                     <HoverCard>
                       <HoverCardTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
@@ -214,13 +217,13 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         </Button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
-                        <p>Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.</p>
+                        <p>{t('tenders.create.companyDescriptionTooltip')}</p>
                       </HoverCardContent>
                     </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje..."
+                      placeholder={t('tenders.create.companyDescriptionPlaceholder')}
                       className="min-h-[100px]"
                       {...field}
                     />
@@ -237,7 +240,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <KeyIcon className="h-4 w-4" />
-                    Słowa kluczowe
+                    {t('tenders.create.searchPhraseLabel')}
                     <HoverCard>
                       <HoverCardTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
@@ -245,12 +248,12 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         </Button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
-                        <p>Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. <br />AI będzie używało tych informacji do wyszukiwania przetargów.</p>
+                        <p>{t('tenders.create.searchPhraseTooltip')}</p>
                       </HoverCardContent>
                     </HoverCard>
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder="Np. Budowa infrastruktury drogowej" {...field} />
+                    <Input placeholder={t('tenders.create.searchPhrasePlaceholder')} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -269,7 +272,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <Database className="h-4 w-4" />
-                    Źródła
+                    {t('tenders.create.sourcesLabel')}
                   </FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -280,17 +283,17 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                           className="w-full justify-between bg-white/10 shadow-sm hover:bg-background hover:shadow-sm"
                         >
                           {selectedSources.length > 0
-                            ? `Wybrano ${selectedSources.length} ${selectedSources.length === 1 ? "źródło" : "źródła"}`
-                            : "Wybierz źródła..."}
+                            ? t('tenders.create.selectedSources', { count: selectedSources.length })
+                            : t('tenders.create.selectSources')}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Szukaj źródła..." />
+                        <CommandInput placeholder="Search sources..." />
                         <CommandList>
-                          <CommandEmpty>Nie znaleziono źródła.</CommandEmpty>
+                          <CommandEmpty>No sources found.</CommandEmpty>
                           <CommandGroup>
                             {Object.entries(POLISH_SOURCES).map(([sourceId, source]) => {
                               const isSelected = selectedSources.includes(sourceId);
@@ -392,7 +395,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
               <FormLabel className="text-base">
                 <div className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4" />
-                  Kryteria analizy
+                  {t('tenders.create.criteriaLabel')}
                 </div>
               </FormLabel>
             </div>
@@ -417,11 +420,11 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                     <FormItem>
                       <FormLabel className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-primary" />
-                        Opis kryterium
+                        Criterion description
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Np. jaka jest wartość kontraktu?"
+                          placeholder="e.g. what is the contract value?"
                           value={field.value}
                           onChange={(e) => {
                             field.onChange(e);
@@ -441,7 +444,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                     name={`criteria.${index}.weight`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Waga (1-5)</FormLabel>
+                        <FormLabel>{t('tenders.edit.weightLabel')}</FormLabel>
                         <div className="flex gap-4 items-center">
                           <Slider
                             min={1}
@@ -475,10 +478,10 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         </FormControl>
                         <div className="space-y-1 leading-none">
                           <FormLabel>
-                            Kryterium dyskwalifikujące
+                            {t('tenders.edit.disqualifying')}
                           </FormLabel>
                           <FormDescription className="text-xs">
-                            Niespełnienie tego kryterium dyskwalifikuje przetarg
+                            {t('tenders.edit.disqualifyingDescription')}
                           </FormDescription>
                         </div>
                       </FormItem>
@@ -503,10 +506,10 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         </FormControl>
                         <div className="space-y-1 leading-none">
                           <FormLabel>
-                            Wyklucz z oceny
+                            {t('tenders.edit.excludeFromScore')}
                           </FormLabel>
                           <FormDescription className="text-xs">
-                            Nie uwzględniaj przy wyliczaniu relewantności
+                            {t('tenders.edit.excludeFromScoreDescription')}
                           </FormDescription>
                         </div>
                       </FormItem>
@@ -525,12 +528,12 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                       {expandedSections[index] ? (
                         <>
                           <X className="h-4 w-4" />
-                          Ukryj opcjonalne
+                          {t('tenders.edit.hideOptional')}
                         </>
                       ) : (
                         <>
                           <Sparkles className="h-4 w-4 text-primary-hover" />
-                          Pokaż opcjonalne
+                          {t('tenders.edit.showOptional')}
                         </>
                       )}
                     </Button>
@@ -542,8 +545,8 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                         <div className="flex items-center gap-2">
                           <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                             <Sparkles className="h-4 w-4 text-primary-hover" />
-                            Instrukcja dla AI
-                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalna</Badge>
+                            {t('tenders.create.instructionLabel')}
+                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
                           </FormLabel>
                           <HoverCard>
                             <HoverCardTrigger asChild>
@@ -552,7 +555,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                               </Button>
                             </HoverCardTrigger>
                             <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                              <p>Dodatkowe wskazówki dla AI, które doprecyzowują, jak analizować to kryterium i kiedy uznać je za spełnione.</p>
+                              <p>{t('tenders.create.instructionTooltip')}</p>
                             </HoverCardContent>
                           </HoverCard>
                         </div>
@@ -565,7 +568,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                               <FormControl>
                                 <div className="relative">
                                   <Textarea
-                                    placeholder="Np. 'Sprawdź dokładną kwotę budżetu i uznaj kryterium za spełnione, jeśli budżet przekracza 500 000 PLN'"
+                                    placeholder={t('tenders.create.instructionPlaceholder')}
                                     className="min-h-[90px] pl-9 text-sm resize-y bg-secondary border-input shadow-inner"
                                     {...field}
                                     value={field.value || ''}
@@ -581,8 +584,8 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                            Słowa kluczowe
-                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
+                            {t('tenders.create.keywordsLabel')}
+                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
                           </FormLabel>
                           <HoverCard>
                             <HoverCardTrigger asChild>
@@ -591,7 +594,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                               </Button>
                             </HoverCardTrigger>
                             <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                              <p>Wprowadź słowa kluczowe oddzielone przecinkami, np. &quot;certyfikacja, ISO, budżet&quot;</p>
+                              <p>{t('tenders.create.keywordsTooltip')}</p>
                             </HoverCardContent>
                           </HoverCard>
                         </div>
@@ -603,7 +606,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                             <FormItem>
                               <FormControl>
                                 <Textarea
-                                  placeholder="Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'"
+                                  placeholder={t('tenders.create.keywordsPlaceholder')}
                                   className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
                                   {...field}
                                   value={field.value || ''}
@@ -617,8 +620,8 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                            Dodatkowe zapytania
-                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
+                            {t('tenders.create.subcriteriaLabel')}
+                            <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
                           </FormLabel>
                           <Button
                             type="button"
@@ -632,7 +635,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                               ]);
                             }}
                           >
-                            + Dodaj zapytanie
+                            {t('tenders.create.addSubquery')}
                           </Button>
                         </div>
 
@@ -646,7 +649,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                                   <FormItem className="flex-1">
                                     <FormControl>
                                       <Input
-                                        placeholder="Np. 'Jakie są wymagane certyfikaty?'"
+                                        placeholder="e.g. 'What certifications are required?'"
                                         className="text-sm"
                                         {...field}
                                       />
@@ -681,7 +684,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
 
               {fields.length === 0 && (
                 <p className="mt-2 text-sm text-red-600">
-                  Nie można stworzyć wyszukiwarki bez kryteriów. Dodaj przynajmniej jedno kryterium.
+                  {t('tenders.create.emptyCriteriaError')}
                 </p>
               )}
 
@@ -703,13 +706,13 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                   setLastAddedIndex(fields.length);
                 }}
               >
-                + Dodaj nowe kryterium
+                {t('tenders.create.addCriterion')}
               </Button>
             </div>
           </div>
 
           <Button type="submit" className="w-full bg-primary hover:bg-primary-hover shadow text-white" disabled={isLoading}>
-            {isLoading ? "Tworzę..." : "Stwórz wyszukiwarkę"}
+            {isLoading ? t('tenders.create.creating') : t('tenders.create.createSearch')}
           </Button>
         </div>
       </form>

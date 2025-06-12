@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/popover";
 import { useRouter } from "next/navigation";
 import { TenderAnalysisResult } from "@/types/tenders";
+import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 interface KanbanColumnProps {
   boardId: string;
@@ -47,6 +48,9 @@ export function KanbanColumn({
   const [tenderItems, setTenderItems] = useState<KanbanTenderItem[]>(column.tenderItems || []);
   const [draggedTenderId, setDraggedTenderId] = useState<string | null>(null);
   const [isUpdatingName, setIsUpdatingName] = useState(false);
+  
+  const t = useTendersTranslations();
+  const tCommon = useCommonTranslations();
 
   useEffect(() => {
     if (!isUpdatingName) {
@@ -59,20 +63,16 @@ export function KanbanColumn({
   }, [column.tenderItems]);
 
   const handleUpdateColumn = async (updates: Partial<IKanbanColumn>) => {
-    // Optimistic update
     setIsUpdatingName(true);
     
     try {
-      // Update local state right away
       if (updates.name) {
         setColumnName(updates.name);
       }
       setEditMode(false);
       
-      // Send update to server in background
       await updateColumnAction(boardId, column.id, { ...column, ...updates });
     } catch (err) {
-      // If there's an error, reset to previous name
       console.error("Failed to update column:", err);
       setColumnName(column.name);
     } finally {
@@ -82,14 +82,11 @@ export function KanbanColumn({
 
   const handleTenderDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>, id: string) => {
-      // Call the parent handler to notify about tender dragging
       onTenderDragStart?.(id);
       setDraggedTenderId(id);
       e.dataTransfer.effectAllowed = "move";
-
-      // Use this to set data that helps identify this is a tender drag
       e.dataTransfer.setData("text/plain", `tender-${id}`);
-      e.stopPropagation(); // Prevent triggering column drag
+      e.stopPropagation();
     },
     [onTenderDragStart]
   );
@@ -102,20 +99,17 @@ export function KanbanColumn({
   const handleTenderDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>, dropTargetId: string) => {
       e.preventDefault();
-      e.stopPropagation(); // Prevent triggering column drop handler
+      e.stopPropagation();
       
       const draggedData = e.dataTransfer.getData("text/plain");
       
-      // Check if this is a tender being dragged from a different column
       if (draggedData.startsWith("tender-") && !tenderItems.some(item => item.id === draggedTenderId)) {
-        // This is a tender from a different column, forward to the parent handler
         if (onDropFromDifferentColumn) {
           onDropFromDifferentColumn(e, column.id);
           return;
         }
       }
       
-      // For within-column reordering
       if (draggedTenderId && draggedTenderId !== dropTargetId) {
         const draggedIndex = tenderItems.findIndex(item => item.id === draggedTenderId);
         const dropIndex = tenderItems.findIndex(item => item.id === dropTargetId);
@@ -131,15 +125,12 @@ export function KanbanColumn({
           order: idx + 1,
         }));
     
-        // Optimistically update UI
         setTenderItems(reordered);
         setDraggedTenderId(null);
     
-        // Send to server asynchronously
         if (onTenderOrderUpdated) {
           onTenderOrderUpdated(reordered).catch(error => {
             console.error("Failed to update tender order:", error);
-            // Reset to original state on error
             setTenderItems(column.tenderItems || []);
           });
         }
@@ -149,19 +140,16 @@ export function KanbanColumn({
   );
 
   const handleDeleteTenderItem = async (itemId: string) => {
-    // Optimistically remove from UI first
     const updatedItems = tenderItems.filter(item => item.id !== itemId);
     setTenderItems(updatedItems);
     
     try {
-      // Update in background
       await deleteTenderItemAction(boardId, column.id, itemId);
       if (onTenderOrderUpdated) {
         await onTenderOrderUpdated(updatedItems);
       }
     } catch (error) {
       console.error("Failed to delete tender item:", error);
-      // Reset to original items on error
       setTenderItems(column.tenderItems || []);
     }
   };
@@ -171,14 +159,13 @@ export function KanbanColumn({
       className="p-4 bg-secondary rounded-md w-80 space-y-3 shadow-sm flex flex-col border border-secondary-border"
       style={{
         backgroundColor: column.color ? `${column.color}20` : undefined,
-        '--column-color-hover-bg': column.color ? `${column.color}40` : 'hsl(var(--accent)) / 0.4' // Define CSS variable for hover background
+        '--column-color-hover-bg': column.color ? `${column.color}40` : 'hsl(var(--accent)) / 0.4'
       } as React.CSSProperties}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
       }}
       onDrop={(e) => {
-        // This ensures drops directly on the column are handled
         const draggedData = e.dataTransfer.getData("text/plain");
         if (draggedData.startsWith("tender-") && onDropFromDifferentColumn) {
           onDropFromDifferentColumn(e, column.id);
@@ -236,11 +223,10 @@ export function KanbanColumn({
           <DropdownMenuContent>
             <DropdownMenuItem onClick={() => setEditMode(true)}>
               <Pencil className="mr-2 h-4 w-4" />
-              Rename
+              {tCommon('rename')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
-                // Optimistic delete
                 const confirmDelete = window.confirm(
                   "Are you sure you want to delete this column and all its items?"
                 );
@@ -251,7 +237,7 @@ export function KanbanColumn({
               className="text-destructive"
             >
               <Trash className="mr-2 h-4 w-4" />
-              Delete
+              {tCommon('delete')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -278,7 +264,7 @@ export function KanbanColumn({
               }
             }}
           >
-            No items
+            {t('tenders.board.noItems')}
           </div>
         )}
         
@@ -307,7 +293,7 @@ export function KanbanColumn({
         onClick={() => router.push('/dashboard/tenders')}
       >
         <CirclePlus className="mr-2 h-5 w-5 stroke-[1.5] transition-colors group-hover:stroke-foreground" />
-        <span className="font-medium transition-colors">Dodaj przetarg</span>
+        <span className="font-medium transition-colors">{t('tenders.board.addTender')}</span>
       </Button>
     </div>
   );

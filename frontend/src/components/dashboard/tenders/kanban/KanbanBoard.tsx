@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KanbanBoard } from "@/types/kanban";
 import { Plus } from "lucide-react";
 import { useEffect } from "react";
+import { useTendersTranslations } from "@/hooks/useTranslations";
 
 interface KanbanBoardTabsProps {
   boards: KanbanBoard[];
@@ -21,6 +22,8 @@ export function KanbanBoardTabs({
   const validBoards = boards.filter(board => 
     board?.id && typeof board.id === "string"
   );
+  const t = useTendersTranslations();
+  
   useEffect(() => {
     if (currentBoardId && validBoards.some(b => b.id === currentBoardId)) {
       onBoardSelect?.(currentBoardId);
@@ -55,7 +58,7 @@ export function KanbanBoardTabs({
             className="px-4 py-2 text-sm rounded-md transition-all flex items-center border-dashed border-2 bg-background hover:bg-muted/50 text-muted-foreground hover:text-primary border-primary/30 hover:border-primary"
           >
             <Plus className="h-4 w-4 mr-2" />
-            Nowa tablica
+            {t('tenders.board.newBoard')}
           </TabsTrigger>
         )}
       </TabsList>
