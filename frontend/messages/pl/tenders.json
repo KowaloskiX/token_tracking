@@ -314,6 +314,15 @@
       "unnamedTender": "Nienazwany przetarg",
       "deleteColumnConfirm": "Czy na pewno chcesz usunąć tę kolumnę i wszystkie jej elementy?",
       "weightLabel": "Waga (1-5)"
-    }
+    },
+    "noFilesAvailable": "Brak dostępnych plików",
+    "noFilesDescription": "Ten przetarg nie posiada plików do pobrania. Sprawdź bezpośrednio źródło przetargu, aby uzyskać dostęp do wymaganych dokumentów.",
+    "openTenderSource": "Otwórz źródło przetargu",
+    "noDescription": "Brak opisu. Pliki nie zostały pobrane ze źródła przetargu.",
+    "downloadAllFiles": "Pobierz wszystkie pliki",
+    "loadingFullData": "Ładowanie pełnych danych przetargu...",
+    "downloadFullData": "Pobierz pełne dane",
+    "noAnalysis": "Brak analizy kryteriów. Pliki nie zostały pobrane ze źródła przetargu.",
+    "noCommentsError": "Nie można załadować komentarzy - brak identyfikatora przetargu"
   }
 }

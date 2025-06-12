@@ -314,6 +314,15 @@
       "unnamedTender": "Unnamed Tender",
       "deleteColumnConfirm": "Are you sure you want to delete this column and all its items?",
       "weightLabel": "Weight (1-5)"
-    }
+    },
+    "noFilesAvailable": "No files available",
+    "noFilesDescription": "This tender does not have any downloadable files. Check the tender source directly to access required documents.",
+    "openTenderSource": "Open tender source",
+    "noDescription": "No description available. Files were not downloaded from the tender source.",
+    "downloadAllFiles": "Download all files",
+    "loadingFullData": "Loading full tender details...",
+    "downloadFullData": "Download full data",
+    "noAnalysis": "No criteria analysis available. Files were not downloaded from the tender source.",
+    "noCommentsError": "Cannot load comments - missing tender identifier"
   }
 }

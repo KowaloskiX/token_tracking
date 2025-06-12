@@ -1041,7 +1041,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   // Replace the old getStatusBadge function with getBoardBadge
   const getBoardBadge = (result: TenderAnalysisResult) => {
     if (boardsLoading) {
-      return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">Wczytywanie...</Badge>;
+      return <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">{commonT('loading')}</Badge>;
     }
 
     const boardNames = getTenderBoards(result._id!);
@@ -1054,7 +1054,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
         <Badge
           variant="outline"
           className="border-transparent bg-secondary-hover text-primary shadow"
-          title={boardNames.length > 1 ? `W tablicach: ${boardNames.join(', ')}` : boardNames[0]}
+          title={boardNames.length > 1 ? `${t('tenders.board.management')}: ${boardNames.join(', ')}` : boardNames[0]}
         >
           {displayText}
         </Badge>
@@ -1071,7 +1071,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       case 'archived':
         return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">{t('tenders.status.archived')}</Badge>;
       default:
-        return <Badge variant="outline">Nieznany</Badge>;
+        return <Badge variant="outline">{t('tenders.status.unknown')}</Badge>;
     }
   };
 
@@ -1462,7 +1462,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                     </TableHead>
                   )}
                   {tableWidth < 700 && (
-                    <TableHead className="text-xs w-[20%]">Termin zgłoszenia</TableHead>
+                    <TableHead className="text-xs w-[20%]">{t('tenders.details.submissionDeadline')}</TableHead>
                   )}
                   {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">{t('tenders.list.boardStatus')}</TableHead>}
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>{t('tenders.list.relevance')}</TableHead>
@@ -1614,9 +1614,9 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                                         isNaN(daysRemaining) ?
                                         '-' :
                                         daysRemaining < 0 ?
-                                          'Zak.' :
+                                          t('tenders.details.finished').substring(0, 4) + '.' :
                                           daysRemaining === 0 ?
-                                            'Dziś' :
+                                            t('tenders.details.today') :
                                             daysRemaining === 1 ?
                                               '1d' :
                                               `${daysRemaining}d`}
@@ -1674,7 +1674,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                               {result.status === 'active' && (
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(result._id!, 'inactive'); }}>
                                   <AlertCircle className="mr-2 h-4 w-4 text-gray-500" />
-                                  {commonT('delete')}
+                                  {t('tenders.status.deactivate')}
                                 </DropdownMenuItem>
                               )}
                               {result.status !== 'archived' && (

@@ -75,6 +75,7 @@ import ResultFileItem from './ResultFileItem';
 import TenderDetailsSkeleton from './TenderDetailsSkeleton';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import { useTendersTranslations, useCommonTranslations } from '@/hooks/useTranslations';
 
 interface TenderResultSidebarProps {
     result: TenderAnalysisResult | null;
@@ -94,6 +95,9 @@ interface UpdateSummary {
 }
 
 const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawerRef, allResults, setAllResults, onFilePreview,tenderBoardStatus }) => {
+    const t = useTendersTranslations();
+    const commonT = useCommonTranslations();
+    
     const [isDownloading, setIsDownloading] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [initialLoad, setInitialLoad] = useState(true);
@@ -248,9 +252,9 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
         criteria: CriteriaAnalysisResult[],
         fileName = 'criteria_analysis'
       ) {
-        const name = updatedResult?.tender_metadata?.name || 'Analysis Report';
+        const name = updatedResult?.tender_metadata?.name || t('tenders.actions.noTenderSelected');
         const description = updatedResult?.tender_description || '';
-        const headers = ['Kryterium', 'Podsumowanie', 'Spełnione', 'Waga'];
+        const headers = [t('tenders.criteria.title'), t('tenders.updates.updateSummary'), t('tenders.criteria.met'), t('tenders.criteria.weight')];
         const columnCount = headers.length;
         
         let table = '<table><thead>';
@@ -271,7 +275,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
           table += '<tr>';
           table += `<td>${item.criteria}</td>`;
           table += `<td>${item.analysis.summary.replace(/"/g, '""')}</td>`;
-          table += `<td>${item.analysis.criteria_met === true ? 'Tak' : item.analysis.criteria_met === false ? 'Nie' : ''}</td>`;
+          table += `<td>${item.analysis.criteria_met === true ? commonT('yes') : item.analysis.criteria_met === false ? commonT('no') : ''}</td>`;
           table += `<td>${item.analysis.weight}</td>`;
           table += '</tr>';
         });
@@ -425,11 +429,11 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                 config: {}
             };
             const assistantData: Omit<Assistant, 'id' | 'created_at'> = {
-                name: `${updatedResult.tender_metadata?.name || 'Unnamed Tender'}`,
+                name: `${updatedResult.tender_metadata?.name || t('tenders.board.unnamedTender')}`,
                 description: updatedResult.company_match_explanation || '',
                 model: "gpt-4-turbo",
                 owner_id: updatedResult.user_id,
-                system_prompt: `You are a specialized tender analysis assistant for the tender "${updatedResult.tender_metadata?.name || 'Unnamed Tender'}" from ${updatedResult.tender_metadata?.organization || 'Unknown Organization'}.
+                system_prompt: `You are a specialized tender analysis assistant for the tender "${updatedResult.tender_metadata?.name || t('tenders.board.unnamedTender')}" from ${updatedResult.tender_metadata?.organization || 'Unknown Organization'}.
                 The tender involves ${updatedResult.company_match_explanation || 'no specific details'}.
                 The submission deadline is ${updatedResult.tender_metadata?.submission_deadline || 'not specified'}.
                 Please help the user understand the tender requirements and prepare their submission.`,
@@ -553,13 +557,13 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
 
         switch (status) {
             case 'inactive':
-            return <Badge variant="outline" className="border-gray-400 text-gray-600 font-normal">Nieaktywny</Badge>;
+            return <Badge variant="outline" className="border-gray-400 text-gray-600 font-normal">{t('tenders.status.inactive')}</Badge>;
             case 'active':
-            return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 font-normal">Aktywny</Badge>;
+            return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 font-normal">{t('tenders.status.active')}</Badge>;
             case 'archived':
-            return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">Zarchiwizowany</Badge>;
+            return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">{t('tenders.status.archived')}</Badge>;
             default:
-            return <Badge variant="outline">Nieznany</Badge>;
+            return <Badge variant="outline">{t('tenders.status.unknown')}</Badge>;
         }
         };
 
@@ -568,7 +572,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
         try {
             return format(date, "dd.MM.yyyy");
         } catch (e) {
-            return "Invalid date";
+            return commonT('dates.invalidDate');
         }
     };
 
@@ -589,7 +593,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
             variant="outline" 
             className={`${badgeStyle} rounded-md px-2 py-0.5 h-auto font-medium`}
           >
-            Waga: {weight}
+            {t('tenders.board.weightLabel').split('(')[0].trim()}: {weight}
           </Badge>
         );
     };
@@ -605,7 +609,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
 
     const handleDownloadAllFiles = async () => {
         if (!updatedResult?.uploaded_files || updatedResult.uploaded_files.length === 0) {
-            setPopupMessage('Brak plików do pobrania');
+            setPopupMessage(t('tenders.files.noFiles'));
             setPopupOpen(true);
             return;
         }
@@ -631,8 +635,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
             a.click();
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Błąd podczas pobierania plików:', error);
-            setPopupMessage('Błąd podczas pobierania plików.');
+            console.error(t('files.downloadError'), error);
+            setPopupMessage(t('tenders.files.downloadError'));
             setPopupOpen(true);
         } finally {
             setIsDownloading(false);
@@ -726,11 +730,11 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                         rel="noopener noreferrer"
                                                         className="text-sm sm:text-lg font-semibold hover:underline"
                                                     >
-                                                        {updatedResult.tender_metadata?.name || 'Unnamed Tender'}
+                                                        {updatedResult.tender_metadata?.name || t('tenders.board.unnamedTender')}
                                                     </Link>
                                                 ) : (
                                                     <span className="text-sm sm:text-lg font-semibold">
-                                                        {updatedResult.tender_metadata?.name || 'Unnamed Tender'}
+                                                        {updatedResult.tender_metadata?.name || t('tenders.board.unnamedTender')}
                                                     </span>
                                                 )}
                                             </div>
@@ -741,9 +745,9 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 <div className="flex items-start gap-3">
                                                     <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
                                                     <div>
-                                                        <h4 className="text-sm font-medium text-muted-foreground mb-1">Brak dostępnych plików</h4>
+                                                        <h4 className="text-sm font-medium text-muted-foreground mb-1">{t('tenders.noFilesAvailable')}</h4>
                                                         <p className="text-sm text-muted-foreground">
-                                                            Ten przetarg nie posiada plików do pobrania. Sprawdź bezpośrednio źródło przetargu, aby uzyskać dostęp do wymaganych dokumentów.
+                                                            {t('tenders.noFilesDescription')}
                                                         </p>
                                                         {updatedResult.tender_url && (
                                                             <Link 
@@ -753,32 +757,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                                 className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 mt-2 font-medium"
                                                             >
                                                                 <LinkIcon className="h-4 w-4" />
-                                                                Otwórz źródło przetargu
-                                                            </Link>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                        
-                                        {!updatedResult.uploaded_files?.length && (
-                                            <div className="mb-4 p-4 bg-secondary/30 border border-neutral-200 rounded-lg">
-                                                <div className="flex items-start gap-3">
-                                                    <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-muted-foreground mb-1">Brak dostępnych plików</h4>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Ten przetarg nie posiada plików do pobrania. Sprawdź bezpośrednio źródło przetargu, aby uzyskać dostęp do wymaganych dokumentów.
-                                                        </p>
-                                                        {updatedResult.tender_url && (
-                                                            <Link 
-                                                                href={updatedResult.tender_url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 mt-2 font-medium"
-                                                            >
-                                                                <LinkIcon className="h-4 w-4" />
-                                                                Otwórz źródło przetargu
+                                                                {t('tenders.openTenderSource')}
                                                             </Link>
                                                         )}
                                                     </div>
@@ -791,7 +770,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 components={markdownComponents}
                                                 remarkPlugins={[remarkGfm, remarkBreaks]}
                                             >
-                                                {updatedResult.tender_description? updatedResult.tender_description === "Brak danych." ? "" : updatedResult.tender_description : "Brak opisu. Pliki nie zostały pobrane ze źródła przetargu."}
+                                                {updatedResult.tender_description? updatedResult.tender_description === "Brak danych." ? "" : updatedResult.tender_description : t('tenders.noDescription')}
                                             </ReactMarkdown>
                                         </div>
                                         
@@ -799,7 +778,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
                                                     <Building className="h-4 w-4 text-gray-500" />
-                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">Zamawiający</h3>
+                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.client')}</h3>
                                                 </div>
                                                 <TooltipProvider delayDuration={300}>
                                                     <Tooltip>
@@ -817,7 +796,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="h-4 w-4 text-gray-500" />
-                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">Termin zgłoszenia</h3>
+                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.submissionDeadline')}</h3>
                                                 </div>
                                                 <p className="text-xs sm:text-sm truncate">
                                                     {updatedResult.tender_metadata?.submission_deadline || 'N/A'}
@@ -826,7 +805,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
                                                     <Percent className="h-4 w-4 text-gray-500" />
-                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">Relewantność</h3>
+                                                    <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.relevance')}</h3>
                                                 </div>
                                                 <p className="text-xs sm:text-sm truncate">
                                                     {(updatedResult.tender_score * 100).toFixed(1)}%
@@ -841,7 +820,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex items-center gap-2">
                                                                 <Globe className="h-4 w-4 text-gray-400" />
-                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Kraj</span>
+                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.country')}</span>
                                                             </div>
                                                             <span className="text-xs sm:text-sm truncate">
                                                                 {updatedResult.location.country}
@@ -852,7 +831,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex items-center gap-2">
                                                                 <Flag className="h-4 w-4 text-gray-400" />
-                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Województwo</span>
+                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.voivodeship')}</span>
                                                             </div>
                                                             <span className="text-xs sm:text-sm truncate">
                                                                 {updatedResult.location.voivodeship}
@@ -863,7 +842,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex items-center gap-2">
                                                                 <MapPin className="h-4 w-4 text-gray-400" />
-                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Miejscowość</span>
+                                                                <span className="text-xs sm:text-sm font-medium text-muted-foreground">{t('tenders.details.city')}</span>
                                                             </div>
                                                             <span className="text-xs sm:text-sm truncate">
                                                                 {updatedResult.location.city}
@@ -879,7 +858,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                         <div className="flex items-center gap-2">
                                             {getStatusIcon(localStatus)}
                                             <Label htmlFor="tender-status" className="text-sm font-normal">
-                                                Status:
+                                                {t('tenders.status.status')}:
                                             </Label>
                                         </div>
                                         <div className="flex-grow ml-2">
@@ -888,12 +867,12 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 onValueChange={handleStatusChange}
                                             >
                                                 <SelectTrigger id="tender-status" className="h-8 w-48 bg-white/20 hover:bg-secondary-hover">
-                                                    <SelectValue placeholder="Wybierz status" />
+                                                    <SelectValue placeholder={t('tenders.status.selectStatus')} />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="inactive">Nieaktywny</SelectItem>
-                                                    <SelectItem value="active">Aktywny</SelectItem>
-                                                    <SelectItem value="archived">Zarchiwizowany</SelectItem>
+                                                    <SelectItem value="inactive">{t('tenders.status.inactive')}</SelectItem>
+                                                    <SelectItem value="active">{t('tenders.status.active')}</SelectItem>
+                                                    <SelectItem value="archived">{t('tenders.status.archived')}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -904,7 +883,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                     
                                     <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                    <h3 className="font-semibold">Kryteria</h3>
+                                    <h3 className="font-semibold">{t('tenders.criteria.title')}</h3>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="sm">
@@ -914,7 +893,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                         <DropdownMenuContent align="end">
                                         <DropdownMenuItem 
                                         onClick={() => {
-                                            const fullName = updatedResult?.tender_metadata?.name || 'Przetarg';
+                                            const fullName = updatedResult?.tender_metadata?.name || t('tenders.actions.noTenderSelected');
                                             
                                             const words = fullName.split(' ');
                                             const firstFourWords = words.slice(0, 5).join(' ');
@@ -923,14 +902,14 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                               ? firstFourWords.substring(0, 100) 
                                               : firstFourWords;
                                             
-                                            const fileName = `${trimmedName}_kryteria`;
+                                            const fileName = `${trimmedName}_${t('tenders.criteria.title').toLowerCase()}`;
                                             exportCriteriaToXls(updatedResult?.criteria_analysis, fileName);
                                           }}
                                             disabled={!updatedResult?.criteria_analysis?.length}
                                             className="flex items-center gap-2 cursor-pointer outline-none p-2 text-sm"
                                             >
                                             <FileDown className="h-4 w-4" />
-                                            <span>Eksportuj kryteria do Excel</span>
+                                            <span>{t('tenders.criteria.exportToExcel')}</span>
                                         </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -939,7 +918,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             {isLoadingFullResult && (
                                                 <div className="flex items-center justify-center p-4 bg-muted/20 rounded-md my-2 border border-muted">
                                                     <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
-                                                    <span className="text-sm text-muted-foreground">Loading full tender details...</span>
+                                                    <span className="text-sm text-muted-foreground">{t('tenders.loadingFullData')}</span>
                                                 </div>
                                             )}
                                             
@@ -947,7 +926,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 <div className="flex flex-col items-center justify-center p-4 bg-muted/20 rounded-md my-2 border border-muted">
                                                     {!updatedResult.uploaded_files?.length ? (
                                                         <p className="text-sm text-muted-foreground text-center">
-                                                            Brak analizy kryteriów. Pliki nie zostały pobrane ze źródła przetargu.
+                                                            {t('tenders.noAnalysis')}
                                                         </p>
                                                     ) : (
                                                         <Button
@@ -975,7 +954,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                             disabled={isLoadingFullResult}
                                                         >
                                                             <Download className="w-4 h-4 mr-2" />
-                                                            Pobierz pełne dane
+                                                            {t('tenders.downloadFullData')}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -1063,16 +1042,16 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                     </Collapsible>
                                                 );
                                             }) || (
-                                                <p className="text-sm text-muted-foreground">Brak kryteriów</p>
+                                                <p className="text-sm text-muted-foreground">{t('tenders.files.noFiles')}</p>
                                             )}
                                         </div>
                                     </div>
                                     <div className="space-y-4">
-                                        <h3 className="font-semibold">Aktualizacje</h3>
+                                        <h3 className="font-semibold">{t('tenders.updates.title')}</h3>
                                         {isLoadingUpdates ? (
                                             <div className="text-sm text-muted-foreground p-2 flex items-center">
                                                 <span className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin mr-2" />
-                                                Ładowanie aktualizacji...
+                                                {t('tenders.updates.loading')}
                                             </div>
                                         ) : updatedResult && resultUpdates.length > 0 ? (
                                             <Accordion type="multiple" className="w-full">
@@ -1089,7 +1068,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                             </Card>
                                                             <div className="flex flex-col text-left">
                                                             <span className="font-medium">
-                                                                Aktualizacja: {formatDate(new Date(update.update_date))}
+                                                                {t('tenders.updates.updateDate')}: {formatDate(new Date(update.update_date))}
                                                             </span>
                                                             </div>
                                                         </div>
@@ -1114,7 +1093,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                                 </div>
                                                             ))
                                                 ) : (
-                                                    <div className="text-sm text-muted-foreground italic">Brak plików w tej aktualizacji</div>
+                                                    <div className="text-sm text-muted-foreground italic">{t('tenders.updates.noFilesInUpdate')}</div>
                                                 )}
 
                                                 {update.update_link && (
@@ -1125,7 +1104,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                     className="flex items-center gap-1 text-sm text-primary hover:underline mt-2 py-1"
                                                 >
                                                     <LinkIcon size={14} />
-                                                    <span>Źródło aktualizacji</span>
+                                                    <span>{t('tenders.updates.updateSource')}</span>
                                                 </Link>
                                                 )}
                                                 {(() => {
@@ -1134,7 +1113,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                     <>
                                                     {summary.overall_summary && (
                                                         <div className="mt-4">
-                                                        <h4 className="font-medium text-sm">Podsumowanie aktualizacji</h4>
+                                                        <h4 className="font-medium text-sm">{t('tenders.updates.updateSummary')}</h4>
                                                         <ReactMarkdown className="prose-sm whitespace-pre-line">
                                                             {summary.overall_summary}
                                                         </ReactMarkdown>
@@ -1142,7 +1121,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                     )}
                                                     {summary.file_summaries.length > 0 && (
                                                     <div className="mt-2 pl-10">
-                                                        <h4 className="font-medium text-sm">Podsumowania plików</h4>
+                                                        <h4 className="font-medium text-sm">{t('tenders.updates.fileSummaries')}</h4>
                                                         <ul className="list-disc list-inside text-sm space-y-1">
                                                         {summary.file_summaries.map((fs, idx) => (
                                                             <li key={idx}>
@@ -1163,14 +1142,14 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             </Accordion>
                                         ) : (
                                             <div className="text-sm text-muted-foreground italic p-2">
-                                                Brak aktualizacji dla tego przetargu
+                                                {t('tenders.updates.noUpdates')}
                                             </div>
                                         )}
                                     </div>
                                     {updatedResult.uploaded_files && updatedResult.uploaded_files.length > 0 ? (
                                         <>
                                             <div className="space-y-4">
-                                                <h3 className="font-semibold">Files</h3>
+                                                <h3 className="font-semibold">{t('tenders.files.title')}</h3>
                                                 <div className="flex flex-wrap gap-2">
                                                     {updatedResult.uploaded_files.map((file, index) => (
                                                         <ResultFileItem key={index} file={file} />
@@ -1182,13 +1161,13 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 onClick={handleDownloadAllFiles}
                                                 disabled={isDownloading || !updatedResult.uploaded_files || updatedResult.uploaded_files.length === 0}
                                             >
-                                                {isDownloading ? 'Pobieranie...' : 'Pobierz wszystkie pliki'}
+                                                {isDownloading ? t('tenders.files.downloading') : t('tenders.files.downloadAll')}
                                             </Button>
                                         </>
                                     ) : (
                                         <div className="space-y-4">
-                                            <h3 className="font-semibold">Pliki</h3>
-                                            <p className="text-sm text-muted-foreground">Brak dostępnych plików</p>
+                                            <h3 className="font-semibold">{t('tenders.files.title')}</h3>
+                                            <p className="text-sm text-muted-foreground">{t('tenders.files.noFiles')}</p>
                                         </div>
                                     )}
 
@@ -1201,8 +1180,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
-                                            <h3 className="font-semibold">Komentarze</h3>
-                                            <p className="text-sm text-muted-foreground">Nie można załadować komentarzy - brak identyfikatora przetargu</p>
+                                            <h3 className="font-semibold">{t('tenders.comments.title')}</h3>
+                                            <p className="text-sm text-muted-foreground">{t('tenders.noCommentsError')}</p>
                                         </div>
                                     )}
 
@@ -1213,8 +1192,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                         {!updatedResult && (
                             <div className="flex items-center justify-center h-[80svh] text-muted-foreground">
                                 <div className="text-center space-y-2">
-                                    <p className="text-lg font-medium">Nie wybranego przetargu</p>
-                                    <p className="text-sm">Wybierz przetarg żeby wyświetlić szczegóły</p>
+                                    <p className="text-lg font-medium">{t('tenders.actions.noTenderSelected')}</p>
+                                    <p className="text-sm">{t('tenders.actions.selectTenderToView')}</p>
                                 </div>
                             </div>
                         )}
@@ -1231,12 +1210,12 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                 {isCreating ? (
                                     <>
                                         <span className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
-                                        Tworzenie projektu...
+                                        {t('tenders.actions.creating')}
                                     </>
                                 ) : (
                                     <>
                                         <LibraryBig strokeWidth={2.2} className="w-5 h-5 mr-2" />
-                                        Otwórz jako nowy projekt
+                                        {t('tenders.actions.openAsProject')}
                                     </>
                                 )}
                             </Button>
@@ -1248,7 +1227,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                     disabled={!updatedResult}
                                 >
                                     <ListCheck className="mr-2 h-4 w-4" />
-                                    Dodaj do tablicy Kanban
+                                    {t('tenders.actions.addToKanban')}
                                 </Button>
                             )}
                         </div>
@@ -1261,13 +1240,13 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                     onOpenChange={setShowAddToKanban}
                     tender={updatedResult}
                     onAddSuccess={(boardId: string) => {
-                        setPopupMessage("Przetarg został pomyślnie dodany do tablicy.");
+                        setPopupMessage(t('tenders.kanban.addSuccess'));
                         setAddToKanbanSuccess(true);
                         setAddedToBoardId(boardId);
                         setPopupOpen(true);
                     }}
                     onAddError={() => {
-                        setPopupMessage("Wystąpił błąd podczas dodawania przetargu do tablicy.");
+                        setPopupMessage(t('tenders.kanban.addError'));
                         setAddToKanbanSuccess(false);
                         setPopupOpen(true);
                     }}
@@ -1298,7 +1277,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                     variant="default"
                                     className="px-6"
                                 >
-                                    Otwórz tablicę
+                                    {t('tenders.kanban.openBoard')}
                                 </Button>
                             )}
                             <Button 
@@ -1306,7 +1285,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                 variant={addToKanbanSuccess ? "outline" : "default"}
                                 className="px-6"
                             >
-                                {addToKanbanSuccess ? "Zostań" : "Zamknij"}
+                                {addToKanbanSuccess ? t('tenders.kanban.stay') : commonT('close')}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
