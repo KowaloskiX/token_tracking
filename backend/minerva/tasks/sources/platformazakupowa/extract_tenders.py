@@ -140,14 +140,11 @@ class PlatformaZakupowaTenderExtractor:
                         # Navigate to page with increased timeout
                         await page.goto(details_url, wait_until='networkidle', timeout=30000)
                         
-                        # Close the chatbot widget if present
-                        try:
-                            close_button = await page.query_selector('button.on-widget-close-button')
-                            if close_button:
-                                await close_button.click()
-                                await page.wait_for_timeout(1000)  # Wait for close animation
-                        except Exception as e:
-                            logging.debug(f"No chatbot close button found or error clicking it: {e}")
+                        # Hide the chatbot widget if present
+                        await page.evaluate("""
+                            const w = document.getElementById('open-nexus-chat-bot-widget');
+                            if (w) { w.style.display = 'none'; }
+                        """)
                         
                         # Extract tender ID for filenames
                         tender_id = details_url.split('/')[-1]
@@ -161,12 +158,14 @@ class PlatformaZakupowaTenderExtractor:
                         # Extract requirements
                         requirements_div = soup.select_one("div#requirements")
                         if requirements_div:
+                            details_content.append("=== REQUIREMENTS ===")
                             details_content.append(requirements_div.get_text(strip=True))
                             details_content.append("\n")
                         
                         # Extract evaluation criteria
                         criteria_div = soup.select_one("div.col-md-12.requirements")
                         if criteria_div:
+                            details_content.append("=== EVALUATION CRITERIA ===")
                             details_content.append(criteria_div.get_text(strip=True))
                         
                         # Save tender details as text file
@@ -228,14 +227,11 @@ class PlatformaZakupowaTenderExtractor:
 
                                     # Ensure the download link is visible and not covered
                                     await download_link.scroll_into_view_if_needed()
-                                    # Close the chatbot widget again, in case it reappeared
-                                    try:
-                                        close_button = await page.query_selector('button.on-widget-close-button')
-                                        if close_button:
-                                            await close_button.click()
-                                            await page.wait_for_timeout(500)  # Brief wait for close
-                                    except Exception as e:
-                                        logging.debug(f"No chatbot close button found: {e}")
+                                    # Hide the chatbot widget again, in case it reappeared
+                                    await page.evaluate("""
+                                        const w = document.getElementById('open-nexus-chat-bot-widget');
+                                        if (w) { w.style.display = 'none'; }
+                                    """)
                                     
                                     # Setup download handling with timeout
                                     async with page.expect_download(timeout=30000) as download_info:
@@ -552,14 +548,11 @@ class PlatformaZakupowaTenderExtractor:
         try:
             temp_dir = Path(tempfile.mkdtemp(prefix="announcement_downloads_"))
             
-            # Close the chatbot widget if present
-            try:
-                close_button = await page.query_selector('button.on-widget-close-button')
-                if close_button:
-                    await close_button.click()
-                    await page.wait_for_timeout(1000)  # Wait for close animation
-            except Exception as e:
-                logging.debug(f"No chatbot close button found or error clicking it: {e}")
+            # Hide the chatbot widget if present
+            await page.evaluate("""
+                const w = document.getElementById('open-nexus-chat-bot-widget');
+                if (w) { w.style.display = 'none'; }
+            """)
             
             for link_url in attachment_links:
                 # filename = link_url.split("/")[-1] or f"attachment_{random.randint(1000,9999)}"
@@ -595,14 +588,11 @@ class PlatformaZakupowaTenderExtractor:
                 try:
                     # Ensure the link is visible and not covered
                     await link_element.scroll_into_view_if_needed()
-                    # Close the chatbot widget again, in case it reappeared
-                    try:
-                        close_button = await page.query_selector('button.on-widget-close-button')
-                        if close_button:
-                            await close_button.click()
-                            await page.wait_for_timeout(500)  # Brief wait for close
-                    except Exception as e:
-                        logging.debug(f"No chatbot close button found: {e}")
+                    # Hide the chatbot widget again, in case it reappeared
+                    await page.evaluate("""
+                        const w = document.getElementById('open-nexus-chat-bot-widget');
+                        if (w) { w.style.display = 'none'; }
+                    """)
                     
                     async with page.expect_download(timeout=30000) as download_info:
                         await link_element.click()

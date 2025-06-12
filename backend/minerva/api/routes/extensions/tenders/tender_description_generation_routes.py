@@ -17,8 +17,7 @@ class TenderDescriptionRequest(BaseModel):
     rag_index_name: str
     embedding_model: str
     analysis_id: Optional[str] = None
-    save_results: Optional[bool] = False    
-    language: Optional[str] = "polish"
+    save_results: Optional[bool] = False
 
 class TenderDescriptionResponse(BaseModel):
     status: str
@@ -40,8 +39,7 @@ async def generate_description(
             embedding_model=request.embedding_model,
             analysis_id=request.analysis_id,
             current_user=current_user,
-            save_results=request.save_results,
-            language=request.language
+            save_results=request.save_results
         )
         
         return description_result

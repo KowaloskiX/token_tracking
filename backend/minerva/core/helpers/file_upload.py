@@ -6,6 +6,7 @@ from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.services.vectorstore.file_content_extract.base import ExtractorRegistry
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
+from minerva.core.utils.pdf_ocr import maybe_ocr_pdf_bytes
 import pandas as pd
 import io
 from pathlib import Path

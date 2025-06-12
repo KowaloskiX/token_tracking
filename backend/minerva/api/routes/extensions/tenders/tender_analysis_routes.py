@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from uuid import uuid4
+from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -12,7 +14,7 @@ from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryT
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.sources.source_types import TenderSourceType
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
-from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag, run_all_analyses_for_user, run_all_tender_analyses, run_partial_tender_analyses, _process_tender_pipeline
+from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag, run_all_analyses_for_user, run_all_tender_analyses, run_partial_tender_analyses
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, Response
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
@@ -26,7 +28,6 @@ from minerva.core.models.request.tender_analysis import (
     TenderSearchRequest,
     UserAnalysisTestRequest
 )
-from minerva.core.services.keyword_search.elasticsearch import es_client
 from minerva.core.models.user import User
 from minerva.core.models.utils import PyObjectId
 from minerva.core.database.database import db
@@ -35,11 +36,6 @@ from pydantic import ValidationError, BaseModel, Field
 import pytz
 import json
 import random
-from playwright.async_api import async_playwright
-from minerva.core.utils.email_utils import (
-    handle_send_email,
-    build_tender_results_email_html,
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -97,12 +93,6 @@ class TenderAnalysisResultSummary(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
-        
-
-class SingleTenderAnalysisRequest(BaseModel):
-    tender_url: str = Field(..., description="URL of the tender to analyze")
-    analysis_id: str = Field(..., description="ID of the analysis configuration to use")
-
 
 # kanban helper functions:
 async def reorder_tenders(board_id: str, column_id: str) -> None:
@@ -188,7 +178,7 @@ async def remove_tender_from_kanban_boards(tender_result_id: str) -> int:
 async def run_all_analyses_for_user_endpoint(
     user_id: str,
     top_k: int = 20,
-    score_threshold: float = 0.5,
+    score_threshold: float = 0.1,
     current_user: User = Depends(get_current_user)
 ):
 
@@ -204,14 +194,16 @@ async def run_all_analyses_for_user_endpoint(
 
 @router.post("/test-tender-analysis", response_model=Dict[str, Any])
 async def run_tender_search(request: TenderSearchRequest, current_user: User = Depends(get_current_user)):
+    # ❌ Remove the analysis_session_id here - it will be created in the analysis service
+    # analysis_session_id = str(uuid4())
+    
     try:
         analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(request.analysis_id)})
         if not analysis_doc:
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
-        # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-10"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-05-21"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -234,7 +226,6 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
                     else:
                         crit.weight = 3
                 
-                # Make sure instruction field is preserved if it exists
                 if not hasattr(crit, 'instruction'):
                     crit.instruction = None
                     
@@ -242,7 +233,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_analysis.criteria = updated_criteria
         
         criteria_definitions = tender_analysis.criteria
-
+        
         result = await analyze_relevant_tenders_with_our_rag(
             analysis_id=request.analysis_id,
             current_user=current_user,
@@ -252,9 +243,12 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_names_index_name="tenders",
             elasticsearch_index_name="tenders",
             embedding_model="text-embedding-3-large",
-            rag_index_name="test-files-rag",
+            rag_index_name="files-rag-23-04-2025",
             criteria_definitions=criteria_definitions
         )
+
+        # ✅ Get cost summary for this specific analysis
+        cost_summary = await get_analysis_cost_summary_by_analysis_id(request.analysis_id)
         
         # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
@@ -262,13 +256,91 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
         return {
             "status": "Tender analysis completed",
             "result": result,
+            "cost_summary": {
+                "total_cost_usd": cost_summary.get("total_cost_usd", 0),
+                "total_tokens": cost_summary.get("total_tokens", 0),
+                "analysis_records": cost_summary.get("analysis_records", 0),
+                "breakdown": cost_summary.get("breakdown", {})
+            }
         }
-    except HTTPException as e:
-        raise e
     except Exception as e:
         logger.error(f"Error running tender search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running tender search: {str(e)}")
-
+    
+async def get_analysis_cost_summary_by_analysis_id(analysis_id: str) -> Dict[str, Any]:
+    """Get aggregated cost summary for a specific analysis_id"""
+    try:
+        pipeline = [
+            {
+                "$match": {
+                    "tender_analysis_id": ObjectId(analysis_id),
+                    "status": "completed"
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_cost_usd": {"$sum": "$total_cost_usd"},
+                    "total_tokens": {"$sum": "$total_tokens"},
+                    "analysis_records": {"$sum": 1},
+                    # Get breakdown by operation type
+                    "ai_filtering_cost": {"$sum": {"$sum": "$ai_filtering_costs.total_cost_usd"}},
+                    "criteria_analysis_cost": {"$sum": {"$sum": "$criteria_analysis_costs.total_cost_usd"}},
+                    "description_generation_cost": {"$sum": {"$sum": "$description_generation_costs.total_cost_usd"}},
+                    "file_extraction_cost": {"$sum": {"$sum": "$file_extraction_costs.total_cost_usd"}},
+                    # Token breakdown
+                    "ai_filtering_tokens": {"$sum": {"$sum": "$ai_filtering_costs.total_tokens"}},
+                    "criteria_analysis_tokens": {"$sum": {"$sum": "$criteria_analysis_costs.total_tokens"}},
+                    "description_generation_tokens": {"$sum": {"$sum": "$description_generation_costs.total_tokens"}},
+                    "file_extraction_tokens": {"$sum": {"$sum": "$file_extraction_costs.total_tokens"}}
+                }
+            }
+        ]
+        
+        result = await db.tender_analysis_costs.aggregate(pipeline).to_list(1)
+        
+        if result:
+            data = result[0]
+            return {
+                "total_cost_usd": data.get("total_cost_usd", 0.0),
+                "total_tokens": data.get("total_tokens", 0),
+                "analysis_records": data.get("analysis_records", 0),
+                "breakdown": {
+                    "costs": {
+                        "ai_filtering": data.get("ai_filtering_cost", 0.0),
+                        "criteria_analysis": data.get("criteria_analysis_cost", 0.0),
+                        "description_generation": data.get("description_generation_cost", 0.0),
+                        "file_extraction": data.get("file_extraction_cost", 0.0)
+                    },
+                    "tokens": {
+                        "ai_filtering": data.get("ai_filtering_tokens", 0),
+                        "criteria_analysis": data.get("criteria_analysis_tokens", 0),
+                        "description_generation": data.get("description_generation_tokens", 0),
+                        "file_extraction": data.get("file_extraction_tokens", 0)
+                    }
+                }
+            }
+        else:
+            return {
+                "total_cost_usd": 0.0,
+                "total_tokens": 0,
+                "analysis_records": 0,
+                "breakdown": {
+                    "costs": {"ai_filtering": 0.0, "criteria_analysis": 0.0, "description_generation": 0.0, "file_extraction": 0.0},
+                    "tokens": {"ai_filtering": 0, "criteria_analysis": 0, "description_generation": 0, "file_extraction": 0}
+                }
+            }
+    except Exception as e:
+        logger.error(f"Error getting cost summary for analysis {analysis_id}: {str(e)}")
+        return {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "analysis_records": 0,
+            "breakdown": {
+                "costs": {"ai_filtering": 0.0, "criteria_analysis": 0.0, "description_generation": 0.0, "file_extraction": 0.0},
+                "tokens": {"ai_filtering": 0, "criteria_analysis": 0, "description_generation": 0, "file_extraction": 0}
+            }
+        }
 
 @router.post("/run_all_tender_analyses", response_model=Dict[str, Any])
 async def run_all_analyses():
@@ -306,7 +378,6 @@ async def create_tender_analysis(
             # Get optional instruction
             instruction = getattr(criterion, 'instruction', None)
             subcriteria = getattr(criterion, 'subcriteria', None)
-            keywords = getattr(criterion, 'keywords', None)
             
             criteria_with_weights.append({
                 "name": criterion.name,
@@ -316,7 +387,6 @@ async def create_tender_analysis(
                 "exclude_from_score": exclude_from_score,
                 "instruction": instruction,  # Add the instruction field
                 "subcriteria": subcriteria,
-                "keywords": keywords,
             })
 
         # Rest of the function remains the same
@@ -330,9 +400,7 @@ async def create_tender_analysis(
             "criteria": criteria_with_weights,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
-            "active": True,
-            "assigned_users": [str(current_user.id)],  # Owner is automatically assigned
-            "email_recipients": [str(current_user.id)]  # Owner is automatically in email recipients
+            "active": True
         }
 
         tender_analysis = TenderAnalysis(**tender_analysis_data)
@@ -359,17 +427,14 @@ async def create_tender_analysis(
 async def list_tender_analysis(
     current_user: User = Depends(get_current_user)
 ):
-    """List all tender analyses for the current user, including those they're assigned to"""
+    """List all tender analyses for the current user or anyone in their organization"""
     try:
-        # Build a more comprehensive query:
-        # 1. Analyses created by the user
-        # 2. Analyses where the user is specifically assigned
-        query = {
-            "$or": [
-                {"user_id": current_user.id},  # User is creator
-                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
-            ]
-        }
+        base_query = [{"user_id": current_user.id}]
+        # Only add org_id filter if it is defined and not empty
+        if current_user.org_id and current_user.org_id.strip():
+            base_query.append({"org_id": current_user.org_id})
+        
+        query = {"$or": base_query}
         
         analyses_cursor = db.tender_analysis.find(query)
         analyses = await analyses_cursor.to_list(None)
@@ -387,25 +452,18 @@ async def get_tender_analysis(
     analysis_id: PyObjectId,
     current_user: User = Depends(get_current_user)
 ):
-    """Get a specific tender analysis by ID for the user or if they're assigned"""
+    """Get a specific tender analysis by ID for the user or their organization"""
     try:
-        # Check if:
-        # 1. User created the analysis
-        # 2. User is assigned to the analysis
-        query = {
-            "_id": analysis_id,
-            "$or": [
-                {"user_id": current_user.id},  # User is creator
-                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
-            ]
-        }
+        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
+        if current_user.org_id and current_user.org_id.strip():
+            query["$or"].append({"org_id": current_user.org_id})
         
         analysis = await db.tender_analysis.find_one(query)
         
         if not analysis:
             raise HTTPException(
                 status_code=404,
-                detail="Tender analysis not found or you don't have access to it"
+                detail="Tender analysis not found"
             )
         
         return TenderAnalysis(**analysis)
@@ -417,7 +475,6 @@ async def get_tender_analysis(
             detail=f"Error getting tender analysis: {str(e)}"
         )
 
-# First, let's modify the update method to handle assigned_users correctly
 @router.put("/tender-analysis/{analysis_id}", response_model=TenderAnalysis)
 async def update_tender_analysis(
     analysis_id: PyObjectId,
@@ -426,89 +483,44 @@ async def update_tender_analysis(
 ):
     """Update a tender analysis configuration"""
     try:
-        logger.info(f"Updating tender analysis {analysis_id} by user {current_user.id} (role: {current_user.role})")
+        # Check if analysis exists and belongs to user
+        # This query should also check for org_id like the GET endpoint does
+        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
+        if current_user.org_id and current_user.org_id.strip():
+            query["$or"].append({"org_id": current_user.org_id})
+            
+        existing = await db.tender_analysis.find_one(query)
         
-        # First, find the analysis
-        analysis = await db.tender_analysis.find_one({"_id": analysis_id})
-        if not analysis:
+        if not existing:
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found"
             )
         
-        # Check permissions - expanded for better debugging
-        is_owner = str(analysis.get("user_id")) == str(current_user.id)
-        is_admin = current_user.role == "admin"  # Simplified - any admin can update
-
-        logger.info(f"""Permission check details:
-        - User ID: {current_user.id}
-        - User role: {current_user.role}
-        - Analysis owner ID: {analysis.get("user_id")}
-        - Is owner: {is_owner}
-        - Is admin: {is_admin}
-        """)
-        
-        if not (is_owner or is_admin):
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have permission to update this analysis"
-            )
-        
-        # Process the update data
+        # Filter out None values and prepare update
         update_dict = {
             k: v for k, v in update_data.dict().items() 
             if v is not None
         }
         
-        # Validate assigned_users if present
-        if "assigned_users" in update_dict:
-            logger.info(f"Processing assigned users: {update_dict['assigned_users']}")
-            
-            # Always include the owner in assigned_users
-            owner_id = str(analysis.get("user_id"))
-            if owner_id not in update_dict["assigned_users"]:
-                update_dict["assigned_users"].append(owner_id)
-                logger.info(f"Added owner {owner_id} to assigned_users")
-                
-            logger.info(f"Final assigned users list: {update_dict['assigned_users']}")
-        
-        # Validate email_recipients if present
-        if "email_recipients" in update_dict:
-            logger.info(f"Processing email recipients: {update_dict['email_recipients']}")
-            
-            # Get current assigned users (either from update or from existing analysis)
-            assigned_users = update_dict.get("assigned_users", analysis.get("assigned_users", []))
-            
-            # Ensure all email recipients are in assigned users
-            invalid_recipients = [r for r in update_dict["email_recipients"] if r not in assigned_users]
-            if invalid_recipients:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Email recipients must be assigned to the analysis. Invalid recipients: {invalid_recipients}"
-                )
-                
-            logger.info(f"Final email recipients list: {update_dict['email_recipients']}")
+        if not update_dict:
+            return TenderAnalysis(**existing)
         
         # Add updated_at timestamp
         update_dict["updated_at"] = datetime.utcnow()
         
         # Perform update
-        result = await db.tender_analysis.update_one(
+        await db.tender_analysis.update_one(
             {"_id": analysis_id},
             {"$set": update_dict}
         )
-        
-        logger.info(f"Update result: matched={result.matched_count}, modified={result.modified_count}")
         
         # Get updated document
         updated = await db.tender_analysis.find_one({"_id": analysis_id})
         return TenderAnalysis(**updated)
     
-    except HTTPException as e:
-        # Re-raise HTTP exceptions
-        raise e
     except Exception as e:
-        logger.error(f"Error updating tender analysis: {str(e)}", exc_info=True)
+        logger.error(f"Error updating tender analysis: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error updating tender analysis: {str(e)}"
@@ -558,254 +570,54 @@ async def get_tender_analysis_results(
     analysis_id: PyObjectId,
     page: int = 1,
     limit: int = 10,
-    org_id: Optional[str] = None,
-    include_historical: bool = False,
+    org_id: Optional[str] = None,  # Add org_id as a query parameter
     current_user: User = Depends(get_current_user)
 ):
-    """Get paginated results for a specific tender analysis with future submission deadlines only (unless include_historical=True)"""
+    """Get paginated results for a specific tender analysis"""
     try:
-        logger.info(f"Fetching results for analysis {analysis_id} by user {current_user.id}, include_historical={include_historical}")
+        # Check if analysis exists and belongs to user or their organization
+        query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
+        if current_user.org_id and current_user.org_id.strip():
+            query["$or"].append({"org_id": current_user.org_id})
+        elif org_id and org_id.strip() and org_id == current_user.org_id:
+            query["$or"].append({"org_id": org_id})
+            
+        analysis = await db.tender_analysis.find_one(query)
         
-        # First, directly find the analysis document to check permissions
-        analysis = await db.tender_analysis.find_one({"_id": analysis_id})
         if not analysis:
-            logger.warning(f"Analysis {analysis_id} not found")
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found"
             )
         
-        # Check if user has access to this analysis
-        is_owner = str(analysis.get("user_id")) == str(current_user.id)
-        is_assigned = str(current_user.id) in analysis.get("assigned_users", [])
-        
-        logger.info(f"Access check: is_owner={is_owner}, is_assigned={is_assigned}")
-        
-        if not (is_owner or is_assigned):
-            logger.warning(f"User {current_user.id} doesn't have access to analysis {analysis_id}")
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have access to this analysis"
-            )
-        
-        # User has access, proceed with fetching results
+        # Calculate skip for pagination
         skip = (page - 1) * limit
-        current_date = datetime.utcnow()
         
-        if include_historical:
-            # Simple query without deadline filtering for historical results
-            pipeline = [
-                # Match documents for this analysis
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id
-                    }
-                },
-                # Apply projection to exclude heavy fields
-                {
-                    "$project": {
-                        "criteria_analysis": 0,
-                        "criteria_analysis_archive": 0,
-                        "company_match_explanation": 0,
-                        "tender_description": 0,
-                        "uploaded_files": 0,
-                        "file_extraction_status": 0,
-                        "pinecone_config": 0,
-                    }
-                },
-                # Sort by creation date
-                {"$sort": {"created_at": -1}},
-                # Apply pagination
-                {"$skip": skip},
-                {"$limit": limit}
-            ]
-            
-            # Get total count without deadline filtering
-            total = await db.tender_analysis_results.count_documents(
-                {"tender_analysis_id": analysis_id}
-            )
-        else:
-            # Use aggregation pipeline to filter by future submission deadlines
-            pipeline = [
-                # Match documents for this analysis
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id,
-                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
-                    }
-                },
-                # Add a field to parse the submission deadline
-                {
-                    "$addFields": {
-                        "parsed_deadline": {
-                            "$switch": {
-                                "branches": [
-                                    # Handle format: "2025-06-10 11:00"
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d %H:%M",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    # Handle format: "10/06/2025 08:00:00"
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%d/%m/%Y %H:%M:%S",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    # Handle format: "2025-06-10" (date only)
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d",
-                                                "onError": None
-                                            }
-                                        }
-                                    }
-                                ],
-                                "default": None
-                            }
-                        }
-                    }
-                },
-                # Filter to only include future deadlines or unparseable dates (to be safe)
-                {
-                    "$match": {
-                        "$or": [
-                            {"parsed_deadline": {"$gt": current_date}},
-                            {"parsed_deadline": None}  # Keep tenders with unparseable dates
-                        ]
-                    }
-                },
-                # Remove the temporary parsed_deadline field and apply projection
-                {
-                    "$project": {
-                        "criteria_analysis": 0,
-                        "criteria_analysis_archive": 0,
-                        "company_match_explanation": 0,
-                        "tender_description": 0,
-                        "uploaded_files": 0,
-                        "file_extraction_status": 0,
-                        "pinecone_config": 0,
-                        "parsed_deadline": 0  # Remove the temporary field
-                    }
-                },
-                # Sort by creation date
-                {"$sort": {"created_at": -1}},
-                # Apply pagination
-                {"$skip": skip},
-                {"$limit": limit}
-            ]
+        # Heavy sub-documents are not needed in the list view, exclude them to
+        # keep the payload small (≈ 10× smaller) and to avoid the Pydantic
+        # cost of validating thousands of big objects.
+        projection = {
+            # textual blobs / big arrays
+            "criteria_analysis": 0,
+            "criteria_analysis_archive": 0,
+            "company_match_explanation": 0,
+            "tender_description": 0,
+            "uploaded_files": 0,
+            "file_extraction_status": 0,
+            "pinecone_config": 0,
+        }
 
-            # Get total count of future deadlines for this analysis
-            count_pipeline = [
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id,
-                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
-                    }
-                },
-                {
-                    "$addFields": {
-                        "parsed_deadline": {
-                            "$switch": {
-                                "branches": [
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d %H:%M",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%d/%m/%Y %H:%M:%S",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d",
-                                                "onError": None
-                                            }
-                                        }
-                                    }
-                                ],
-                                "default": None
-                            }
-                        }
-                    }
-                },
-                {
-                    "$match": {
-                        "$or": [
-                            {"parsed_deadline": {"$gt": current_date}},
-                            {"parsed_deadline": None}
-                        ]
-                    }
-                },
-                {"$count": "total"}
-            ]
+        cursor = db.tender_analysis_results.find(
+            {
+                "tender_analysis_id": analysis_id,
+                "pinecone_config": {"$ne": None, "$exists": True},
+            },
+            projection,
+        ).sort("created_at", -1).skip(skip).limit(limit)
 
-            count_result = await db.tender_analysis_results.aggregate(count_pipeline).to_list(None)
-            total = count_result[0]["total"] if count_result else 0
+        raw_results = await cursor.to_list(None)
 
-        # Execute the aggregation pipeline
-        raw_results = await db.tender_analysis_results.aggregate(pipeline).to_list(None)
-        logger.info(f"Found {len(raw_results)} {'historical' if include_historical else 'future'} results for page {page}")
-
-        # Convert ObjectId instances to strings
+        # Convert ObjectId instances to strings so they are JSON-serialisable.
         def _stringify_ids(doc):
             for k in ("_id", "tender_analysis_id", "user_id"):
                 if k in doc and isinstance(doc[k], ObjectId):
@@ -814,18 +626,19 @@ async def get_tender_analysis_results(
 
         results = [_stringify_ids(r) for r in raw_results]
 
-        logger.info(f"Returning {len(results)} {'historical' if include_historical else 'future'} results (total: {total})")
+        total = await db.tender_analysis_results.count_documents(
+            {"tender_analysis_id": analysis_id}
+        )
+
+        # Dump JSON manually, falling back to str() on unknown types (ObjectId, datetime)
         payload = {"results": results, "total": total}
         return Response(
             content=json.dumps(payload, default=str, ensure_ascii=False),
             media_type="application/json",
         )
 
-    except HTTPException as e:
-        # Re-raise HTTP exceptions
-        raise e
     except Exception as e:
-        logger.error(f"Error getting tender analysis results: {str(e)}", exc_info=True)
+        logger.error(f"Error getting tender analysis results: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error getting tender analysis results: {str(e)}"
@@ -840,20 +653,18 @@ async def get_all_tender_analysis_results(
     """
     Get all results (non-paginated) for a specific tender analysis.
     """
-    # Check if analysis exists and belongs to user or the user is assigned to it
-    query = {
-        "_id": analysis_id,
-        "$or": [
-            {"user_id": current_user.id},  # User is creator
-            {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
-        ]
-    }
-    
+    # The same logic for verifying analysis ownership
+    query = {"_id": analysis_id, "$or": [{"user_id": current_user.id}]}
+    if current_user.org_id and current_user.org_id.strip():
+        query["$or"].append({"org_id": current_user.org_id})
+    elif org_id and org_id.strip() and org_id == current_user.org_id:
+        query["$or"].append({"org_id": org_id})
+
     analysis = await db.tender_analysis.find_one(query)
     if not analysis:
         raise HTTPException(
             status_code=404,
-            detail="Tender analysis not found or you don't have access to it"
+            detail="Tender analysis not found"
         )
 
     # Simply fetch ALL results (no skip/limit)
@@ -897,7 +708,7 @@ async def test_extractors():
         # ("epropublico_main", "https://e-propublico.pl/Ogloszenia/Details/d7f144e7-2693-442f-bd07-6ffb7995a063"),
         # ("platformazakupowa", "https://platformazakupowa.pl/transakcja/1065234"),
         # ("smartpzp", "https://portal.smartpzp.pl/pazp/public/postepowanie?postepowanie=76699829"),
-        # ("logintrade", "https://lafargeholcim.logintrade.net/portal,szczegolyZapytaniaOfertowe,f40c67caee744d36e260eb256f5e30e1.html"),
+        # ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1612179,d7931f2b96e75a1c7d742ca775b1e22e.html"),
         # ("ted", "https://ted.europa.eu/en/notice/-/detail/129599-2025"),
     # ("ezamawiajacy", "https://zimkrakow.ezamawiajacy.pl/app/demand/notice/public/164269/details"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/468376/wykonanie-okresowej-kontroli-instalacji-gazowych-w-nieruchomosciach-polozonych-w-obszarze-dzialania-oddzialu-terenowego-malopolskiego-2"),
@@ -909,14 +720,7 @@ async def test_extractors():
         # ("ezamowienia", "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-d1c9e5f6-b4b1-4660-b573-aabb973989a4")
         # ("orlenconnect", "https://connect.orlen.pl/app/outRfx/492099/supplier/status"),
         # ("pge", "https://swpp2.gkpge.pl/app/demand/notice/public/96084/details")
-        # ("logintrade", "https://platformazakupowa.grupaazoty.com/zapytania_email,1621948,35f035581b097deddd7805921a2a69bd.html"),
-        # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/externalProject.do?method=show&pid=1063335"),
-        # ("vergabe", "https://evergabe.nrw.de/VMPCenter/public/company/projectForwarding.do?pid=1063424"),
-        # ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
-        # ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
-
-("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/overview?1")
-# ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/478304/przedmiotem")
+        ("logintrade", "https://suus.logintrade.net/portal,szczegolyZapytaniaOfertowe,51f45516c9f09f4f0fb4eb2af1845f2f.html")
 
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/471684/remont-pustostanow-lokali-mieszkalnych-czesc-nr-1-marszalkowska-34-50-m-23-adk-2-czesc-nr-2-krucza-6-14-m-5-adk-2-w-podziale-na-2-czesci"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/473338/opracowanie-dokumentacji-projektowo-kosztorysowej-na-remont-budynku-rozdzielnicy-agregatorowni-zlokalizowanej-na-terenie-stacji-pomp-rzecznych-przy-ul-czerniakowskiej-124-dzielnica-srodmiescie-1"),
@@ -1677,48 +1481,6 @@ async def test_user_analysis(
             detail=f"Error testing user analysis: {str(e)}"
         )
 
-
-@router.post("/send-test-results-email/{analysis_id}", status_code=200)
-async def send_test_results_email(
-    analysis_id: str,
-    email: Optional[str] = None,
-    limit: int = 5,
-    current_user: User = Depends(get_current_user),
-):
-    """Send a preview tender results email for the specified analysis."""
-    try:
-        analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(analysis_id)})
-        if not analysis_doc:
-            raise HTTPException(status_code=404, detail="Tender analysis not found")
-
-        user_email = email or current_user.email
-
-        cursor = (
-            db.tender_analysis_results.find({"tender_analysis_id": ObjectId(analysis_id)})
-            .sort("created_at", -1)
-            .limit(limit)
-        )
-        results = [TenderAnalysisResult(**r) for r in await cursor.to_list(length=None)]
-
-        html_content = build_tender_results_email_html(
-            analysis_name=analysis_doc.get("name", "Unnamed Analysis"),
-            analysis_id=analysis_id,
-            tenders=results,
-        )
-
-        await handle_send_email(
-            user_email,
-            f"Nowe przetargi - {analysis_doc.get('name', '')}",
-            html_content,
-        )
-
-        return {"message": f"Test email sent to {user_email}"}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"Error sending test results email: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error sending test results email: {str(e)}")
-
 @router.post("/tender-results/batch", response_model=List[TenderAnalysisResult])
 async def get_tender_results_batch(
     result_ids: List[str],
@@ -1868,10 +1630,9 @@ async def get_all_filtered_tender_analysis_results(
     analysis_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10000, ge=10, le=10000, description="Number of results per page"),
-    filter_stage: Optional[FilterStage] = Query(FilterStage.AI_DESCRIPTION_FILTER, description="Filter by stage, defaults to ai_description_filter"),
     current_user: User = Depends(get_current_user)
 ):
-    """Get filtered results for a specific tender analysis with pagination, filtered by stage"""
+    """Get filtered results for a specific tender analysis with pagination"""
     try:
         # Check if analysis exists and belongs to user or their organization
         query = {"_id": ObjectId(analysis_id), "$or": [{"user_id": current_user.id}]}
@@ -1889,14 +1650,9 @@ async def get_all_filtered_tender_analysis_results(
         # Calculate skip value for pagination
         skip = (page - 1) * page_size
         
-        # Build match conditions
-        match_conditions = {"analysis_id": analysis_id}
-        if filter_stage:
-            match_conditions["filter_stage"] = filter_stage.value
-        
         # Use an aggregation pipeline to handle ObjectId conversions in the database
         pipeline = [
-            {"$match": match_conditions},
+            {"$match": {"analysis_id": analysis_id}},
             {"$sort": {"filter_timestamp": -1}},
             {"$skip": skip},
             {"$limit": page_size},
@@ -1989,31 +1745,21 @@ async def get_filtered_tender_by_id(
             status_code=500,
             detail=f"Error retrieving filtered tender: {str(e)}"
         )
-
-from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional
-
-class CleanupDateRange(BaseModel):
-    start_date: datetime
-    end_date: datetime
-
-ELASTIC_FILES_INDEX = "files-rag"
-
+    
 @router.post("/cleanup-filtered-files-by-date")
 async def cleanup_files_by_date(
-    date_range: CleanupDateRange,
+    days_old: int = Query(0, description="Delete files older than this many days"),
     current_user: User = Depends(get_current_user)
 ):
-    logger.info(f"Starting cleanup of filtered files between {date_range.start_date.isoformat()} and {date_range.end_date.isoformat()}, initiated by user {current_user.id}")
+    logger.info(f"Starting cleanup of filtered files older than {days_old} days, initiated by user {current_user.id}")
     
     async def delete_from_storage(blob_url: str) -> bool: # Renamed for clarity
         try:
-            if "amazonaws.com" in blob_url:
+            if "s3.amazonaws.com" in blob_url:
                 logger.debug(f"Attempting to delete file from S3: {blob_url}")
                 delete_files_from_s3([blob_url]) # delete_files_from_s3 expects a list
                 logger.debug(f"Successfully deleted file from S3: {blob_url}")
-            elif "blob.vercel-storage" in blob_url:
+            elif "vercel.app" in blob_url:
                 logger.debug(f"Attempting to delete file from Vercel blob: {blob_url}")
                 delete_files_from_vercel_blob([blob_url]) # delete_files_from_vercel_blob expects a list
                 logger.debug(f"Successfully deleted file from Vercel blob: {blob_url}")
@@ -2024,42 +1770,18 @@ async def cleanup_files_by_date(
         except Exception as e:
             logger.error(f"Error deleting file from storage ({blob_url}): {str(e)}", exc_info=True)
             return False
-        
-    async def delete_from_pinecone(file_pinecone_config: Dict[str, Any]) -> bool:
-        try:
-            index_name = file_pinecone_config["query_config"]["index_name"]
-            namespace = file_pinecone_config["query_config"]["namespace"]
-            prefix = file_pinecone_config["pinecone_unique_id_prefix"]
-            
-            logger.debug(f"Attempting to delete vectors from Pinecone index: {index_name}, namespace: {namespace}, prefix: {prefix}")
-            
-            query_config = QueryConfig(
-                index_name=index_name,
-                namespace=namespace,
-                embedding_model=file_pinecone_config["query_config"]["embedding_model"]
-            )
-            
-            pinecone_query_tool = QueryTool(config=query_config)
-            pinecone_query_tool.delete_from_pinecone_by_id_prefix(prefix)
-            
-            logger.debug(f"Successfully deleted vectors from Pinecone with prefix: {prefix}")
-            return True
-        except Exception as e:
-            logger.error(f"Error deleting vectors from Pinecone: {str(e)}", exc_info=True)
-            return False
 
-    logger.info(f"Date range for file cleanup: {date_range.start_date.isoformat()} to {date_range.end_date.isoformat()}")
+    # Calculate the cutoff date
+    cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+    logger.info(f"Cutoff date for file cleanup: {cutoff_date.isoformat()}")
     
-    # Find all filtered tenders within the date range
-    logger.info(f"Querying database for filtered tenders between {date_range.start_date.isoformat()} and {date_range.end_date.isoformat()}")
+    # Find all filtered tenders older than the cutoff date
+    logger.info(f"Querying database for filtered tenders older than {cutoff_date.isoformat()}")
     filtered_tenders = await db.filtered_tender_analysis_results.find({
-        "filter_timestamp": {
-            "$gte": date_range.start_date,
-            "$lte": date_range.end_date
-        }
+        "filter_timestamp": {"$lt": cutoff_date},
     }).to_list()
     
-    logger.info(f"Found {len(filtered_tenders)} filtered tenders in the specified date range")
+    logger.info(f"Found {len(filtered_tenders)} filtered tenders older than {days_old} days")
     
     deletion_stats = {
         "total_processed": 0,
@@ -2068,39 +1790,6 @@ async def cleanup_files_by_date(
         "already_deleted": 0,
         "errors": 0
     }
-
-    # return deletion_stats
-    
-    try:
-        es_resp = await es_client.delete_by_query(
-            index=ELASTIC_FILES_INDEX,                       # "files-rag"
-            body={
-                "query": {
-                    "range": {
-                        "created_at": {              # set when the chunk was stored
-                            "gte": date_range.start_date.isoformat(),
-                            "lte": date_range.end_date.isoformat()
-                        }
-                    }
-                }
-            },
-            refresh=True,                            # make deletions visible immediately
-            wait_for_completion=True,                # block until finished
-            conflicts="proceed",                     # ignore version conflicts
-        )
-        deleted_count = es_resp.get("deleted", 0)
-        logger.info(
-            "Global Elasticsearch cleanup: removed %d documents between %s and %s from %s",
-            deleted_count, date_range.start_date.isoformat(), date_range.end_date.isoformat(), ELASTIC_FILES_INDEX,
-        )
-        deletion_stats["es_deleted_global"] = deleted_count
-    except Exception:
-        logger.exception(
-            "Global delete_by_query failed for index %s (date range %s to %s)",
-            ELASTIC_FILES_INDEX, date_range.start_date.isoformat(), date_range.end_date.isoformat(),
-        )
-        # make sure stats always exists even on failure
-        deletion_stats["es_deleted_global"] = 0
     
     for tender_index, tender in enumerate(filtered_tenders):
         tender_id = str(tender.get("_id", "unknown"))
@@ -2113,18 +1802,6 @@ async def cleanup_files_by_date(
             
         storage_info = tender["processed_files"]["storage_info"]
         logger.info(f"Tender {tender_id} has {len(storage_info)} files to process")
-        
-        # Check if all files are already deleted_both
-        all_files_deleted = all(file.get("deletion_status") == "deleted_both" for file in storage_info)
-        logger.info(f"Initial check for tender {tender_id}: all_files_deleted = {all_files_deleted}")
-        if all_files_deleted:
-            logger.info(f"All files for tender {tender_id} are already deleted, removing tender from database")
-            # Handle both string and ObjectId _id types
-            tender_id = tender["_id"]
-            query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
-            await db.filtered_tender_analysis_results.delete_one(query)
-            deletion_stats["already_deleted"] += len(storage_info)
-            continue
         
         for i, file_info in enumerate(storage_info):
             filename = file_info.get("filename", "unknown")
@@ -2195,28 +1872,10 @@ async def cleanup_files_by_date(
             # Update the database if changes were made
             if update_needed:
                 logger.debug(f"Updating database for file '{filename}' with new deletion status: {file_info['deletion_status']}")
-                # Handle both string and ObjectId _id types
-                tender_id = tender["_id"]
-                query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
                 await db.filtered_tender_analysis_results.update_one(
-                    query,
+                    {"_id": ObjectId(tender["_id"])},
                     {"$set": {f"processed_files.storage_info.{i}": file_info}}
                 )
-        
-        # Handle both string and ObjectId _id types
-        tender_id = tender["_id"]
-        query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
-        updated_tender = await db.filtered_tender_analysis_results.find_one(query)
-
-        updated_storage_info = updated_tender.get("processed_files", {}).get("storage_info")
-        all_files_deleted = all(file.get("deletion_status") == "deleted_both" 
-                                 for file in updated_storage_info)
-        logger.info(f"Final check for tender {tender_id}: all_files_deleted = {all_files_deleted}")
-        if updated_tender and updated_tender.get("processed_files", {}).get("storage_info"):
-            if all_files_deleted:
-                logger.info(f"All files for tender {tender_id} are now deleted, removing tender from database")
-                logger.info(f"Files statuses for tender {tender_id}: {[{'filename': f.get('filename'), 'status': f.get('deletion_status')} for f in updated_storage_info]}")
-                await db.filtered_tender_analysis_results.delete_one(query)
     
     # Log summary statistics
     logger.info("File cleanup process completed with the following results:")
@@ -2227,12 +1886,8 @@ async def cleanup_files_by_date(
     logger.info(f"Errors encountered: {deletion_stats['errors']}")
     
     return {
-        "message": f"Processed {deletion_stats['total_processed']} files in date range {date_range.start_date.isoformat()} to {date_range.end_date.isoformat()}",
-        "stats": deletion_stats,
-        "date_range": {
-            "start_date": date_range.start_date.isoformat(),
-            "end_date": date_range.end_date.isoformat()
-        }
+        "message": f"Processed {deletion_stats['total_processed']} files",
+        "stats": deletion_stats
     }
 
 @router.post("/tender-analysis/{analysis_id}/duplicate", response_model=TenderAnalysis)
@@ -2258,8 +1913,6 @@ async def duplicate_tender_analysis(
         new_analysis_data["name"] = f"{new_analysis_data.get('name', 'Untitled Analysis')} - Copy"
         new_analysis_data["created_at"] = datetime.utcnow()
         new_analysis_data["updated_at"] = datetime.utcnow()
-        new_analysis_data["assigned_users"] = [str(current_user.id)]  # Owner is automatically assigned
-        new_analysis_data["email_recipients"] = [str(current_user.id)]  # Owner is automatically in email recipients
         
         # Remove the original ID
         new_analysis_data.pop("_id", None)
@@ -2706,386 +2359,4 @@ async def update_criteria_analysis(
     
     return {"message": "Criteria analysis updated successfully"}
     
-
-@router.post("/analyze-single-tender", response_model=Dict[str, Any])
-async def analyze_single_tender(
-    request: SingleTenderAnalysisRequest,
-    current_user: User = Depends(get_current_user)
-):
-    """Analyze a single tender by its URL using an existing analysis configuration"""
-    try:
-        logger.info(f"Starting single tender analysis for URL: {request.tender_url}, Analysis ID: {request.analysis_id}")
-        
-        # 1. Validate and get the analysis configuration
-        try:
-            analysis_oid = ObjectId(request.analysis_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid analysis_id format")
-            
-        analysis_doc = await db.tender_analysis.find_one({"_id": analysis_oid})
-        if not analysis_doc:
-            raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
-            
-        # Check if user has access to this analysis
-        is_owner = str(analysis_doc.get("user_id")) == str(current_user.id)
-        is_assigned = str(current_user.id) in analysis_doc.get("assigned_users", [])
-        
-        if not (is_owner or is_assigned):
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have access to this analysis"
-            )
-            
-        tender_analysis = TenderAnalysis(**analysis_doc)
-        criteria_definitions = tender_analysis.criteria
-        language = tender_analysis.language or "polish"
-        
-        # 2. Initialize services
-        embedding_config = EmbeddingConfig(
-            index_name="tenders",
-            namespace="",
-            embedding_model="text-embedding-3-large"
-        )
-        source_manager = TenderSourceManager(embedding_config)
-        
-        # 3. Determine source type and extract metadata
-        source_type = None
-        for source_name, source_config in source_manager.source_configs.items():
-            if source_name.value in request.tender_url or any(domain in request.tender_url for domain in getattr(source_config, 'domains', [])):
-                source_type = source_name
-                break
-                
-        if not source_type:
-            # Try to guess from URL patterns
-            if "ezamowienia.gov.pl" in request.tender_url:
-                source_type = TenderSourceType("ezamowienia")
-            elif "ezamawiajacy.pl" in request.tender_url:
-                source_type = TenderSourceType("ezamawiajacy")
-            elif "platformazakupowa.pl" in request.tender_url:
-                source_type = TenderSourceType("platformazakupowa")
-            elif "eb2b.com.pl" in request.tender_url:
-                source_type = TenderSourceType("eb2b")
-            elif "vergabeportal" in request.tender_url:
-                source_type = TenderSourceType("vergabeplatforms")
-            elif "logintrade.net" in request.tender_url:
-                source_type = TenderSourceType("logintrade")
-            else:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Unable to determine source type for URL: {request.tender_url}"
-                )
-        
-        logger.info(f"Detected source type: {source_type.value}")
-        
-        # 4. Create basic metadata structure
-        # For single tender analysis, we'll create minimal metadata
-        original_metadata = {
-            "details_url": request.tender_url,
-            "source_type": source_type.value,
-            "name": "Test Analysis",
-            "organization": "Test",
-            "submission_deadline": "2025-07-07 07:07",
-            "procedure_type": "",
-            "initiation_date": datetime.utcnow().strftime("%Y-%m-%d")
-        }
-        
-        # 5. Initialize browser for processing
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
-        
-        try:
-            # 6. Create semaphore for the pipeline
-            semaphore = asyncio.Semaphore(1)
-            
-            # 7. Run the tender pipeline
-            tender_result = await _process_tender_pipeline(
-                tender_obj=None,  # We don't have a tender object from search
-                original_metadata=original_metadata,
-                shared_browser=browser,
-                tender_analysis=tender_analysis,
-                analysis_id=request.analysis_id,
-                rag_index_name="files-rag-23-04-2025",
-                embedding_model="text-embedding-3-large",
-                current_user=current_user,
-                criteria_definitions=criteria_definitions,
-                semaphore=semaphore,
-                source_manager=source_manager,
-                language=language
-            )
-            
-            if not tender_result:
-                return {
-                    "status": "failed",
-                    "message": "Failed to process tender through pipeline",
-                    "tender_url": request.tender_url,
-                    "analysis_id": request.analysis_id
-                }
-            
-            # 8. Save the result to database
-            await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
-            
-            # 9. Update analysis last_run timestamp
-            await db.tender_analysis.update_one(
-                {"_id": analysis_oid},
-                {"$set": {
-                    "last_run": datetime.utcnow(),
-                    "updated_at": datetime.utcnow()
-                }}
-            )
-            
-            # 10. Assign order number
-            await assign_order_numbers(analysis_oid, current_user)
-            
-            logger.info(f"Successfully analyzed single tender: {tender_result.id}")
-            
-            return {
-                "status": "success",
-                "message": "Tender analyzed successfully",
-                "tender_url": request.tender_url,
-                "analysis_id": request.analysis_id,
-                "result_id": str(tender_result.id),
-                "tender_score": tender_result.tender_score,
-                "tender_name": tender_result.tender_metadata.name if tender_result.tender_metadata else "Unknown",
-                "organization": tender_result.tender_metadata.organization if tender_result.tender_metadata else "Unknown",
-                "files_processed": len(tender_result.uploaded_files)
-            }
-            
-        finally:
-            # 11. Cleanup browser resources
-            if browser:
-                await browser.close()
-            if playwright:
-                await playwright.stop()
-                
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"Error analyzing single tender: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error analyzing single tender: {str(e)}"
-        )
     
-@router.delete("/user/{user_id}/cleanup-past-results", response_model=Dict[str, Any])
-async def cleanup_past_tender_results_for_user(
-    user_id: str,
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Delete all TenderAnalysisResults with non-active status (inactive/archived) for a given user.
-    This includes cleaning up associated files and vector embeddings, regardless of submission deadline.
-    Only preserves results with 'active' status.
-    """
-    try:
-        # Verify user exists
-        try:
-            user_oid = ObjectId(user_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid user_id format")
-            
-        user_data = await db['users'].find_one({"_id": user_oid})
-        if not user_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User with ID {user_id} not found"
-            )
-        
-        logger.info(f"Starting cleanup of past tender results for user {user_id}")
-        
-        # Find all TenderAnalysis records for this user
-        tender_analyses = await db.tender_analysis.find({
-            "user_id": user_oid
-        }).to_list(None)
-        
-        if not tender_analyses:
-            return {
-                "message": f"No tender analyses found for user {user_id}",
-                "user_id": user_id,
-                "deleted": 0,
-                "files_deleted": 0,
-                "vectors_deleted": 0
-            }
-        
-        logger.info(f"Found {len(tender_analyses)} tender analyses for user {user_id}")
-        
-        # Build query to find results to delete
-        analysis_ids = [analysis["_id"] for analysis in tender_analyses]
-        
-        # Query for results that:
-        # 1. Belong to one of the user's analyses
-        # 2. Do NOT have active status (delete inactive/archived regardless of deadline)
-        query = {
-            "tender_analysis_id": {"$in": analysis_ids},
-            "status": {"$ne": "active"}  # Exclude active results
-        }
-        
-        # Get all non-active results (regardless of deadline)
-        results_to_delete = await db.tender_analysis_results.find(query).to_list(None)
-        logger.info(f"Found {len(results_to_delete)} non-active results to delete (regardless of deadline)")
-        
-        if not results_to_delete:
-            return {
-                "message": f"No non-active tender results found for user {user_id}",
-                "user_id": user_id,
-                "total_analyses": len(tender_analyses),
-                "deleted": 0,
-                "files_deleted": 0,
-                "vectors_deleted": 0
-            }
-        
-        # Clean up files and vectors for each result
-        deleted_count = 0
-        files_deleted_count = 0
-        vector_namespaces_cleaned = 0
-        vector_prefixes_cleaned = 0
-        filtered_results_deleted = 0
-        total_results = len(results_to_delete)
-        
-        logger.info(f"Starting cleanup of {total_results} non-active results...")
-        
-        for index, result in enumerate(results_to_delete, 1):
-            result_id = result["_id"]
-            logger.info(f"[{index}/{total_results}] Processing result {result_id}")
-            
-            try:
-                # 1. Delete files from S3/Vercel Blob
-                s3_blob_urls_to_delete = []
-                vercel_blob_urls_to_delete = []
-
-                for file_doc in result.get("uploaded_files", []):
-                    blob_url = file_doc.get("blob_url")
-                    if blob_url:
-                        if "amazonaws.com" in blob_url:  # Matches s3.amazonaws.com and s3.region.amazonaws.com
-                            s3_blob_urls_to_delete.append(blob_url)
-                        elif "vercel-storage.com" in blob_url:
-                            vercel_blob_urls_to_delete.append(blob_url)
-                        else:
-                            logger.warning(f"[{index}/{total_results}] Unknown blob_url format: {blob_url[:50]}...")
-                
-                # Check if there are other analyses using the same tender URL before deleting files
-                tender_url = result.get("tender_url")
-                other_analyses_count = await db.tender_analysis_results.count_documents({
-                    "tender_url": tender_url,
-                    "_id": {"$ne": result_id}  # Exclude current result
-                }) if tender_url else 0
-                
-                # Only delete files if this is the last analysis with this tender URL
-                files_deleted_this_result = 0
-                vectors_deleted_this_result = 0
-                
-                if other_analyses_count == 0:
-                    # Delete S3 files
-                    if s3_blob_urls_to_delete:
-                        try:
-                            delete_files_from_s3(s3_blob_urls_to_delete)
-                            files_deleted_count += len(s3_blob_urls_to_delete)
-                            files_deleted_this_result += len(s3_blob_urls_to_delete)
-                        except Exception as e:
-                            logger.error(f"[{index}/{total_results}] Error deleting S3 files: {str(e)}")
-
-                    # Delete Vercel files
-                    if vercel_blob_urls_to_delete:
-                        try:
-                            delete_files_from_vercel_blob(vercel_blob_urls_to_delete)
-                            files_deleted_count += len(vercel_blob_urls_to_delete)
-                            files_deleted_this_result += len(vercel_blob_urls_to_delete)
-                        except Exception as e:
-                            logger.error(f"[{index}/{total_results}] Error deleting Vercel files: {str(e)}")
-                
-                    # Delete Pinecone namespace
-                    if result.get("pinecone_config"):
-                        pinecone_config = result.get("pinecone_config")
-                        if pinecone_config.get("namespace") != "":
-                            try:
-                                pinecone_query_tool = QueryTool(config=QueryConfig(
-                                    index_name=pinecone_config.get("index_name"),
-                                    namespace=pinecone_config.get("namespace"),
-                                    embedding_model=pinecone_config.get("embedding_model")
-                                ))
-                                pinecone_query_tool.delete_namespace()
-                                vector_namespaces_cleaned += 1
-                                vectors_deleted_this_result += 1
-                            except Exception as e:
-                                logger.error(f"[{index}/{total_results}] Error deleting namespace: {str(e)}")
-                    
-                    # Delete individual file vectors
-                    file_pinecone_configs = [
-                        file.get("file_pinecone_config")
-                        for file in result.get("uploaded_files", [])
-                        if file.get("file_pinecone_config")
-                    ]
-                    
-                    for config in file_pinecone_configs:
-                        if config.get("pinecone_unique_id_prefix"):
-                            try:
-                                pinecone_query_tool = QueryTool(config=QueryConfig(
-                                    index_name=config.get("query_config", {}).get("index_name"),
-                                    namespace=config.get("query_config", {}).get("namespace", ""),
-                                    embedding_model=config.get("query_config", {}).get("embedding_model")
-                                ))
-                                pinecone_query_tool.delete_from_pinecone_by_id_prefix(config.get("pinecone_unique_id_prefix"))
-                                vector_prefixes_cleaned += 1
-                                vectors_deleted_this_result += 1
-                            except Exception as e:
-                                logger.error(f"[{index}/{total_results}] Error deleting vector prefix: {str(e)}")
-                
-                # Remove from kanban boards
-                boards_affected = await remove_tender_from_kanban_boards(str(result_id))
-                
-                # Delete related filtered tender results
-                filtered_deleted = await db.filtered_tender_analysis_results.delete_many({
-                    "tender_id": str(result_id)
-                })
-                filtered_results_deleted += filtered_deleted.deleted_count
-                
-                # Delete the main document from MongoDB
-                mongo_deleted = await db.tender_analysis_results.delete_one({"_id": result_id})
-                
-                if mongo_deleted.deleted_count > 0:
-                    deleted_count += 1
-                else:
-                    logger.warning(f"[{index}/{total_results}] Failed to delete result {result_id} from MongoDB")
-                
-                # Summary log for this result
-                summary_parts = []
-                if files_deleted_this_result > 0:
-                    summary_parts.append(f"{files_deleted_this_result} files")
-                if vectors_deleted_this_result > 0:
-                    summary_parts.append(f"{vectors_deleted_this_result} vectors")
-                if boards_affected > 0:
-                    summary_parts.append(f"{boards_affected} boards")
-                if filtered_deleted.deleted_count > 0:
-                    summary_parts.append(f"{filtered_deleted.deleted_count} filtered")
-                if other_analyses_count > 0:
-                    summary_parts.append(f"skipped files (shared)")
-                
-                cleanup_summary = f" (cleaned: {', '.join(summary_parts)})" if summary_parts else ""
-                logger.info(f"[{index}/{total_results}] ✓ Deleted result from MongoDB{cleanup_summary}")
-                
-            except Exception as e:
-                logger.error(f"[{index}/{total_results}] ✗ Error processing result {result_id}: {str(e)}")
-        
-        summary = {
-            "message": f"Successfully cleaned up non-active tender results for user {user_id}",
-            "user_id": user_id,
-            "total_analyses": len(tender_analyses),
-            "non_active_results_found": len(results_to_delete),
-            "deleted": deleted_count,
-            "files_deleted": files_deleted_count,
-            "vector_namespaces_cleaned": vector_namespaces_cleaned,
-            "vector_prefixes_cleaned": vector_prefixes_cleaned,
-            "filtered_results_deleted": filtered_results_deleted
-        }
-         
-        logger.info(f"✅ Cleanup completed for user {user_id}")
-        logger.info(f"📊 Summary: {deleted_count}/{total_results} results deleted, {files_deleted_count} files cleaned, {vector_namespaces_cleaned + vector_prefixes_cleaned} vectors removed, {filtered_results_deleted} filtered records cleaned")
-        return summary
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"Error cleaning up past tender results for user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error cleaning up past tender results: {str(e)}"
-        )

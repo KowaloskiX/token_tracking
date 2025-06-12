@@ -26,7 +26,6 @@ class Assistant(BaseModel):
     pinecone_config: Optional[QueryConfig] = None
     tools: List[Tool] = []
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    assigned_users: List[str] = Field(default_factory=list)  # Add this field
 
     class Config:
         arbitrary_types_allowed = True

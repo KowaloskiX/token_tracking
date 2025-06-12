@@ -73,14 +73,7 @@ def render_email_template(title: str, message: str, action_url: str = None, acti
         current_year=datetime.now().year  # Current year for the footer
     )
 
-async def send_email(
-    to_email: str,
-    subject: str,
-    message: str,
-    title: str | None = None,
-    action_url: str | None = None,
-    action_text: str | None = None,
-):
+async def send_email(to_email: str, subject: str, message: str, title: str = None, action_url: str = None, action_text: str = None):
     """
     Renders the email template with the provided dynamic data and sends it.
 
@@ -116,60 +109,3 @@ async def send_email(
     
     # Send the email using the handle_send_email function
     return await handle_send_email(to_email, full_subject, html_content)
-
-
-def build_tender_results_email_html(
-    analysis_name: str,
-    analysis_id: str,
-    tenders: list,
-) -> str:
-    """Generate HTML content for tender results email."""
-    frontend_url = os.getenv("FRONTEND_URL", "https://www.asystent.ai")
-
-    # Filter tenders by score > 0.6 and sort by score descending
-    filtered_tenders = [
-        tender for tender in tenders 
-        if getattr(tender, "tender_score", 0) > 0.6
-    ]
-    sorted_tenders = sorted(
-        filtered_tenders, 
-        key=lambda t: getattr(t, "tender_score", 0), 
-        reverse=True
-    )
-
-    sections: list[str] = []
-    for tender in sorted_tenders:
-        tender_name = (
-            tender.tender_metadata.name
-            if getattr(tender, "tender_metadata", None)
-            and getattr(tender.tender_metadata, "name", None)
-            else "Unknown Tender"
-        )
-        tender_desc = getattr(tender, "tender_description", "") or ""
-        tender_id = (
-            str(getattr(tender, "id", "")) if getattr(tender, "id", None) else ""
-        )
-        tender_score = getattr(tender, "tender_score", 0)
-
-        link = f"{frontend_url}/dashboard/tenders/{analysis_id}"
-        if tender_id:
-            link += f"?tenderId={tender_id}"
-
-        # Format score with color coding
-        score_percentage = round(tender_score * 100)
-        score_color = "#28a745" if tender_score >= 0.65 else "#6c757d"  # Green if >= 0.65, gray otherwise
-        score_indicator = f'<span style="background-color: {score_color}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">Relewantność: {score_percentage}%</span>'
-
-        sections.append(
-            f"<h3><a href='{link}'>{tender_name}</a></h3><p style='margin-top: 8px; margin-bottom: 8px;'>{score_indicator}</p><p>{tender_desc}</p>"
-        )
-
-    if sections:
-        message = "".join(sections)
-    else:
-        message = "Nie znaleziono dzisiaj przetargów spełniających kryteria (wynik > 60%)."
-
-    return render_email_template(
-        title=f"Nowe przetargi - '{analysis_name}'",
-        message=message,
-    )

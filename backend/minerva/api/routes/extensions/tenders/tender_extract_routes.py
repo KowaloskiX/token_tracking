@@ -1,7 +1,5 @@
 from datetime import datetime
 import logging
-from minerva.tasks.sources.vergapeplatforms.extract_tender import VergabePlatformsTenderExtractor
-from minerva.tasks.sources.vergabe.extract_tender import DTVPLikeTenderExtractor
 from minerva.tasks.sources.bazakonkurencyjnosci.extract_tenders import BazaKonkurencyjnosciTenderExtractor
 from minerva.tasks.sources.platformazakupowa.extract_tenders import PlatformaZakupowaTenderExtractor
 from minerva.tasks.sources.ezamowienia.extract_tenders import TenderExtractor
@@ -17,8 +15,8 @@ from minerva.tasks.sources.ezamawiajacy.extract_tenders import EzamawiajacyTende
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.tasks.sources.orlenconnect.extract_tenders import OrlenConnectTenderExtractor
 from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
-from minerva.tasks.sources.ted.tender_countries import IrelandTedTenderExtractor, ItalyTedTenderExtractor, TedTenderExtractor
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
+from minerva.tasks.sources.tedgermany.extract_tenders import GermanTedTenderExtractor
 from openai import OpenAI
 from pinecone import Pinecone
 from pydantic import BaseModel
@@ -35,13 +33,6 @@ class SearchRequest(BaseModel):
     top_k: Optional[int] = 20
     embedding_model: Optional[str]
     score_threshold: Optional[float] = 0.0
-
-class CompareScrapingRequest(BaseModel):
-    date: str
-    source1: str
-    source1_index_name: str
-    source2: str
-    source2_index_name: str
 
 @router.post("/test-fetch-and-embed")
 async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
@@ -62,7 +53,7 @@ async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
             elasticsearch_index="tenders"
         )
         
-        example_extractor = VergabePlatformsTenderExtractor()
+        example_extractor = LoginTradeExtractor()
         # Create the service with the new configuration
         tender_service = TenderInsertService(
             config=tender_insert_config,
@@ -176,76 +167,3 @@ async def search_tenders(search_request: SearchRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching tenders: {str(e)}")
-
-@router.post("/compare-scraping-results")
-async def compare_scraping_results(request: CompareScrapingRequest):
-    try:
-        # Initialize query tool with the specified configuration
-        query_tool = QueryTool(config=QueryConfig(
-            index_name=request.source1_index_name,
-            namespace="",
-            embedding_model="text-embedding-3-large"
-        ))
-
-        query_tool2 = QueryTool(config=QueryConfig(
-            index_name=request.source2_index_name,
-            namespace="",
-            embedding_model="text-embedding-3-large"
-        ))
-
-        # Search for tenders from source1
-        source1_results = await query_tool.query_by_text(
-            query_text="",  # Empty query to get all results
-            top_k=1000,  # Large number to get all results
-            score_threshold=0.0,
-            filter_conditions={"source_type": {"$eq": request.source1}, "initiation_date": {"$eq": request.date}}
-        )
-
-        # Search for tenders from source2
-        source2_results = await query_tool2.query_by_text(
-            query_text="",  # Empty query to get all results
-            top_k=1000,  # Large number to get all results
-            score_threshold=0.0,
-            filter_conditions={"source_type": {"$eq": request.source2}, "initiation_date": {"$eq": request.date}}
-        )
-
-        # Extract IDs (details_urls) from results
-        source1_ids = {match["id"] for match in source1_results.get("matches", [])}
-        source2_ids = {match["id"] for match in source2_results.get("matches", [])}
-
-        # Calculate overlaps and unique items
-        common_ids = source1_ids.intersection(source2_ids)
-        unique_to_source1 = source1_ids - source2_ids
-        unique_to_source2 = source2_ids - source1_ids
-
-        # Get full details for common items
-        common_items = []
-        for match in source1_results.get("matches", []):
-            if match["id"] in common_ids:
-                common_items.append({
-                    "id": match["id"],
-                    "name": match["metadata"].get("name", ""),
-                    "organization": match["metadata"].get("organization", ""),
-                    "location": match["metadata"].get("location", ""),
-                    "initiation_date": match["metadata"].get("initiation_date", ""),
-                    "submission_deadline": match["metadata"].get("submission_deadline", "")
-                })
-
-        return {
-            "date": request.date,
-            "source1": request.source1,
-            "source2": request.source2,
-            "summary": {
-                "total_source1": len(source1_ids),
-                "total_source2": len(source2_ids),
-                "common_count": len(common_ids),
-                "unique_to_source1_count": len(unique_to_source1),
-                "unique_to_source2_count": len(unique_to_source2)
-            },
-            "common_items": common_items,
-            "unique_to_source1": list(unique_to_source1),
-            "unique_to_source2": list(unique_to_source2)
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error comparing scraping results: {str(e)}")

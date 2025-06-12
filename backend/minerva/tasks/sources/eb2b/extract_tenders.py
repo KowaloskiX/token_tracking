@@ -3,7 +3,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult
@@ -318,262 +318,172 @@ class Eb2bTenderExtractor:
             await page.close()
         return info
     
-    async def _handle_cookie_dialog(self, page: Page) -> None:  # noqa: N802
-        """Dismiss the cookie banner (Bootstrap or legacy ExtJS)."""
-
+    async def _handle_cookie_dialog(self, page):
+        """Handle the cookie consent dialog if it appears"""
         try:
-            # --- New Bootstrap modal ---------------------------------------------------
-            if await page.query_selector("h4#cookie-modalLabel"):
-                btn = await page.query_selector("button#acceptCookies")
-                if btn:
-                    await btn.click()
-                    await page.wait_for_timeout(500)
-                    return
-
-            # --- Legacy ExtJS windows --------------------------------------------------
-            button = await page.query_selector(".modal-cacsp-btn-accept")
-            if button:
-                await button.click()
-                await page.wait_for_timeout(500)
-                return
-
-            popup = await page.query_selector("#window-1010-body")
-            if popup:
-                accept = await page.query_selector("button:has-text('Akceptuję')") or (
-                    await page.query_selector("a:has-text('Akceptuję')")
-                )
-                if accept:
-                    await accept.click()
-                    await page.wait_for_timeout(500)
-        except Exception as exc:  # pragma: no cover
-            logging.error("%s – cookie dialog handling failed: %s", self.source_type, exc)
-
-
-    # ---------------------------------------------------------------------------
-    # 2. Download files – one‑by‑one --------------------------------------------
-    # ---------------------------------------------------------------------------
-
-    async def _click_row_checkbox(self, page: Page, idx: int) -> bool:  # noqa: N802
-        """Tick (or untick) the checkbox of *idx*‑th attachment row (0‑based).
-
-        Uses a three‑level fallback to cope with Ext JS quirks.
-        """
-
-        try:
-            # --- 1. ExtJS API ---------------------------------------------------------
-            ok = await page.evaluate(
-                """
-                (rowIdx) => {
-                    try {
-                        const tp = Ext.ComponentQuery.query('tabpanel')[0];
-                        const tab = tp ? tp.getActiveTab() : null;
-                        const grid = tab ? tab.down('grid') : null;
-                        if (!grid) return false;
-                        const view = grid.getView();
-                        const rec  = view.getStore().getAt(rowIdx);
-                        if (!rec) return false;
-                        const sm = grid.getSelectionModel();
-                        if (sm.isSelected(rec)) {
-                            sm.deselect(rec);
-                        } else {
-                            sm.select(rec, true, true);
+            # Check if cookie dialog is present
+            cookie_dialog_present = await page.evaluate("""
+                () => {
+                    const cookieWindows = document.querySelectorAll('.x-window');
+                    for (const window of cookieWindows) {
+                        const headerText = window.querySelector('.x-window-header-text');
+                        if (headerText && headerText.textContent === 'This service uses cookies files') {
+                            return true;
                         }
-                        return true;
-                    } catch (_) {
-                        return false;
                     }
+                    return false;
                 }
-                """,
-                idx,
-            )
-            if ok:
-                return True
+            """)
+            
+            if cookie_dialog_present:
+                logging.info(f"Cookie dialog detected for {self.source_type} at {page.url}")
+                
+                # Click the "Accept and continue" button
+                accept_clicked = await page.evaluate("""
+                    () => {
+                        try {
+                            const cookieWindows = document.querySelectorAll('.x-window');
+                            for (const window of cookieWindows) {
+                                const headerText = window.querySelector('.x-window-header-text');
+                                if (headerText && headerText.textContent === 'This service uses cookies files') {
+                                    const buttons = window.querySelectorAll('button');
+                                    for (const button of buttons) {
+                                        if (button.innerText === 'Akceptuję i przechodzę dalej') {
+                                            button.click();
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                            return false;
+                        } catch (e) {
+                            console.error('Error clicking accept button:', e);
+                            return false;
+                        }
+                    }
+                """)
+                
+                if accept_clicked:
+                    logging.info(f"Successfully accepted cookies for {self.source_type}")
+                    # Wait for the dialog to disappear
+                    await page.wait_for_timeout(1500)
+                else:
+                    logging.warning(f"Failed to click accept button on cookie dialog for {self.source_type}")
+        except Exception as e:
+            logging.error(f"Error handling cookie dialog for {self.source_type}: {e}")
 
-            # --- 2. Click the whole checker cell ------------------------------------
-            row = page.locator("tr.x-grid-row").nth(idx)
-            await row.scroll_into_view_if_needed()
-            cell = row.locator("td.x-grid-cell-row-checker")
-            if await cell.count():
-                await cell.click(force=True, timeout=2000)
-                return True
-
-            # --- 3. Click the inner div ----------------------------------------------
-            checker = row.locator("div.x-grid-row-checker")
-            await checker.click(force=True, timeout=2000)
-            return True
-
-        except Exception as exc:
-            logging.debug("Row %s checkbox click failed: %s", idx, exc)
-            return False
-        
-    async def _popup_denies_access(self, page: Page) -> bool:
-        """Return *True* if the *apply for participation* message‑box is open."""
-
-        box = await page.query_selector("div.x-message-box")
-        if not box:
-            return False
-        txt = (await box.inner_text()).lower()
-        return any(needle in txt for needle in {
-            "aby mieć dostęp do załączników": "PL",  # Polish original
-            "to gain access to attachments": "EN",  # English platform locale
-        })
-
-
-    async def _dismiss_popup(self, page: Page) -> None:
-        """Click **OK** on the access‑denied popup (best‑effort)."""
-
-        try:
-            ok_btn = await page.query_selector("div.x-message-box button:has-text('OK')")
-            if ok_btn:
-                await ok_btn.click()
-        except Exception:  # pragma: no cover
-            pass
-
-    async def extract_files_from_detail_page(
-        self,
-        context,
-        details_url: str,
-    ) -> List[Tuple[bytes, str, Optional[str]]]:  # noqa: N802
-        """Iterate over every organiser attachment and download it individually.
-
-        A *seen* set ensures the same file isn’t grabbed twice, fixing the
-        duplicated‑last‑attachment bug reported by users in May 2025.
-        """
-
-        processed: List[Tuple[bytes, str, Optional[str]]] = []
-        seen: Set[str] = set()
+    async def extract_files_from_detail_page(self, context, details_url: str) -> List[Tuple[bytes, str, Optional[str]]]:
+        processed_files = []
+        # extraction_service = AssistantsFileExtractionService()
         extraction_service = FileExtractionService()
-        tmp_root = Path(os.getcwd()) / "temp_downloads" / str(uuid4())
-        tmp_root.mkdir(parents=True, exist_ok=True)
+        unique_id = str(uuid4())
+        temp_dir_path = Path(os.getcwd()) / "temp_downloads" / unique_id
+        temp_dir_path.mkdir(parents=True, exist_ok=True)
 
         page = await context.new_page()
         try:
-            await self._goto_with_retry(page, details_url, timeout=60_000)
+            await self._goto_with_retry(page, details_url, timeout=60000)
             await page.wait_for_load_state("networkidle")
+
             await self._handle_cookie_dialog(page)
 
-            # --- Switch to attachment tab --------------------------------------------
-            ok = await page.evaluate(
-                """
-                () => {
-                    const tp = Ext.ComponentQuery.query('tabpanel')[0];
-                    if (!tp) return false;
-                    const tab = tp.items.items.find(t => t.title === 'Załączniki organizatora' || t.title === "Sponsor's attachments");
-                    if (!tab) return false;
-                    tp.setActiveTab(tab);
-                    return true;
-                }
-                """,
-            )
-            if not ok:
-                logging.error("%s – cannot open attachments tab: %s", self.source_type, details_url)
-                return []
-            await page.wait_for_timeout(1200)
+            try:
+                initial_grid_count = await page.evaluate("() => document.querySelectorAll('table.x-grid-table').length")
+                success = await page.evaluate("""
+                    () => new Promise((resolve) => {
+                        try {
+                            const tabPanel = Ext.ComponentQuery.query('tabpanel')[0];
+                            if (!tabPanel) return resolve(false);
+                            const attachTab = tabPanel.items.items.find(tab => tab.title === 'Załączniki organizatora' || tab.title === "Sponsor's attachments");
+                            if (!attachTab) return resolve(false);
+                            const renderListener = {
+                                afterrender: function() {
+                                    attachTab.un('afterrender', renderListener.afterrender);
+                                    setTimeout(() => resolve(true), 1000);
+                                },
+                                single: true
+                            };
+                            attachTab.on('afterrender', renderListener.afterrender);
+                            tabPanel.setActiveTab(attachTab);
+                            setTimeout(() => resolve(false), 10000);
+                        } catch (e) {
+                            resolve(false);
+                        }
+                    })
+                """)
+                if not success:
+                    logging.error(f"Failed to activate attachments tab for {self.source_type} at {details_url}")
+                    return []
+                await page.wait_for_timeout(2000)
+                new_grid_count = await page.evaluate("() => document.querySelectorAll('table.x-grid-table').length")
+                if new_grid_count <= initial_grid_count:
+                    logging.error(f"No new grid appeared after tab activation for {self.source_type} at {details_url}")
+                    return []
 
-            # await page.wait_for_selector("tr.x-grid-row", timeout=3_000)
+                button_info = await page.evaluate("""
+                    () => {
+                        try {
+                            const activeTab = Ext.ComponentQuery.query('tabpanel')[0].getActiveTab();
+                            if (!activeTab) return { error: 'No active tab found' };
 
-            rows = await page.query_selector_all("tr.x-grid-row")
-            for idx, _ in enumerate(rows):
-                # Skip if we’ve already processed a file with this filename
+                            let downloadBtn = activeTab.down('button[text=Pobierz paczkę]');
+                            if (!downloadBtn) {
+                                downloadBtn = activeTab.down('button[text=Download files]');         
+                                if (!downloadBtn) {     
+                                    return {error: 'Download button not found'};
+                                }
+                            }                  
+                            downloadBtn.showMenu();
+                            return { success: true };
+                        } catch (e) {
+                            return { error: e.toString() };
+                        }
+                    }
+                """)
+                if button_info.get('error'):
+                    logging.error(f"Button error for {self.source_type} at {details_url}: {button_info['error']}")
+                    return []
+
+                await page.wait_for_timeout(1000)
                 try:
-                    fname = await page.evaluate(
-                        """(i) => {
-                            const row = document.querySelectorAll('tr.x-grid-row')[i];
-                            if (!row) return null;
-                            const cell = row.querySelector('td.x-grid-cell-gridcolumn-1069');
-                            return cell ? cell.textContent.trim() : null;
-                        }""",
-                        idx,
-                    )
-                except Exception:
-                    fname = None
-                if fname and fname in seen:
-                    continue
-
-                if not await self._click_row_checkbox(page, idx):
-                    logging.error("%s – checkbox on row %s not clickable", self.source_type, idx)
-                    continue
-
-                await page.wait_for_timeout(300) 
-
-                # trigger download ------------------------------------------------------
-                try:
-                    async with page.expect_download(timeout=30_000) as dl_ctx:
-                        triggered = await page.evaluate("""
+                    async with page.expect_download(timeout=30000) as download_promise:
+                        success = await page.evaluate("""
                             () => {
                                 try {
-                                    const tp = Ext.ComponentQuery.query('tabpanel')[0];
-                                    if (!tp) return false;
-                                    const tab = tp.getActiveTab();
-                                    if (!tab || typeof tab.down !== 'function') return false;
-
-                                    // Prefer single-action Download (avoids broken split-button menu)
-                                    let btn = tab.down("button[text=Pobierz]") || tab.down("button[text=Download]");
-                                    if (btn && btn.handler) {
-                                        btn.handler.call(btn.scope || btn);
-                                        return true;
-                                    }
-
-                                    // Fallback: old split button ‘Download files’ with menu
-                                    btn = tab.down("button[text=Pobierz paczkę]") || tab.down("button[text=Download files]");
-                                    if (!btn) return false;
-
-                                    btn.showMenu();
-                                    const mi = Ext.ComponentQuery.query('menuitem').find(m =>
-                                        m.text === 'Pobierz wybrane załączniki' ||
-                                        m.text === 'Download selected attachments'
-                                    );
-                                    if (mi && mi.handler) {
-                                        mi.handler.call(mi.scope || mi);
+                                    const downloadAll = Ext.ComponentQuery.query('menuitem').find(item => (item.text === 'Pobierz wszystkie załączniki' || item.text === "Download all sponsor's attachments"));
+                                    if (downloadAll && downloadAll.handler) {
+                                        downloadAll.handler.call(downloadAll.scope || downloadAll);
                                         return true;
                                     }
                                     return false;
-                                } catch (_) {
+                                } catch (e) {
                                     return false;
                                 }
                             }
                         """)
-                        if not triggered:
-                            await self._click_row_checkbox(page, idx)  # untick
-                            continue
+                    if not success:
+                        logging.error(f"Failed to initiate download for {self.source_type} at {details_url}")
+                        return []
+                    download = await download_promise.value
+                    zip_filename = download.suggested_filename or "attachments.zip"
+                    zip_path = temp_dir_path / zip_filename
+                    await download.save_as(str(zip_path))
+                    file_results = await extraction_service.process_file_async(zip_path)
+                    for (file_content, filename, preview_chars, original_bytes, original_filename) in file_results:
+                        processed_files.append((file_content, filename, "", preview_chars, original_bytes))
+                    logging.info(f"Successfully downloaded and processed: {zip_filename}")
                 except Exception as e:
-                    if await self._popup_denies_access(page):
-                        logging.info("%s – access popup detected, skipping tender %s", self.source_type, details_url)
-                        await self._dismiss_popup(page)
-                        break  # stop processing this tender entirely
-                    # otherwise: normal timeout → continue with next row
-                    await self._click_row_checkbox(page, idx)
-                    logging.error(
-                        f"[Eb2bTenderExtractor] Error downloading file {idx} for {details_url}: {str(e)}"
-                    )
-                    continue
-                download = await dl_ctx.value
-                suggested = download.suggested_filename or f"att_{idx}"
-                if suggested in seen:
-                    await self._click_row_checkbox(page, idx)
-                    await page.wait_for_timeout(200)
-                    continue
-                seen.add(suggested)
-                fpath = tmp_root / suggested
-                await download.save_as(str(fpath))
-
-                for fcontent, real_name, preview, original_bytes, _orig in await extraction_service.process_file_async(fpath):
-                    processed.append((fcontent, real_name, "", preview, original_bytes))
-
-                await self._click_row_checkbox(page, idx)  # untick for cleanliness
-                await page.wait_for_timeout(300)
-
-        except Exception as e:
-            logging.error(
-                f"[Eb2bTenderExtractor] Error opening detail page for file extraction {details_url}: {str(e)}"
-            )
-
+                    logging.error(f"Download error for {self.source_type} at {details_url}: {e}")
+                    return []
+            except Exception as e:
+                logging.error(f"Error processing attachments for {self.source_type} at {details_url}: {e}")
+                return []
         finally:
+            if temp_dir_path.exists():
+                shutil.rmtree(temp_dir_path, ignore_errors=True)
             await page.close()
-            shutil.rmtree(tmp_root, ignore_errors=True)
 
-        return processed
-
+        return processed_files
     
     async def find_updates(
         self,

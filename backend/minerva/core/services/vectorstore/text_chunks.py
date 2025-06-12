@@ -1,37 +1,29 @@
-from minerva.core.services.vectorstore.bzp_text_chunks import BZPDocumentChunker
-from minerva.core.services.vectorstore.helpers import ChunkingConfig
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+import nltk
+nltk.download('punkt')
+
 import tiktoken
 from nltk.tokenize import sent_tokenize
 from typing import List, Optional
 from pydantic import BaseModel
-import re
-import logging
 
-logger = logging.getLogger(__name__)
-
-
+class ChunkingConfig(BaseModel):
+    chunk_size: int = 500
+    chunk_overlap: int = 100
+    tokenizer_name: str = "cl100k_base"
 
 class TextChunker:
     def __init__(self, config: Optional[ChunkingConfig] = None):
         self.config = config or ChunkingConfig()
         self.tokenizer = tiktoken.get_encoding(self.config.tokenizer_name)
-        self.bzp_chunker = BZPDocumentChunker(config)
 
     def create_chunks(self, text: str, chunk_size: Optional[int] = None) -> List[str]:
         if not text or text.isspace():
             return []
-        
-        # Check if this is a BZP document and use specialized chunker
-        if self.bzp_chunker.is_bzp_document(text):
-            return self.bzp_chunker.create_chunks(text)
-        # Otherwise use standard sentence-based chunking
-        return self._create_standard_chunks(text, chunk_size)
-    
-    def _create_standard_chunks(self, text: str, chunk_size: Optional[int] = None) -> List[str]:
-        """Original chunking logic for non-BZP documents."""
-        logger.info(f"Using standard sentence-based chunking for {len(text)} chars of text")
+
         sentences = sent_tokenize(text)
-        logger.info(f"Text split into {len(sentences)} sentences for chunking")
         
         # Determine the effective chunk size and overlap from config or parameters
         effective_chunk_size = chunk_size if chunk_size is not None else self.config.chunk_size
@@ -109,6 +101,4 @@ class TextChunker:
         if current_chunk_sentences:
             chunks.append(" ".join(current_chunk_sentences).strip())
 
-        final_chunks = [chunk for chunk in chunks if chunk] # Filter out any potential empty chunks
-        logger.info(f"Standard chunking completed: {len(final_chunks)} chunks created")
-        return final_chunks
+        return [chunk for chunk in chunks if chunk] # Filter out any potential empty chunks

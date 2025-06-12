@@ -124,13 +124,14 @@ async def leave_organization(current_user: User = Depends(get_current_user)):
     if not current_user.org_id:
         raise HTTPException(status_code=400, detail="You are not a member of any organization.")
     
-    # Check if user can safely leave the organization
-    can_leave, reason = await current_user.can_leave_organization()
-    if not can_leave:
-        raise HTTPException(status_code=400, detail=reason)
-    
-    # Get the current organization ID to check if it should be deleted
-    org_id = current_user.org_id
+    # Prevent the only admin from leaving the organization.
+    if current_user.role == "admin":
+        admin_count = await db["users"].count_documents({
+            "org_id": current_user.org_id,
+            "role": "admin"
+        })
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="You cannot leave the organization as you are the only admin.")
     
     # Update the user document in the database, setting org_id to an empty string.
     result = await db["users"].update_one(
@@ -140,11 +141,6 @@ async def leave_organization(current_user: User = Depends(get_current_user)):
     
     if result.modified_count == 0:
         raise HTTPException(status_code=500, detail="Failed to leave the organization.")
-    
-    # Check if the organization is now empty and delete it if so
-    remaining_members = await db["users"].count_documents({"org_id": org_id})
-    if remaining_members == 0:
-        await db["organizations"].delete_one({"_id": ObjectId(org_id)})
     
     return {"message": "You have successfully left the organization."}
 
@@ -209,66 +205,3 @@ async def remove_member(member_id: str, current_user: User = Depends(get_current
     await db["users"].update_one({"_id": ObjectId(member_id)}, {"$set": {"org_id": ""}})
     # Return a success message
     return {"message": "Member removed successfully."}
-
-# Endpoint to assign personal organizations to all users without one
-@router.post("/assign-personal-orgs", status_code=200)
-async def assign_personal_organizations(current_user: User = Depends(get_current_user)):
-    """
-    Assign personal organizations to all users who don't have one.
-    Only admins or users without an organization can call this endpoint.
-    Creates organizations named "{User's name}'s Org" for each user.
-    """
-    # Check if current user is admin or has no organization
-    if current_user.org_id and current_user.role != "admin":
-        raise HTTPException(
-            status_code=403, 
-            detail="Only administrators or users without an organization can perform this action."
-        )
-    
-    # Find all users without an organization
-    users_without_org = await db["users"].find({
-        "$or": [
-            {"org_id": {"$exists": False}},
-            {"org_id": None},
-            {"org_id": ""}
-        ]
-    }).to_list(length=None)
-    
-    if not users_without_org:
-        return {"message": "All users already have organizations.", "assigned_count": 0}
-    
-    assigned_count = 0
-    
-    for user_doc in users_without_org:
-        try:
-            # Create a new organization for this user
-            org_name = f"{user_doc.get('name', 'User')}'s Org"
-            new_organization = Organization(name=org_name)
-            
-            # Insert the organization into the database
-            org_result = await db["organizations"].insert_one(new_organization.dict(by_alias=True))
-            org_id = str(org_result.inserted_id)
-            
-            # Update the user to assign the new organization and set them as admin
-            await db["users"].update_one(
-                {"_id": user_doc["_id"]},
-                {
-                    "$set": {
-                        "org_id": org_id,
-                        "role": UserRole.ADMIN
-                    }
-                }
-            )
-            
-            assigned_count += 1
-            
-        except Exception as e:
-            # Log the error but continue with other users
-            print(f"Error assigning organization to user {user_doc.get('email', 'unknown')}: {str(e)}")
-            continue
-    
-    return {
-        "message": f"Successfully assigned personal organizations to {assigned_count} users.",
-        "assigned_count": assigned_count,
-        "total_users_found": len(users_without_org)
-    }

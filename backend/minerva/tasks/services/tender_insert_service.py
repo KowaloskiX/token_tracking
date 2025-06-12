@@ -60,9 +60,9 @@ class GenericTenderAdapter:
         }
 
 
-async def ensure_elasticsearch_index(index_name: str):
+def ensure_elasticsearch_index(index_name: str):
     """Create or update Elasticsearch index with proper mappings for tender data"""
-    if not await es_client.indices.exists(index=index_name):
+    if not es_client.indices.exists(index=index_name):
         # Create index with mappings
         mappings = {
             "mappings": {
@@ -87,7 +87,7 @@ async def ensure_elasticsearch_index(index_name: str):
                 }
             }
         }
-        await es_client.indices.create(
+        es_client.indices.create(
             index=index_name,
             body=mappings
         )
@@ -115,7 +115,7 @@ async def ensure_elasticsearch_index(index_name: str):
                 }
             }
         }
-        await es_client.indices.put_mapping(
+        es_client.indices.put_mapping(
             index=index_name,
             body=mappings
         )
@@ -139,8 +139,8 @@ class TenderInsertService:
         self.tender_adapter = tender_adapter or GenericTenderAdapter()
         
         # Ensure Elasticsearch index is ready if not skipped
-        # if not config.skip_elasticsearch:
-        #     ensure_elasticsearch_index(self.es_index_name)
+        if not config.skip_elasticsearch:
+            ensure_elasticsearch_index(self.es_index_name)
 
     async def process_tenders(self, extraction_request: ExtractionRequest) -> Dict:
         """Process tenders by extracting and inserting into both Pinecone and Elasticsearch"""
@@ -242,7 +242,7 @@ class TenderInsertService:
             for tender in all_tenders:
                 # Skip existing tenders - use the same check as in Pinecone
                 tender_id = tender.details_url
-                if await self.check_if_elasticsearch_exists(tender_id):
+                if self.check_if_elasticsearch_exists(tender_id):
                     logging.info(f"Skipping tender with ID {tender_id} since it already exists in Elasticsearch.")
                     continue
                 
@@ -284,7 +284,7 @@ class TenderInsertService:
                 return {"stored_count": 0, "failed_count": 0}
             
             # Perform bulk ingestion
-            success, failed = await helpers.async_bulk(es_client, actions, stats_only=True)
+            success, failed = helpers.bulk(es_client, actions, stats_only=True)
             logging.info(f"Elasticsearch ingestion: {success} succeeded, {failed} failed")
             return {"stored_count": success, "failed_count": failed}
                     
@@ -311,7 +311,7 @@ class TenderInsertService:
 
         return exists
     
-    async def check_if_elasticsearch_exists(self, tender_id: str) -> bool:
+    def check_if_elasticsearch_exists(self, tender_id: str) -> bool:
         """Check if tender with given ID already exists in Elasticsearch"""
         if self.config.skip_elasticsearch:
             return False
@@ -319,7 +319,7 @@ class TenderInsertService:
         logging.info(f"Checking if tender with ID {tender_id} already exists in Elasticsearch...")
         
         try:
-            result = await es_client.exists(index=self.es_index_name, id=tender_id)
+            result = es_client.exists(index=self.es_index_name, id=tender_id)
             if result:
                 logging.info(f"Tender with ID {tender_id} already exists in Elasticsearch.")
             else:

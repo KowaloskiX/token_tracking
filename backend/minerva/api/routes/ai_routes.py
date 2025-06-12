@@ -454,7 +454,7 @@ async def send_project_message(
                 stream=False,
                 temperature=llm_config.temperature,
                 max_tokens=16000,
-                instructions="""Answer to this question based on provided context.
+                instructions="""Answer to this question in polish (or other language if user prompt is that way) based on provided context.
                     If there is no info in provided context say that in your response, answer based on you knowledge only if user ask
                     Based on the context provided, identify which files contained information relevant to generating your answer and list ONLY their filenames.
                     Return your answer as a JSON object with the following structure:

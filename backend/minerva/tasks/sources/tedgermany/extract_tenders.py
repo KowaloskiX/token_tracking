@@ -5,14 +5,18 @@ import os
 from pathlib import Path
 import random
 import shutil
+import tempfile
 from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
+from bson import ObjectId
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
+from minerva.core.utils.date_standardizer import DateStandardizer
 from playwright.async_api import async_playwright
 
 from minerva.core.database.database import db
+
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
 
 
@@ -44,24 +48,9 @@ async def safe_goto(page, url, max_retries=2, initial_backoff=120, **kwargs):
                 raise e
 
 
-class BaseTedCountryExtractor:
-    """
-    Base class for creating country-specific TED tender extractors.
-    This allows for code reuse across different country extractors.
-    """
-    
-    def __init__(self, country_code, priority_languages, source_type_name):
-        """
-        Initialize with country-specific parameters.
-        
-        Args:
-            country_code: The country code used in the TED URL (e.g., "ITA" for Italy)
-            priority_languages: List of languages to prioritize when downloading documents
-            source_type_name: The source_type value to use in the tender data
-        """
-        self.country_code = country_code
-        self.priority_languages = priority_languages
-        self.source_type_name = source_type_name
+class GermanTedTenderExtractor:
+    def __init__(self):
+        # self.extraction_service = AssistantsFileExtractionService()
         self.extraction_service = FileExtractionService()
         self.logger = logging.getLogger('minerva.services.tenders.tender_processor')
 
@@ -69,6 +58,7 @@ class BaseTedCountryExtractor:
         page = await context.new_page()
         processed_files = []
         temp_dir = None
+        # extraction_service = AssistantsFileExtractionService()
         extraction_service = FileExtractionService()
         MAX_RETRIES = 3
         processed_languages = set()
@@ -121,8 +111,8 @@ class BaseTedCountryExtractor:
                                 if lang_text in processed_languages:
                                     continue
 
-                                # Use the country-specific priority languages
-                                if lang_text in self.priority_languages:
+                                # For German tenders, we prioritize DE and EN languages
+                                if lang_text in ["DE", "EN"]:
                                     download_retry = 0
                                     while download_retry < 3:
                                         try:
@@ -196,24 +186,12 @@ class BaseTedCountryExtractor:
                 self.logger.error(f"Error during cleanup: {str(e)}")
         return processed_files
 
-    async def get_organization_from_detail_page(self, context, detail_url: str) -> Tuple[str, str]:
+    async def get_organization_from_detail_page(self, context, detail_url: str) -> str:
         page = await context.new_page()
         organization = ""
-        notice_type = ""
         try:
             await safe_goto(page, detail_url, wait_until='networkidle', timeout=20000)
             try:
-                # First check for notice type in the summary section
-                summary_section = page.locator("section#summary")
-                if await summary_section.count() > 0:
-                    first_div = summary_section.locator("div").first
-                    if await first_div.count() > 0:
-                        notice_type_span = first_div.locator("span[data-labels-key*='form-type']")
-                        if await notice_type_span.count() > 0:
-                            notice_type = await notice_type_span.inner_text()
-                            logging.info(f"Found notice type: {notice_type}")
-
-                # Then get the organization name
                 official_name_labels = page.locator(
                     "span.label:has-text('Official name'), span.label:has-text('Official Name')"
                 )
@@ -224,27 +202,26 @@ class BaseTedCountryExtractor:
                     if await data_elem.count() > 0:
                         organization = (await data_elem.inner_text()).strip()
             except Exception as e:
-                logging.error(f"Error extracting official name or notice type: {e}")
+                logging.error(f"Error extracting official name: {e}")
                 organization = ""
-                notice_type = ""
         finally:
             await page.close()
-        return organization, notice_type
+        return organization
 
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 1)
         start_date_str = inputs.get("start_date")  # e.g., "2025-01-01"
         
-        # Use the country-specific code in the URL
+        # Change URL to filter for German tenders (DEU) instead of Polish (POL)
         listing_url = (
             "https://ted.europa.eu/en/search/result?"
             "search-scope=ACTIVE&scope=ACTIVE&onlyLatestVersions=false"
-            f"&facet.place-of-performance=SPCY%2C{self.country_code}&sortColumn=publication-date&sortOrder=DESC"
+            "&facet.place-of-performance=SPCY%2CDEU&sortColumn=publication-date&sortOrder=DESC"
             "&page=1&simpleSearchRef=true"
         )
 
         async with async_playwright() as p:
-            logging.info(f"Launching headless browser for {self.country_code} TED scraping...")
+            logging.info("Launching headless browser for German TED scraping...")
             browser = await p.chromium.launch(headless=True)
             try:
                 context = await browser.new_context()
@@ -347,6 +324,7 @@ class BaseTedCountryExtractor:
                                     submission_deadline_raw = (await cells.nth(5).inner_text()).strip()
                                     
                                     # First, remove any timezone information that might be in the raw string
+                                    # This handles formats like "02/07/2025 12:00:00 (UTC+2)"
                                     if '(' in submission_deadline_raw:
                                         submission_deadline_raw = submission_deadline_raw.split('(')[0].strip()
                                     
@@ -376,12 +354,7 @@ class BaseTedCountryExtractor:
                                             submission_deadline = submission_deadline_raw
 
                                 country = (await cells.nth(3).inner_text()).strip()
-                                organization, notice_type = await self.get_organization_from_detail_page(context, detail_url)
-
-                                # Skip if this is a result notice
-                                if notice_type and "Result" in notice_type:
-                                    logging.info(f"Skipping result notice at {detail_url}")
-                                    continue
+                                organization = await self.get_organization_from_detail_page(context, detail_url)
 
                                 tender_data = {
                                     "name": name,
@@ -391,7 +364,7 @@ class BaseTedCountryExtractor:
                                     "initiation_date": iso_initiation_date,
                                     "details_url": detail_url,
                                     "content_type": "tender",
-                                    "source_type": self.source_type_name
+                                    "source_type": "ted_germany"  # Changed from "ted" to "ted_germany"
                                 }
 
                                 try:
@@ -432,7 +405,7 @@ class BaseTedCountryExtractor:
                     pages_scraped=current_page
                 )
                 logging.info(
-                    f"{self.country_code} TED extraction complete. Extracted {len(tenders)} tenders from {current_page} pages."
+                    f"German TED extraction complete. Extracted {len(tenders)} tenders from {current_page} pages."
                 )
                 logging.info(f"Total unique URLs processed: {len(seen_urls)}")
 

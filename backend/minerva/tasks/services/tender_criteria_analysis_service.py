@@ -22,15 +22,14 @@ async def perform_criteria_analysis(
     rag_index_name: str,
     embedding_model: str,
     criteria: List[AnalysisCriteria],
+    cost_record_id: str,
     criteria_definitions: Optional[List[AnalysisCriteria]] = None,
     extraction_id: Optional[str] = None,
     analysis_id: Optional[str] = None,
     current_user: Optional[User] = None,
     save_results: bool = False,
     include_vector_results: bool = False,
-    use_elasticsearch: bool = False,
-    language: str = "polish",
-    original_tender_metadata: Optional[Dict[str, Any]] = None
+    use_elasticsearch: bool = False
 ) -> Dict[str, Any]:
     rag_manager = None
     try:
@@ -42,17 +41,13 @@ async def perform_criteria_analysis(
             es_config = ElasticsearchConfig(index_name="files-rag")
             
         rag_manager = RAGManager(
-            index_name=rag_index_name,
-            namespace="",
-            embedding_model=embedding_model,
-            tender_pinecone_id=tender_pinecone_id,
+            rag_index_name, 
+            "", 
+            embedding_model, 
+            tender_pinecone_id,
             use_elasticsearch=use_elasticsearch,
-            es_config=es_config,
-            language=language,
-            tender_url=original_tender_metadata.get("details_url") if original_tender_metadata else None
+            es_config=es_config
         )
-        if use_elasticsearch:
-            await rag_manager.ensure_elasticsearch_index_initialized()
         
         logger.info(f"[{tender_pinecone_id}] Starting criteria and location analysis")
         
@@ -60,8 +55,8 @@ async def perform_criteria_analysis(
         criteria_and_location_result = await rag_manager.analyze_tender_criteria_and_location(
             current_user=current_user,
             criteria=criteria,
-            include_vector_results=include_vector_results,
-            original_tender_metadata=original_tender_metadata
+            cost_record_id=cost_record_id,
+            include_vector_results=include_vector_results
         )
         
         logger.info(f"[{tender_pinecone_id}] Completed criteria and location analysis")

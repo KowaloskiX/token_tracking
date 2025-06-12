@@ -150,52 +150,24 @@ async def accept_invitation(invitation: InvitationAccept):
     existing_user = await db["users"].find_one({"email": invitation.email})
 
     if existing_user:
-        # Allow organization switching if user is the only member of their current org
-        # or if they have no organization
-        current_org_id = existing_user.get("org_id")
-        can_switch_org = True
-        
-        if current_org_id and current_org_id != "":
-            # Count the number of users in the current organization
-            member_count = await db["users"].count_documents({"org_id": current_org_id})
-            
-            # If user is the only member, they can switch (their org will become empty)
-            # If there are multiple members, check if user is admin and if there are other admins
+        # Prevent a user from joining another organization if they already belong to one
+        if existing_user.get("org_id") and existing_user.get("org_id") != "":
+            # Count the number of users in this organization
+            member_count = await db["users"].count_documents({"org_id": existing_user.get("org_id")})
             if member_count > 1:
-                user_role = existing_user.get("role", "member")
-                if user_role == "admin":
-                    # Check if there are other admins in the organization
-                    admin_count = await db["users"].count_documents({
-                        "org_id": current_org_id,
-                        "role": "admin",
-                        "_id": {"$ne": existing_user["_id"]}  # Exclude current user
-                    })
-                    if admin_count == 0:
-                        # User is the only admin, cannot leave without transferring admin role
-                        raise HTTPException(
-                            status_code=400, 
-                            detail="Cannot join another organization as you are the only admin of your current organization. Please assign another admin first."
-                        )
+                raise HTTPException(status_code=400, detail="This email is already associated with another organization.")
         
         # Verify the provided password matches the stored hashed password
         if not pwd_context.verify(invitation.password, existing_user["hashed_password"]):
             raise HTTPException(status_code=400, detail="Incorrect password.")
         
-        # Update their organization and role based on the invitation
+        # If password is verified, update their organization and role based on the invitation.
         update_fields = {
             "org_id": invitation_db["org_id"],
             "role": invitation_db["role"]
         }
         await db["users"].update_one({"_id": existing_user["_id"]}, {"$set": update_fields})
         user_id = str(existing_user["_id"])
-        
-        # If the user was the only member of their previous organization, we could optionally delete it
-        # For now, we'll leave empty organizations in the database
-        if current_org_id and current_org_id != "":
-            remaining_members = await db["users"].count_documents({"org_id": current_org_id})
-            if remaining_members == 0:
-                # Optional: Delete the empty organization
-                await db["organizations"].delete_one({"_id": ObjectId(current_org_id)})
     else:
         # Check password length
         if len(invitation.password) < 8:
