@@ -19,10 +19,13 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install poetry and dependencies
+# Install poetry and dependencies (excluding torch - we'll install CPU version separately)
 RUN pip install poetry
 COPY poetry.lock pyproject.toml ./
 RUN poetry install --only main --no-cache --no-root
+
+# Install CPU-only PyTorch for production (smaller image size, no CUDA bloat)
+RUN pip install --no-cache-dir torch>=2.6.0 torchvision>=0.21.0 --index-url https://download.pytorch.org/whl/cpu
 
 
 # -------------------------------------------------------------------------- #

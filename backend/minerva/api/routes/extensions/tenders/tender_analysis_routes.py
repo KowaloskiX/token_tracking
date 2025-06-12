@@ -36,6 +36,10 @@ import pytz
 import json
 import random
 from playwright.async_api import async_playwright
+from minerva.core.utils.email_utils import (
+    handle_send_email,
+    build_tender_results_email_html,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -207,7 +211,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
 
         # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-05"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-06-10"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -326,7 +330,9 @@ async def create_tender_analysis(
             "criteria": criteria_with_weights,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
-            "active": True
+            "active": True,
+            "assigned_users": [str(current_user.id)],  # Owner is automatically assigned
+            "email_recipients": [str(current_user.id)]  # Owner is automatically in email recipients
         }
 
         tender_analysis = TenderAnalysis(**tender_analysis_data)
@@ -465,6 +471,23 @@ async def update_tender_analysis(
                 logger.info(f"Added owner {owner_id} to assigned_users")
                 
             logger.info(f"Final assigned users list: {update_dict['assigned_users']}")
+        
+        # Validate email_recipients if present
+        if "email_recipients" in update_dict:
+            logger.info(f"Processing email recipients: {update_dict['email_recipients']}")
+            
+            # Get current assigned users (either from update or from existing analysis)
+            assigned_users = update_dict.get("assigned_users", analysis.get("assigned_users", []))
+            
+            # Ensure all email recipients are in assigned users
+            invalid_recipients = [r for r in update_dict["email_recipients"] if r not in assigned_users]
+            if invalid_recipients:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Email recipients must be assigned to the analysis. Invalid recipients: {invalid_recipients}"
+                )
+                
+            logger.info(f"Final email recipients list: {update_dict['email_recipients']}")
         
         # Add updated_at timestamp
         update_dict["updated_at"] = datetime.utcnow()
@@ -892,7 +915,8 @@ async def test_extractors():
         # ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
         # ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
 
-("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/documents")
+("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/overview?1")
+# ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/478304/przedmiotem")
 
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/471684/remont-pustostanow-lokali-mieszkalnych-czesc-nr-1-marszalkowska-34-50-m-23-adk-2-czesc-nr-2-krucza-6-14-m-5-adk-2-w-podziale-na-2-czesci"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/473338/opracowanie-dokumentacji-projektowo-kosztorysowej-na-remont-budynku-rozdzielnicy-agregatorowni-zlokalizowanej-na-terenie-stacji-pomp-rzecznych-przy-ul-czerniakowskiej-124-dzielnica-srodmiescie-1"),
@@ -1653,6 +1677,48 @@ async def test_user_analysis(
             detail=f"Error testing user analysis: {str(e)}"
         )
 
+
+@router.post("/send-test-results-email/{analysis_id}", status_code=200)
+async def send_test_results_email(
+    analysis_id: str,
+    email: Optional[str] = None,
+    limit: int = 5,
+    current_user: User = Depends(get_current_user),
+):
+    """Send a preview tender results email for the specified analysis."""
+    try:
+        analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(analysis_id)})
+        if not analysis_doc:
+            raise HTTPException(status_code=404, detail="Tender analysis not found")
+
+        user_email = email or current_user.email
+
+        cursor = (
+            db.tender_analysis_results.find({"tender_analysis_id": ObjectId(analysis_id)})
+            .sort("created_at", -1)
+            .limit(limit)
+        )
+        results = [TenderAnalysisResult(**r) for r in await cursor.to_list(length=None)]
+
+        html_content = build_tender_results_email_html(
+            analysis_name=analysis_doc.get("name", "Unnamed Analysis"),
+            analysis_id=analysis_id,
+            tenders=results,
+        )
+
+        await handle_send_email(
+            user_email,
+            f"Nowe przetargi - {analysis_doc.get('name', '')}",
+            html_content,
+        )
+
+        return {"message": f"Test email sent to {user_email}"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error sending test results email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error sending test results email: {str(e)}")
+
 @router.post("/tender-results/batch", response_model=List[TenderAnalysisResult])
 async def get_tender_results_batch(
     result_ids: List[str],
@@ -1802,9 +1868,10 @@ async def get_all_filtered_tender_analysis_results(
     analysis_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10000, ge=10, le=10000, description="Number of results per page"),
+    filter_stage: Optional[FilterStage] = Query(FilterStage.AI_DESCRIPTION_FILTER, description="Filter by stage, defaults to ai_description_filter"),
     current_user: User = Depends(get_current_user)
 ):
-    """Get filtered results for a specific tender analysis with pagination"""
+    """Get filtered results for a specific tender analysis with pagination, filtered by stage"""
     try:
         # Check if analysis exists and belongs to user or their organization
         query = {"_id": ObjectId(analysis_id), "$or": [{"user_id": current_user.id}]}
@@ -1822,9 +1889,14 @@ async def get_all_filtered_tender_analysis_results(
         # Calculate skip value for pagination
         skip = (page - 1) * page_size
         
+        # Build match conditions
+        match_conditions = {"analysis_id": analysis_id}
+        if filter_stage:
+            match_conditions["filter_stage"] = filter_stage.value
+        
         # Use an aggregation pipeline to handle ObjectId conversions in the database
         pipeline = [
-            {"$match": {"analysis_id": analysis_id}},
+            {"$match": match_conditions},
             {"$sort": {"filter_timestamp": -1}},
             {"$skip": skip},
             {"$limit": page_size},
@@ -1918,22 +1990,30 @@ async def get_filtered_tender_by_id(
             detail=f"Error retrieving filtered tender: {str(e)}"
         )
 
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+
+class CleanupDateRange(BaseModel):
+    start_date: datetime
+    end_date: datetime
+
 ELASTIC_FILES_INDEX = "files-rag"
 
 @router.post("/cleanup-filtered-files-by-date")
 async def cleanup_files_by_date(
-    days_old: int = Query(7, description="Delete files older than this many days"),
+    date_range: CleanupDateRange,
     current_user: User = Depends(get_current_user)
 ):
-    logger.info(f"Starting cleanup of filtered files older than {days_old} days, initiated by user {current_user.id}")
+    logger.info(f"Starting cleanup of filtered files between {date_range.start_date.isoformat()} and {date_range.end_date.isoformat()}, initiated by user {current_user.id}")
     
     async def delete_from_storage(blob_url: str) -> bool: # Renamed for clarity
         try:
-            if "s3.amazonaws.com" in blob_url:
+            if "amazonaws.com" in blob_url:
                 logger.debug(f"Attempting to delete file from S3: {blob_url}")
                 delete_files_from_s3([blob_url]) # delete_files_from_s3 expects a list
                 logger.debug(f"Successfully deleted file from S3: {blob_url}")
-            elif "vercel.app" in blob_url:
+            elif "blob.vercel-storage" in blob_url:
                 logger.debug(f"Attempting to delete file from Vercel blob: {blob_url}")
                 delete_files_from_vercel_blob([blob_url]) # delete_files_from_vercel_blob expects a list
                 logger.debug(f"Successfully deleted file from Vercel blob: {blob_url}")
@@ -1968,17 +2048,18 @@ async def cleanup_files_by_date(
             logger.error(f"Error deleting vectors from Pinecone: {str(e)}", exc_info=True)
             return False
 
-    # Calculate the cutoff date
-    cutoff_date = datetime.utcnow() - timedelta(days=days_old)
-    logger.info(f"Cutoff date for file cleanup: {cutoff_date.isoformat()}")
+    logger.info(f"Date range for file cleanup: {date_range.start_date.isoformat()} to {date_range.end_date.isoformat()}")
     
-    # Find all filtered tenders older than the cutoff date
-    logger.info(f"Querying database for filtered tenders older than {cutoff_date.isoformat()}")
+    # Find all filtered tenders within the date range
+    logger.info(f"Querying database for filtered tenders between {date_range.start_date.isoformat()} and {date_range.end_date.isoformat()}")
     filtered_tenders = await db.filtered_tender_analysis_results.find({
-        "filter_timestamp": {"$lt": cutoff_date},
+        "filter_timestamp": {
+            "$gte": date_range.start_date,
+            "$lte": date_range.end_date
+        }
     }).to_list()
     
-    logger.info(f"Found {len(filtered_tenders)} filtered tenders older than {days_old} days")
+    logger.info(f"Found {len(filtered_tenders)} filtered tenders in the specified date range")
     
     deletion_stats = {
         "total_processed": 0,
@@ -1987,6 +2068,8 @@ async def cleanup_files_by_date(
         "already_deleted": 0,
         "errors": 0
     }
+
+    # return deletion_stats
     
     try:
         es_resp = await es_client.delete_by_query(
@@ -1995,7 +2078,8 @@ async def cleanup_files_by_date(
                 "query": {
                     "range": {
                         "created_at": {              # set when the chunk was stored
-                            "lt": cutoff_date.isoformat()
+                            "gte": date_range.start_date.isoformat(),
+                            "lte": date_range.end_date.isoformat()
                         }
                     }
                 }
@@ -2006,14 +2090,14 @@ async def cleanup_files_by_date(
         )
         deleted_count = es_resp.get("deleted", 0)
         logger.info(
-            "Global Elasticsearch cleanup: removed %d documents older than %s from %s",
-            deleted_count, cutoff_date.isoformat(), ELASTIC_FILES_INDEX,
+            "Global Elasticsearch cleanup: removed %d documents between %s and %s from %s",
+            deleted_count, date_range.start_date.isoformat(), date_range.end_date.isoformat(), ELASTIC_FILES_INDEX,
         )
         deletion_stats["es_deleted_global"] = deleted_count
     except Exception:
         logger.exception(
-            "Global delete_by_query failed for index %s (cut-off %s)",
-            ELASTIC_FILES_INDEX, cutoff_date.isoformat(),
+            "Global delete_by_query failed for index %s (date range %s to %s)",
+            ELASTIC_FILES_INDEX, date_range.start_date.isoformat(), date_range.end_date.isoformat(),
         )
         # make sure stats always exists even on failure
         deletion_stats["es_deleted_global"] = 0
@@ -2029,6 +2113,18 @@ async def cleanup_files_by_date(
             
         storage_info = tender["processed_files"]["storage_info"]
         logger.info(f"Tender {tender_id} has {len(storage_info)} files to process")
+        
+        # Check if all files are already deleted_both
+        all_files_deleted = all(file.get("deletion_status") == "deleted_both" for file in storage_info)
+        logger.info(f"Initial check for tender {tender_id}: all_files_deleted = {all_files_deleted}")
+        if all_files_deleted:
+            logger.info(f"All files for tender {tender_id} are already deleted, removing tender from database")
+            # Handle both string and ObjectId _id types
+            tender_id = tender["_id"]
+            query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
+            await db.filtered_tender_analysis_results.delete_one(query)
+            deletion_stats["already_deleted"] += len(storage_info)
+            continue
         
         for i, file_info in enumerate(storage_info):
             filename = file_info.get("filename", "unknown")
@@ -2099,10 +2195,28 @@ async def cleanup_files_by_date(
             # Update the database if changes were made
             if update_needed:
                 logger.debug(f"Updating database for file '{filename}' with new deletion status: {file_info['deletion_status']}")
+                # Handle both string and ObjectId _id types
+                tender_id = tender["_id"]
+                query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
                 await db.filtered_tender_analysis_results.update_one(
-                    {"_id": ObjectId(tender["_id"])},
+                    query,
                     {"$set": {f"processed_files.storage_info.{i}": file_info}}
                 )
+        
+        # Handle both string and ObjectId _id types
+        tender_id = tender["_id"]
+        query = {"_id": tender_id if isinstance(tender_id, ObjectId) else str(tender_id)}
+        updated_tender = await db.filtered_tender_analysis_results.find_one(query)
+
+        updated_storage_info = updated_tender.get("processed_files", {}).get("storage_info")
+        all_files_deleted = all(file.get("deletion_status") == "deleted_both" 
+                                 for file in updated_storage_info)
+        logger.info(f"Final check for tender {tender_id}: all_files_deleted = {all_files_deleted}")
+        if updated_tender and updated_tender.get("processed_files", {}).get("storage_info"):
+            if all_files_deleted:
+                logger.info(f"All files for tender {tender_id} are now deleted, removing tender from database")
+                logger.info(f"Files statuses for tender {tender_id}: {[{'filename': f.get('filename'), 'status': f.get('deletion_status')} for f in updated_storage_info]}")
+                await db.filtered_tender_analysis_results.delete_one(query)
     
     # Log summary statistics
     logger.info("File cleanup process completed with the following results:")
@@ -2113,8 +2227,12 @@ async def cleanup_files_by_date(
     logger.info(f"Errors encountered: {deletion_stats['errors']}")
     
     return {
-        "message": f"Processed {deletion_stats['total_processed']} files",
-        "stats": deletion_stats
+        "message": f"Processed {deletion_stats['total_processed']} files in date range {date_range.start_date.isoformat()} to {date_range.end_date.isoformat()}",
+        "stats": deletion_stats,
+        "date_range": {
+            "start_date": date_range.start_date.isoformat(),
+            "end_date": date_range.end_date.isoformat()
+        }
     }
 
 @router.post("/tender-analysis/{analysis_id}/duplicate", response_model=TenderAnalysis)
@@ -2140,7 +2258,8 @@ async def duplicate_tender_analysis(
         new_analysis_data["name"] = f"{new_analysis_data.get('name', 'Untitled Analysis')} - Copy"
         new_analysis_data["created_at"] = datetime.utcnow()
         new_analysis_data["updated_at"] = datetime.utcnow()
-        new_analysis_data["assigned_users"] = []
+        new_analysis_data["assigned_users"] = [str(current_user.id)]  # Owner is automatically assigned
+        new_analysis_data["email_recipients"] = [str(current_user.id)]  # Owner is automatically in email recipients
         
         # Remove the original ID
         new_analysis_data.pop("_id", None)
@@ -2970,5 +3089,3 @@ async def cleanup_past_tender_results_for_user(
             status_code=500, 
             detail=f"Error cleaning up past tender results: {str(e)}"
         )
-    
-    

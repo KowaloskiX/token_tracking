@@ -82,7 +82,8 @@ export interface TenderAnalysis {
   last_run?: string;
   created_at: string;
   updated_at: string;
-  assigned_users?: string[]; // Add this field
+  assigned_users?: string[];
+  email_recipients?: string[];
 }
 
 // Request/Response types for API operations

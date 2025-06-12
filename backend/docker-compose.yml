@@ -25,6 +25,8 @@ services:
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CUDA_VISIBLE_DEVICES=""
+      - TORCH_DEVICE=cpu
       - TZ=Europe/Warsaw
     networks:
       - tasks_network
@@ -402,6 +404,35 @@ services:
       - WORKER_TYPE=monitoring
       - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
       - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  # Cleanup Worker (Deployed on Droplet #2)
+  cleanup-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_CLEANUP_WORKERS=${TOTAL_CLEANUP_WORKERS}
+      - WORKER_TYPE=cleanup
     networks:
       - tasks_network
     restart: always

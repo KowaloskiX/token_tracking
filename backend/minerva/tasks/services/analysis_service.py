@@ -7,7 +7,7 @@ from minerva.tasks.services.tender_criteria_analysis_service import perform_crit
 from minerva.tasks.services.tender_description_filtering_service import perform_description_filtering
 from minerva.tasks.services.tender_description_generation_service import generate_tender_description
 from minerva.tasks.services.tender_file_extraction_service import perform_file_extraction
-from minerva.tasks.services.tender_initial_ai_filtering_service import perform_ai_filtering
+from minerva.tasks.services.tender_initial_ai_filtering_service import AIFilteringMode, perform_ai_filtering
 from minerva.tasks.services.search_service import perform_tender_search
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.models.file import File
@@ -258,6 +258,22 @@ async def _process_tender_pipeline(
                 logger.warning(f"Extraction failed/skipped for tender {tender_id_str}: {extraction_res.get('reason')}")
                 return None
 
+            # If no files were found, create a basic result without criteria/description analysis
+            if not extraction_res.get("has_files", True):
+                logger.info(f"Tender {tender_id_str} has no files, skipping criteria and description analysis")
+                return create_tender_analysis_result_v2(
+                    original_tender_metadata=original_metadata,
+                    processed_files_data=extraction_res.get("processed_files", {}),
+                    criteria_and_location_result={"analysis": {"criteria_analysis": [], "location": {}}},
+                    analysis_id=analysis_id,
+                    current_user=current_user,
+                    tender_url=tender_dict["id"],
+                    tender_description="",
+                    pinecone_config=QueryConfig(index_name=rag_index_name, namespace="", embedding_model=embedding_model),
+                    criteria_definitions=criteria_definitions,
+                    tender_pinecone_id=extraction_res["tender_pinecone_id"],
+                )
+
             # --- Criteria analysis ---
             criteria_res = await perform_criteria_analysis(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
@@ -322,7 +338,7 @@ async def analyze_relevant_tenders_with_our_rag(
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 8,
+    batch_size: int = 6,
     language: str = "polish"
 ):
     playwright: Optional[Playwright] = None
@@ -361,6 +377,7 @@ async def analyze_relevant_tenders_with_our_rag(
 
         search_results = await perform_tender_search(
                 search_phrase=tender_analysis.search_phrase,
+                company_description=tender_analysis.company_description,
                 tender_names_index_name=tender_names_index_name,
                 elasticsearch_index_name=elasticsearch_index_name,
                 embedding_model=embedding_model,
@@ -400,6 +417,7 @@ async def analyze_relevant_tenders_with_our_rag(
             current_user=current_user,
             ai_batch_size=ai_batch_size,
             search_id=search_id
+            # filtering_mode=AIFilteringMode.TRIPLE_RUN
         )
         
         all_filtered_tenders = filter_results["filtered_tenders"]

@@ -1,3 +1,4 @@
+import pprint
 import re
 from uuid import uuid4
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
@@ -56,7 +57,8 @@ PREMIUM_MODEL_USERS = {
     "683e9cbeef2a46d00c424c0e", #senda
     "679736290723807cbe67ad15", #ondre
     "680f94b869d687dfec1ed9e6", #testaccount
-    "6846ac0084451731b166b6ca" #arison construction
+    "6846ac0084451731b166b6ca", #arison construction
+    "68497788549963dce215b3f4" #wodpol
 }
 
 # Memory logging helper
@@ -501,10 +503,11 @@ class RAGManager:
     async def ai_filter_tenders(
         tender_analysis: TenderAnalysis,
         tender_matches: List[dict],
-        current_user: Optional[User] = None  # Made optional to align with previous fix
+        current_user: Optional[User] = None,
+        run_id: Optional[str] = None  # Added for tracking multiple runs
     ) -> TenderProfileMatches:
         # Memory log before AI tender filtering
-        log_mem("ai_filter_tenders:start")
+        log_mem(f"ai_filter_tenders:start:{run_id or 'single'}")
         system_message = (
             "You are a well-balanced system that identifies public tenders that best match the company profile and offer. "
             "Only returning relevant tenders."
@@ -555,7 +558,7 @@ class RAGManager:
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "id": {"type": "string", "description": "Exact ID of the tender from the input list"},
+                                            "id": {"type": "string", "description": "Exact ID (usually full url) of the tender from the input list"},
                                             "name": {"type": "string", "description": "Full title of the tender"},
                                             "organization": {"type": "string", "description": "Organization issuing the tender"}
                                         },
@@ -596,8 +599,6 @@ class RAGManager:
                     # Return a fallback response structure
                     parsed_output = {"matches": []}
             
-            # logger.info(f"OpenAI response: {parsed_output}")  # Log raw response for debugging
-
             # Post-process to ensure 'id' is present (fallback if OpenAI omits it)
             tender_lookup = {match["id"]: match for match in tender_matches}
             for match in parsed_output["matches"]:
@@ -611,13 +612,142 @@ class RAGManager:
                 await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
 
             # Memory log after AI tender filtering
-            log_mem("ai_filter_tenders:end")
+            log_mem(f"ai_filter_tenders:end:{run_id or 'single'}")
             return TenderProfileMatches(**parsed_output)
         
         except Exception as e:
             logger.error(f"Error filtering tenders with AI using ask_llm_logic: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to filter tenders: {str(e)}")
 
+    @staticmethod
+    async def ai_review_filter_results(
+        tender_analysis: TenderAnalysis,
+        filtered_tenders: List[dict],
+        filtered_out_tenders: List[dict],
+        current_user: Optional[User] = None
+    ) -> Dict[str, List[dict]]:
+        """
+        Review initial filtering results and make corrections if needed.
+        """
+        log_mem("ai_review_filter_results:start")
+        
+        system_message = (
+            "You are a quality assurance system that reviews tender filtering decisions. "
+            # "Analyze filtered-out tenders to ensure accuracy. "
+            "Analyze both the filtered and filtered-out tenders to ensure accuracy. "
+            "You can move tenders between categories if needed."
+        )
+        
+        user_message = (
+            "Review the filtering results based on the company profile in <COMPANY_PROFILE>.\n"
+            f"<COMPANY_PROFILE>\n\"{tender_analysis.company_description}\"\n</COMPANY_PROFILE>\n\n"
+            f"Currently FILTERED IN (selected as relevant):\n<FILTERED_IN>{json.dumps(filtered_tenders)}</FILTERED_IN>\n\n"
+            f"Currently FILTERED OUT (rejected as not relevant):\n<FILTERED_OUT>{json.dumps(filtered_out_tenders)}</FILTERED_OUT>\n\n"
+            "Review these decisions and provide corrections."
+            "YOU MUST PLACE EACH TENDER IN ONE OF THOSE CATEGORIES"
+            # "Focus mainly on FILTERED OUT and if they have potential to go to FILTERED IN but also analyse fitered in in terms of rejecting some of them."
+            " The output JSON must follow this schema:\n"
+            "{\n"
+            "   \"corrected_filtered_in\": [\n"
+            "      {\"id\": \"exact-id\", \"name\": \"...\", \"organization\": \"...\", \"reason\": \"why this should be included\"},\n"
+            "      ...\n"
+            "   ],\n"
+            "   \"corrected_filtered_out\": [\n"
+            "      {\"id\": \"exact-id\", \"name\": \"...\", \"organization\": \"...\", \"reason\": \"why this should be excluded\"},\n"
+            "      ...\n"
+            "   ]\n"
+            "}\n"
+        )
+
+        ai_filter_model = "o4-mini"
+        ai_filter_provider, ai_filter_max_tokens = get_model_config(ai_filter_model)
+        ai_filter_optimized_tokens = get_optimal_max_tokens(ai_filter_model, "high")
+
+
+        # print(user_message)
+        
+        request_data = LLMSearchRequest(
+            query=user_message,
+            vector_store=None,
+            llm={
+                "provider": ai_filter_provider,
+                "model": ai_filter_model,
+                "temperature": 0,
+                # "max_tokens": ai_filter_optimized_tokens,
+                "system_message": system_message,
+                "stream": False,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "review_response",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "corrected_filtered_in": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "name": {"type": "string"},
+                                            "organization": {"type": "string"},
+                                            "reason": {"type": "string"}
+                                        },
+                                        "required": ["id", "name", "organization", "reason"],
+                                        "additionalProperties": False
+                                    }
+                                },
+                                "corrected_filtered_out": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "name": {"type": "string"},
+                                            "organization": {"type": "string"},
+                                            "reason": {"type": "string"}
+                                        },
+                                        "required": ["id", "name", "organization", "reason"],
+                                        "additionalProperties": False
+                                    }
+                                }
+                            },
+                            "required": ["corrected_filtered_in", "corrected_filtered_out"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
+            }
+        )
+
+        try:
+            response = await ask_llm_logic(request_data)
+            
+            try:
+                parsed_output = json.loads(response.llm_response)
+                pprint.pprint(parsed_output)
+            except json.JSONDecodeError as json_error:
+                logger.warning(f"JSON parsing failed for review: {str(json_error)}")
+                # Return original results if parsing fails
+                return {
+                    "corrected_filtered_in": filtered_tenders,
+                    "corrected_filtered_out": filtered_out_tenders
+                }
+
+            if current_user and hasattr(response, "usage") and response.usage:
+                await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+
+            log_mem("ai_review_filter_results:end")
+            return parsed_output
+        
+        except Exception as e:
+            logger.error(f"Error in review filtering: {str(e)}", exc_info=True)
+            # Return original results if review fails
+            return {
+                "corrected_filtered_in": filtered_tenders,
+                "corrected_filtered_out": filtered_out_tenders
+            }
 
     async def analyze_subcriteria(self, subcriteria: str, tender_pinecone_id: str) -> Dict[str, Any]:
         """

@@ -1,0 +1,68 @@
+{
+  "page": {
+    "title": "Dokumentacja API",
+    "description": "Integruj Asystenta AI z Twoją aplikacją. Uzyskaj dostęp do wyników analizy przetargów poprzez nasze REST API.",
+    "auth": {
+      "title": "Autoryzacja",
+      "description": "Wszystkie zapytania do API wymagają klucza. Przekaż go w nagłówku",
+      "header_example": "X-API-Key: ak_xxxxxxxxxxxxx"
+    },
+    "copied": "Skopiowano!",
+    "copied_description": "Kod został skopiowany do schowka."
+  },
+  "endpoints": {
+    "title": "Endpoints",
+    "results": {
+      "title": "Lista wyników",
+      "description": "Zwraca listę wyników analizy przetargów z podstawowymi informacjami (nazwa, organizacja, termin składania ofert).",
+      "detailed_description": "Ten endpoint pozwala na pobieranie spaginowanych wyników analizy przetargów. Możesz filtrować wyniki według daty, ograniczać liczbę zwracanych elementów oraz kontrolować czy uwzględnić wyniki historyczne.",
+      "use_case": "Używaj do wyświetlania tabeli wyników i filtrowania po dacie."
+    },
+    "criteria": {
+      "title": "Kryteria oceny",
+      "description": "Szczegółowa analiza spełnienia kryteriów dla konkretnego przetargu z oceną punktową.",
+      "detailed_description": "Pobiera kompletną analizę tego, jak dany przetarg został oceniony według zdefiniowanych kryteriów. Każde kryterium zawiera ocenę punktową, poziom pewności AI, uzasadnienie oraz informację czy jest dyskwalifikujące. Dane te pozwalają zrozumieć dlaczego przetarg otrzymał konkretną ocenę.",
+      "use_case": "Używaj do wyświetlania szczegółowej analizy dlaczego dany przetarg otrzymał konkretną ocenę."
+    },
+    "files": {
+      "title": "Pliki przetargu",
+      "description": "Lista dokumentów związanych z przetargiem (SIWZ, specyfikacje, załączniki) z opcją podglądu.",
+      "detailed_description": "Zwraca kompletną listę wszystkich dokumentów pobranych dla danego przetargu. Każdy plik zawiera link do pobrania, rozmiar, oraz opcjonalny podgląd pierwszych fragmentów treści. Dokumenty są automatycznie pobierane i analizowane podczas procesu oceny przetargu.",
+      "use_case": "Używaj do wyświetlania listy dokumentów do pobrania i ich podglądu."
+    }
+  },
+  "tabs": {
+    "overview": "Przegląd",
+    "request": "Request",
+    "response": "Response",
+    "examples": "Przykłady"
+  },
+  "overview": {
+    "description": "Opis",
+    "endpoint": "Endpoint",
+    "when_to_use": "Kiedy używać",
+    "quick_start": "Szybki start",
+    "step1": "Dodaj nagłówek autoryzacji z kluczem API",
+    "step2_post": "Wyślij dane w body zapytania",
+    "step2_get": "Zastąp result_id prawdziwym ID wyniku",
+    "step3": "Otrzymasz dane w formacie JSON"
+  },
+  "request": {
+    "body": "Request Body",
+    "query_params": "Query Parameters",
+    "headers": "Headers"
+  },
+  "response": {
+    "structure": "Struktura odpowiedzi",
+    "example": "Przykład odpowiedzi",
+    "status_codes": "Status Codes",
+    "success": "Sukces",
+    "unauthorized": "Nieautoryzowany – błędny klucz API",
+    "not_found": "Nie znaleziono zasobu",
+    "server_error": "Błąd serwera"
+  },
+  "examples": {
+    "javascript": "JavaScript",
+    "copy": "Kopiuj"
+  }
+}

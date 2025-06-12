@@ -10,7 +10,8 @@ import {
   FileText,
   UserPlus,
   Loader2,
-  KeyIcon
+  KeyIcon,
+  Mail
 } from "lucide-react";
 import { 
   HoverCard,
@@ -64,10 +65,9 @@ import { useTender } from '@/context/TenderContext';
 import { AssignUsersModal } from "../AssignUsersModal";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
-
+import { QuestionMarkIcon } from "@radix-ui/react-icons";
 const criteriaSchema = z.object({
-  name: z.string().min(1, "Criterion is required"),
+  name: z.string().min(1, "Kryterium jest wymagane"),
   description: z.string(),
   weight: z.number().min(1).max(5),
   is_disqualifying: z.boolean().default(false),
@@ -78,14 +78,14 @@ const criteriaSchema = z.object({
 });
 
 const formSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  company_description: z.string().min(1, "Company description is required"),
-  search_phrase: z.string().min(1, "Search phrase is required"),
-  sources: z.array(z.string()).min(1, "Select at least one source"),
-  criteria: z.array(criteriaSchema).min(1, "At least one criterion is required"),
+  name: z.string().min(1, "Nazwa jest wymagana"),
+  company_description: z.string().min(1, "Opis firmy jest wymagany"),
+  search_phrase: z.string().min(1, "Fraza kluczowa jest wymagana"),
+  sources: z.array(z.string()).min(1, "Wybierz co najmniej jedno źródło"),
+  criteria: z.array(criteriaSchema).min(1, "Co najmniej jedno kryterium jest wymagane"),
 });
 
-type FormData = z.infer<typeof formSchema>& { assigned_users: string[] };
+type FormData = z.infer<typeof formSchema>& { assigned_users: string[], email_recipients: string[] };
 
 type OrgMember = {
   id: string;
@@ -108,14 +108,19 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
   const { assignUsers } = useTender();
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [assignUsersOpen, setAssignUsersOpen] = useState(false);
+  // show/hide the inline assignment section
   const [showAssignees, setShowAssignees] = useState(false);
+  // fetched org members
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  // local selection
+ 
   const [isAssigneesLoading, setIsAssigneesLoading] = useState(false);
-  
-  const t = useTendersTranslations();
-  const tCommon = useCommonTranslations();
 
+
+  // Guard assigned_users to never be undefined
   const assignedUsers: string[] = Array.isArray(analysis.assigned_users) ? analysis.assigned_users : [];
+
+  // Determine if this analysis is shared (excludes owner)
   const isShared = assignedUsers.some(id => id !== analysis.user_id);
   const [tedExpanded, setTedExpanded] = useState(false);
   const [germanExpanded, setGermanExpanded] = useState(false);
@@ -126,6 +131,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
       [criteriaIndex]: !prev[criteriaIndex]
     }));
   };
+
 
   const defaultCriteria =
   analysis.criteria.length > 0
@@ -168,7 +174,6 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
   
   const newCriteriaRef = useRef<HTMLInputElement | null>(null);
   const [lastAddedIndex, setLastAddedIndex] = useState<number | null>(null);
-
   useEffect(() => {
     if (!showAssignees) return;
     (async () => {
@@ -187,6 +192,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
     })();
   }, [showAssignees]);
 
+
   useEffect(() => {
     if (lastAddedIndex !== null && newCriteriaRef.current) {
       newCriteriaRef.current.focus();
@@ -196,9 +202,11 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
 
   async function handleSubmit(values: FormData) {
     try {
+      // include selected users (assigned users) and email recipients in the payload
       const payload = {
         ...values,
         assigned_users: selectedUsers,
+        email_recipients: selectedEmailRecipients,
       };
       await onSubmit(payload);
     } catch (error) {
@@ -206,6 +214,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
     }
   }
 
+  // Updated share-toggle handler now using guarded assignedUsers
   const handleShareToggle = async () => {
     if (!analysis._id) return;
     setIsShareLoading(true);
@@ -217,6 +226,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
       const { members } = await resp.json();
       const orgIds = members.map((m: any) => m.id);
 
+      // build new list using assignedUsers
       const newAssigned = isShared
         ? assignedUsers.filter(id => !orgIds.includes(id))
         : Array.from(new Set([...assignedUsers, ...orgIds]));
@@ -229,9 +239,10 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
       setIsShareLoading(false);
     }
   };
-
-  const [selectedUsers, setSelectedUsers] = useState<string[]>(assignedUsers);
-
+ const [selectedUsers, setSelectedUsers] = useState<string[]>(assignedUsers);
+ const [selectedEmailRecipients, setSelectedEmailRecipients] = useState<string[]>(
+   analysis.email_recipients || analysis.assigned_users || []
+ );
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="relative">
@@ -240,98 +251,182 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
         {...form.register("assigned_users")}
         value={selectedUsers.join(",")}
       />
+      <input
+        type="hidden"
+        {...form.register("email_recipients")}
+        value={selectedEmailRecipients.join(",")}
+      />
 
         {showShareButton && (
-          <div className="mb-4 space-y-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleShareToggle}
-              disabled={isShareLoading}
-              className="flex items-center gap-2 w-full justify-center"
-            >
-              {isShareLoading
-                ? isShared
-                  ? t('tenders.edit.share.stopSharingLoading')
-                  : t('tenders.edit.share.sharing')
-                : isShared
-                ? (
-                    <>
-                      <X className="w-4 h-4" />
-                      {t('tenders.edit.share.stopSharing')}
-                    </>
-                  )
-                : (
-                    <>
-                      <Share2 className="w-4 h-4" />
-                      {t('tenders.edit.share.shareInOrg')}
-                    </>
-                  )
-              }
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAssignees(v => !v)}
-              className="flex items-center gap-2 w-full justify-center"
-            >
-              <UserPlus className="w-4 h-4" />
-              {showAssignees ? t('tenders.edit.hideAssignUsers') : t('tenders.edit.assignUsers')}
-            </Button>
+  <div className="mb-4 space-y-2">
+     <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleShareToggle}
+      disabled={isShareLoading}
+      className="flex items-center gap-2 w-full justify-center"
+    >
+      {isShareLoading
+        ? isShared
+          ? "Anulowanie udostępniania..."
+          : "Udostępnianie..."
+        : isShared
+        ? (
+            <>
+              <X className="w-4 h-4" />
+              Przestań udostępniać w organizacji
+            </>
+          )
+        : (
+            <>
+              <Share2 className="w-4 h-4" />
+              Udostępnij w organizacji
+            </>
+          )
+      }
+    </Button>
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => setShowAssignees(v => !v)}
+      className="flex items-center gap-2 w-full justify-center"
+    >
+      <UserPlus className="w-4 h-4" />
+      {showAssignees ? 'Ukryj przypisywanie' : 'Przypisz użytkowników'}
+    </Button>
 
-            {showAssignees && (
-              <div className="border p-4 rounded-md bg-muted/50">
-                {isAssigneesLoading
-                  ? <div className="text-center py-6"><Loader2 className="animate-spin mx-auto"/></div>
-                  : orgMembers.length === 0
-                    ? <p className="text-sm text-muted-foreground">{t('tenders.edit.noUsers')}</p>
-                    : (
-                      <>
-                      <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
-                        <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        <div className="text-xs text-muted-foreground">
-                          {t('tenders.edit.assignInfo')}
-                        </div>
-                      </div>
-                      <ScrollArea className="max-h-52">
-                        {orgMembers.map(m => {
-                          const isOwner = m.id === analysis.user_id;
-                          const isSel   = selectedUsers.includes(m.id);
-                          return (
-                            <div key={m.id} className="flex items-center space-x-2 py-2">
-                              <Checkbox
-                                checked={isSel || isOwner}
-                                disabled={isOwner}
-                                onCheckedChange={() => {
-                                  if (isOwner) return;
-                                  const next = isSel
-                                    ? selectedUsers.filter(u => u !== m.id)
-                                    : [...selectedUsers, m.id];
-
-                                  setSelectedUsers(next);
-                                  form.setValue("assigned_users", next, {
-                                    shouldValidate: true,
-                                    shouldDirty:   true,
-                                  });
-                                }}
-                              />
-                                <Label className="flex-1">
-                                {m.name} <span className="text-xs text-muted-foreground">({m.email})</span>
-                                {isOwner && <Badge className="ml-2 text-xs">{t('tenders.edit.ownerBadge')}</Badge>}
-                              </Label>
-                            </div>
-                          );
-                        })}
-                      </ScrollArea>
-                      </>
-                    )
-                }
+    {showAssignees && (
+      <div className="border p-4 rounded-md bg-muted/50">
+        {isAssigneesLoading
+          ? <div className="text-center py-6"><Loader2 className="animate-spin mx-auto"/></div>
+          : orgMembers.length === 0
+            ? <p className="text-sm text-muted-foreground">Brak użytkowników</p>
+            : (
+              <>
+              <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
+                <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-muted-foreground">
+                  Użytkownicy zaznaczeni poniżej będą mieli dostęp do tej analizy i jej wyników. Posiadacz analizy zawsze ma dostęp.
+                </div>
               </div>
-            )}
+              <ScrollArea className="max-h-52">
+                {orgMembers.map(m => {
+                  const isOwner = m.id === analysis.user_id;
+                  const isSel   = selectedUsers.includes(m.id);
+                  return (
+                    <div key={m.id} className="flex items-center space-x-2 py-2">
+                      <Checkbox
+                        checked={isSel || isOwner}
+                        disabled={isOwner}
+                        onCheckedChange={() => {
+                          if (isOwner) return;
+                          const next = isSel
+                            ? selectedUsers.filter(u => u !== m.id)
+                            : [...selectedUsers, m.id];
+
+                          // update your local state
+                          setSelectedUsers(next);
+
+                          // **also** tell RHF about it
+                          form.setValue("assigned_users", next, {
+                            shouldValidate: true,
+                            shouldDirty:   true,
+                          });
+                          
+                          // Update email recipients: remove user if unassigned, add if assigned (unless already excluded)
+                          if (isSel) {
+                            // User being removed from assignment - also remove from email recipients
+                            const newEmailRecipients = selectedEmailRecipients.filter(id => id !== m.id);
+                            setSelectedEmailRecipients(newEmailRecipients);
+                            form.setValue("email_recipients", newEmailRecipients);
+                          } else {
+                            // User being added to assignment - add to email recipients by default
+                            if (!selectedEmailRecipients.includes(m.id)) {
+                              const newEmailRecipients = [...selectedEmailRecipients, m.id];
+                              setSelectedEmailRecipients(newEmailRecipients);
+                              form.setValue("email_recipients", newEmailRecipients);
+                            }
+                          }
+                        }}
+                      />
+                        <Label className="flex-1">
+                        {m.name} <span className="text-xs text-muted-foreground">({m.email})</span>
+                        {isOwner && <Badge className="ml-2 text-xs">Właściciel</Badge>}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </ScrollArea>
+              </>
+            )
+        }
+        
+        {/* Email Recipients Section */}
+        {showAssignees && selectedUsers.length > 0 && (
+          <div className="mt-4 border-t pt-4">
+            <div className="mb-4 border border-border bg-muted/50 p-3 rounded-md flex items-start gap-2">
+              <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-muted-foreground">
+                <strong>Powiadomienia email:</strong> Wybierz kto powinien otrzymywać emaile o nowych przetargach. 
+                Domyślnie wszyscy przypisani użytkownicy otrzymują powiadomienia.
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Odbiorcy powiadomień email</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const allAssigned = selectedUsers;
+                    const newEmailRecipients = selectedEmailRecipients.length === allAssigned.length ? [] : allAssigned;
+                    setSelectedEmailRecipients(newEmailRecipients);
+                    form.setValue("email_recipients", newEmailRecipients);
+                  }}
+                >
+                  {selectedEmailRecipients.length === selectedUsers.length ? 'Wyłącz wszystkich' : 'Włącz wszystkich'}
+                </Button>
+              </div>
+              
+              <ScrollArea className="max-h-32">
+                {selectedUsers.map(userId => {
+                  const member = orgMembers.find(m => m.id === userId);
+                  if (!member) return null;
+                  
+                  const isEmailRecipient = selectedEmailRecipients.includes(userId);
+                  return (
+                    <div key={userId} className="flex items-center space-x-2 py-1">
+                      <Checkbox
+                        checked={isEmailRecipient}
+                        onCheckedChange={() => {
+                          const next = isEmailRecipient
+                            ? selectedEmailRecipients.filter(id => id !== userId)
+                            : [...selectedEmailRecipients, userId];
+                          setSelectedEmailRecipients(next);
+                          form.setValue("email_recipients", next);
+                        }}
+                      />
+                      <Label className="flex-1 text-sm">
+                        {member.name} <span className="text-xs text-muted-foreground">({member.email})</span>
+                      </Label>
+                    </div>
+                  );
+                })}
+              </ScrollArea>
+            </div>
           </div>
         )}
+        
+        <div className="mt-4 flex justify-end space-x-2">
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
         <div className="p-6 space-y-6">
           <div className="space-y-4">
@@ -342,10 +437,10 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <Type className="h-4 w-4" />
-                    {t('tenders.edit.nameLabel')}
+                    Nazwa
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder={t('tenders.edit.namePlaceholder')} {...field} />
+                    <Input placeholder="Nazwij wyszukiwarkę..." {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -359,7 +454,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    {t('tenders.edit.companyDescriptionLabel')}
+                    Jakie przetargi chcesz wyszukiwać?
                     <HoverCard>
                       <HoverCardTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
@@ -367,13 +462,13 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                         </Button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
-                        <p>{t('tenders.edit.companyDescriptionTooltip')}</p>
+                        <p>Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.</p>
                       </HoverCardContent>
                     </HoverCard>
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder={t('tenders.edit.companyDescriptionPlaceholder')}
+                      placeholder="Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje..."
                       className="min-h-[100px]"
                       {...field}
                     />
@@ -390,7 +485,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                 <FormItem>
                   <FormLabel className="flex items-center gap-2">
                     <KeyIcon className="h-4 w-4" />
-                    {t('tenders.edit.searchPhraseLabel')}
+                    Słowa kluczowe
                     <HoverCard>
                       <HoverCardTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
@@ -398,12 +493,12 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                         </Button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80 text-xs bg-background border-border text-body-text">
-                        <p>{t('tenders.edit.searchPhraseTooltip')}</p>
+                        <p>Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. <br />AI będzie używało tych informacji do wyszukiwania przetargów.</p>
                       </HoverCardContent>
                     </HoverCard>
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder={t('tenders.edit.searchPhrasePlaceholder')} {...field} />
+                    <Input placeholder="Np. Budowa infrastruktury drogowej" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -424,7 +519,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                   <FormItem>
                     <FormLabel className="flex items-center gap-2">
                       <Database className="h-4 w-4" />
-                      {t('tenders.edit.sourcesLabel')}
+                      Źródła
                     </FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -435,17 +530,19 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                             className="w-full justify-between bg-white/10 shadow-sm hover:bg-background hover:shadow-sm"
                           >
                             {selectedSources.length > 0
-                              ? t('tenders.edit.selectedSources', { count: selectedSources.length })
-                              : t('tenders.edit.selectSources')}
+                              ? `Wybrano ${selectedSources.length} ${
+                                  selectedSources.length === 1 ? "źródło" : "źródła"
+                                }`
+                              : "Wybierz źródła..."}
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-full p-0" align="start">
                         <Command>
-                          <CommandInput placeholder="Search sources..." />
+                          <CommandInput placeholder="Szukaj źródła..." />
                           <CommandList>
-                            <CommandEmpty>No sources found.</CommandEmpty>
+                            <CommandEmpty>Nie znaleziono źródła.</CommandEmpty>
                             <CommandGroup>
                               {Object.entries(POLISH_SOURCES).map(([sourceId, source]) => {
                                 const isSelected = selectedSources.includes(sourceId);
@@ -603,7 +700,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
               <FormLabel className="text-base">
                 <div className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4" />
-                  {t('tenders.edit.criteriaLabel')}
+                  Kryteria analizy
                 </div>
               </FormLabel>
             </div>
@@ -631,11 +728,11 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-primary" />
-                          Criterion description
+                          Opis kryterium
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="e.g. what is the contract value?"
+                            placeholder="Np. jaka jest wartość kontraktu?"
                             value={field.value}
                             onChange={(e) => {
                               field.onChange(e);
@@ -658,7 +755,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                       name={`criteria.${index}.weight`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('tenders.edit.weightLabel')}</FormLabel>
+                          <FormLabel>Waga (1-5)</FormLabel>
                           <div className="flex gap-4 items-center">
                             <Slider
                               min={1}
@@ -692,10 +789,10 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                           </FormControl>
                           <div className="space-y-1 leading-none">
                             <FormLabel>
-                              {t('tenders.edit.disqualifying')}
+                              Kryterium dyskwalifikujące
                             </FormLabel>
                             <FormDescription className="text-xs">
-                              {t('tenders.edit.disqualifyingDescription')}
+                              Niespełnienie tego kryterium dyskwalifikuje przetarg
                             </FormDescription>
                           </div>
                         </FormItem>
@@ -715,10 +812,10 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                           </FormControl>
                           <div className="space-y-1 leading-none">
                             <FormLabel>
-                              {t('tenders.edit.excludeFromScore')}
+                              Wyklucz z oceny
                             </FormLabel>
                             <FormDescription className="text-xs">
-                              {t('tenders.edit.excludeFromScoreDescription')}
+                              Nie uwzględniaj przy wyliczaniu relewantności
                             </FormDescription>
                           </div>
                         </FormItem>
@@ -737,12 +834,12 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                         {expandedSections[index] ? (
                           <>
                             <X className="h-4 w-4" />
-                            {t('tenders.edit.hideOptional')}
+                            Ukryj opcjonalne
                           </>
                         ) : (
                           <>
                             <Sparkles className="h-4 w-4 text-primary-hover" />
-                            {t('tenders.edit.showOptional')}
+                            Pokaż opcjonalne
                           </>
                         )}
                       </Button>
@@ -754,8 +851,8 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                           <div className="flex items-center gap-2">
                             <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                               <Sparkles className="h-4 w-4 text-primary-hover" />
-                              {t('tenders.edit.instructionLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">optional</Badge>
+                              Instrukcja dla AI
+                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalna</Badge>
                             </FormLabel>
                             <HoverCard>
                               <HoverCardTrigger asChild>
@@ -764,7 +861,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                                 </Button>
                               </HoverCardTrigger>
                               <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                                <p>{t('tenders.edit.instructionTooltip')}</p>
+                                <p>Dodatkowe wskazówki dla AI, które doprecyzowują, jak analizować to kryterium i kiedy uznać je za spełnione.</p>
                               </HoverCardContent>
                             </HoverCard>
                           </div>
@@ -777,7 +874,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                                 <FormControl>
                                   <div className="relative">
                                     <Textarea
-                                      placeholder={t('tenders.edit.instructionPlaceholder')}
+                                      placeholder="Np. 'Sprawdź dokładną kwotę budżetu i uznaj kryterium za spełnione, jeśli budżet przekracza 500 000 PLN'"
                                       className="min-h-[90px] pl-9 text-sm resize-y bg-secondary border-input shadow-inner"
                                       {...field}
                                       value={field.value || ''}
@@ -793,8 +890,8 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                              {t('tenders.edit.keywordsLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">optional</Badge>
+                              Słowa kluczowe
+                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
                             </FormLabel>
                             <HoverCard>
                               <HoverCardTrigger asChild>
@@ -803,7 +900,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                                 </Button>
                               </HoverCardTrigger>
                               <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                                <p>{t('tenders.edit.keywordsTooltip')}</p>
+                                <p>Wprowadź słowa kluczowe oddzielone przecinkami, np. &quot;certyfikacja, ISO, budżet&quot;</p>
                               </HoverCardContent>
                             </HoverCard>
                           </div>
@@ -815,7 +912,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                               <FormItem>
                                 <FormControl>
                                   <Textarea
-                                    placeholder={t('tenders.edit.keywordsPlaceholder')}
+                                    placeholder="Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'"
                                     className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
                                     {...field}
                                     value={field.value || ''}
@@ -829,8 +926,8 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                              {t('tenders.edit.subcriteriaLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">optional</Badge>
+                              Dodatkowe zapytania
+                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">opcjonalne</Badge>
                             </FormLabel>
                             <Button
                               type="button"
@@ -844,7 +941,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                                 ]);
                               }}
                             >
-                              {t('tenders.edit.addSubquery')}
+                              + Dodaj zapytanie
                             </Button>
                           </div>
 
@@ -858,7 +955,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                                     <FormItem className="flex-1">
                                       <FormControl>
                                         <Input
-                                          placeholder="e.g. 'What certifications are required?'"
+                                          placeholder="Np. 'Jakie są wymagane certyfikaty?'"
                                           className="text-sm"
                                           {...field}
                                         />
@@ -893,7 +990,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
 
               {fields.length === 0 && (
                 <p className="mt-2 text-sm text-red-600">
-                  {t('tenders.edit.emptyCriteriaError')}
+                  Nie można stworzyć wyszukiwarki bez kryteriów. Dodaj przynajmniej jedno kryterium.
                 </p>
               )}
 
@@ -915,13 +1012,13 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                   setLastAddedIndex(fields.length);
                 }}
               >
-                {t('tenders.edit.addCriterion')}
+                + Dodaj nowe kryterium
               </Button>
             </div>
           </div>
 
           <Button type="submit" className="w-full bg-primary hover:bg-primary-hover shadow text-white" disabled={isLoading}>
-            {isLoading ? t('tenders.edit.saving') : t('tenders.edit.saveChanges')}
+            {isLoading ? "Aktualizuję..." : "Zapisz zmiany"}
           </Button>
         </div>
       </form>

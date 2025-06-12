@@ -46,15 +46,27 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
     ),
     "o4-mini": ModelConfig(
         provider="openai",
-        max_tokens=100000,
+        max_tokens=0,
         context_length=200000,
         description="o4-mini - Optimized for reasoning"
     ),
     "o4-mini-high": ModelConfig(
         provider="openai",
-        max_tokens=100000,
+        max_tokens=0,
         context_length=200000,
         description="o4-mini High - Extended thinking mode"
+    ),
+    "o3": ModelConfig(
+        provider="openai",
+        max_tokens=0,
+        context_length=200000,
+        description="o3 - Advanced reasoning model with enhanced problem-solving capabilities"
+    ),
+    "o3-mini": ModelConfig(
+        provider="openai",
+        max_tokens=0,
+        context_length=200000,
+        description="o3-mini - Cost-effective reasoning model"
     ),
     
     # Google Models

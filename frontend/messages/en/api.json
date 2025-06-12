@@ -1,0 +1,68 @@
+{
+  "page": {
+    "title": "API Documentation",
+    "description": "Integrate AI Assistant with your application. Access tender analysis results through our REST API.",
+    "auth": {
+      "title": "Authorization",
+      "description": "All API requests require a key. Pass it in the header",
+      "header_example": "X-API-Key: ak_xxxxxxxxxxxxx"
+    },
+    "copied": "Copied!",
+    "copied_description": "Code has been copied to clipboard."
+  },
+  "endpoints": {
+    "title": "Endpoints",
+    "results": {
+      "title": "Results List",
+      "description": "Returns a list of tender analysis results with basic information (name, organization, submission deadline).",
+      "detailed_description": "This endpoint allows you to retrieve paginated tender analysis results. You can filter results by date, limit the number of returned items, and control whether to include historical results.",
+      "use_case": "Use to display results table and filter by date."
+    },
+    "criteria": {
+      "title": "Evaluation Criteria",
+      "description": "Detailed analysis of criteria fulfillment for a specific tender with scoring.",
+      "detailed_description": "Retrieves complete analysis of how a given tender was evaluated according to defined criteria. Each criterion contains a score, AI confidence level, justification, and information about whether it's disqualifying. This data allows you to understand why a tender received a specific score.",
+      "use_case": "Use to display detailed analysis of why a given tender received a specific score."
+    },
+    "files": {
+      "title": "Tender Files",
+      "description": "List of documents related to the tender (specifications, requirements, attachments) with preview option.",
+      "detailed_description": "Returns a complete list of all documents downloaded for a given tender. Each file contains a download link, size, and optional preview of the first content fragments. Documents are automatically downloaded and analyzed during the tender evaluation process.",
+      "use_case": "Use to display list of downloadable documents and their preview."
+    }
+  },
+  "tabs": {
+    "overview": "Overview",
+    "request": "Request",
+    "response": "Response",
+    "examples": "Examples"
+  },
+  "overview": {
+    "description": "Description",
+    "endpoint": "Endpoint",
+    "when_to_use": "When to use",
+    "quick_start": "Quick start",
+    "step1": "Add authorization header with API key",
+    "step2_post": "Send data in request body",
+    "step2_get": "Replace result_id with real result ID",
+    "step3": "You will receive data in JSON format"
+  },
+  "request": {
+    "body": "Request Body",
+    "query_params": "Query Parameters",
+    "headers": "Headers"
+  },
+  "response": {
+    "structure": "Response structure",
+    "example": "Response example",
+    "status_codes": "Status Codes",
+    "success": "Success",
+    "unauthorized": "Unauthorized – invalid API key",
+    "not_found": "Resource not found",
+    "server_error": "Server error"
+  },
+  "examples": {
+    "javascript": "JavaScript",
+    "copy": "Copy"
+  }
+}

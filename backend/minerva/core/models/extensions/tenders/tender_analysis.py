@@ -122,6 +122,19 @@ class TenderAnalysis(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     active: bool = Field(default=True)
     assigned_users: List[str] = Field(default_factory=list)  # Add this field
+    email_recipients: List[str] = Field(default_factory=list)  # NEW: Users who receive email notifications
+    
+    def get_email_recipients(self) -> List[str]:
+        """Get users who should receive email notifications.
+        
+        Returns:
+            List[str]: User IDs who should receive emails. 
+                      Defaults to assigned_users if email_recipients is empty.
+        """
+        # Default to all assigned users if email_recipients is empty
+        if not self.email_recipients:
+            return self.assigned_users
+        return self.email_recipients
     
     class Config:
         arbitrary_types_allowed = True
@@ -178,7 +191,7 @@ class FilterStage(str, Enum):
     CRITERIA_NOT_MET = 'criteria_not_met'
 
 class FilteredTenderAnalysisResult(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default_factory=lambda: str(ObjectId()))
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     tender_id: str
     tender_name: str
     organization: Optional[str] = None

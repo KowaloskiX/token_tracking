@@ -6,7 +6,7 @@ from minerva.core.middleware.auth.jwt import get_current_user
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis
 from minerva.core.models.user import User
 from minerva.tasks.services.search_service import get_saved_search_results
-from minerva.tasks.services.tender_initial_ai_filtering_service import get_saved_initial_ai_filter_results, perform_ai_filtering
+from minerva.tasks.services.tender_initial_ai_filtering_service import AIFilteringMode, get_saved_initial_ai_filter_results, perform_ai_filtering
 from pydantic import BaseModel
 from minerva.core.database.database import db
 from datetime import datetime
@@ -111,7 +111,8 @@ async def filter_tenders(
             current_user=current_user,
             ai_batch_size=request.ai_batch_size,
             search_id=request.search_id,
-            save_results=request.save_results
+            save_results=request.save_results,
+            filtering_mode=AIFilteringMode.TRIPLE_RUN
         )
         
         # Prepare base response data

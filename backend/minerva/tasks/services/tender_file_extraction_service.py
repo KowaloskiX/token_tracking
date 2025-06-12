@@ -227,27 +227,34 @@ async def perform_file_extraction(
         
         if not processed_files:
             logger.warning(f"[{tender_id_str}] No files successfully processed.")
-            filtered_tender = FilteredTenderAnalysisResult(
-                            tender_id=tender_id_str,
-                            tender_name=getattr(tender, 'name', ""),
-                            organization=getattr(tender, 'organization', None),
-                            location=getattr(tender, 'location', None),
-                            analysis_id=str(analysis_id),
-                            filter_stage=FilterStage.FILE_EXTRACTION,
-                            filter_reason="No files successfully processed or error during processing",
-                            search_phrase=getattr(tender, 'search_phrase', None),
-                            source=getattr(tender, 'source', None),
-                            details_url=details_url,
-                            user_id=str(current_user.id) if current_user else None
-                        )
-            await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
-            logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
+            # filtered_tender = FilteredTenderAnalysisResult(
+            #                 tender_id=tender_id_str,
+            #                 tender_name=getattr(tender, 'name', ""),
+            #                 organization=getattr(tender, 'organization', None),
+            #                 location=getattr(tender, 'location', None),
+            #                 analysis_id=str(analysis_id),
+            #                 filter_stage=FilterStage.FILE_EXTRACTION,
+            #                 filter_reason="No files successfully processed or error during processing",
+            #                 search_phrase=getattr(tender, 'search_phrase', None),
+            #                 source=getattr(tender, 'source', None),
+            #                 details_url=details_url,
+            #                 user_id=str(current_user.id) if current_user else None
+            #             )
+            # await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
+            # logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
             return {
-                "status": "no_files",
+                "status": "success",
+                "has_files": False,
                 "reason": "No files successfully processed",
                 "tender_id": tender_id_str,
                 "details_url": details_url,
-                "original_match": tender
+                "original_match": tender,
+                "processed_files": {
+                    'successful_files': [],
+                    'total_processed': 0,
+                    'successful_count': 0
+                },
+                "tender_pinecone_id": tender_pinecone_id
             }
             
         # Process files
@@ -337,27 +344,34 @@ async def perform_file_extraction(
         
         if not successful_files:
             logger.warning(f"[{tender_id_str}] No files were successfully uploaded after processing.")
-            filtered_tender = FilteredTenderAnalysisResult(
-                            tender_id=tender_id_str,
-                            tender_name=getattr(tender, 'name', ""),
-                            organization=getattr(tender, 'organization', None),
-                            location=getattr(tender, 'location', None),
-                            analysis_id=str(analysis_id),
-                            filter_stage=FilterStage.FILE_EXTRACTION,
-                            filter_reason="No files were successfully uploaded after processing",
-                            search_phrase=getattr(tender, 'search_phrase', None),
-                            source=getattr(tender, 'source', None),
-                            details_url=details_url,
-                            user_id=str(current_user.id) if current_user else None
-                        )
-            await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
-            logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
+            # filtered_tender = FilteredTenderAnalysisResult(
+            #                 tender_id=tender_id_str,
+            #                 tender_name=getattr(tender, 'name', ""),
+            #                 organization=getattr(tender, 'organization', None),
+            #                 location=getattr(tender, 'location', None),
+            #                 analysis_id=str(analysis_id),
+            #                 filter_stage=FilterStage.FILE_EXTRACTION,
+            #                 filter_reason="No files were successfully uploaded after processing",
+            #                 search_phrase=getattr(tender, 'search_phrase', None),
+            #                 source=getattr(tender, 'source', None),
+            #                 details_url=details_url,
+            #                 user_id=str(current_user.id) if current_user else None
+            #             )
+            # await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
+            # logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
             return {
-                "status": "upload_failed",
+                "status": "success",
+                "has_files": False,
                 "reason": "No files were successfully uploaded",
                 "tender_id": tender_id_str,
                 "details_url": details_url,
-                "original_match": tender
+                "original_match": tender,
+                "processed_files": {
+                    'successful_files': [],
+                    'total_processed': total_processed_count,
+                    'successful_count': 0
+                },
+                "tender_pinecone_id": tender_pinecone_id
             }
             
         result = {

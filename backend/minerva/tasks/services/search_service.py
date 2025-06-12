@@ -1,10 +1,14 @@
 from datetime import datetime
+import json
 import logging
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from bson import ObjectId
 from minerva.core.database.database import db
+from minerva.core.models.request.ai import LLMRAGRequest
 from minerva.core.services.keyword_search.elasticsearch import es_client
+from minerva.core.services.llm_logic import ask_llm_logic
+from minerva.core.services.llm_providers.model_config import get_model_config, get_optimal_max_tokens
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from pinecone import Pinecone
 import os
@@ -89,8 +93,86 @@ def translate_filters_to_elasticsearch(filters: List[Dict[str, Any]]) -> List[Di
     
     return es_filters
 
+async def generate_pinecone_queries(
+        search_phrases: List[str],
+        company_description: str,
+        max_queries: int = 20
+) -> List[str]:
+    """
+    Turn keyword-style search_phrases + company_description into
+    short, name-like semantic queries optimised for Pinecone.
+    """
+    system_prompt = (
+        "You are an expert procurement analyst who rewrites keyword lists "
+        "into concise tender-title style phrases suitable for semantic "
+        "vector search. You NEVER invent company names."
+    )
+
+    user_prompt = f"""
+    ## COMPANY DESCRIPTION
+    {company_description}
+
+    ## ORIGINAL KEYWORDS
+    {", ".join(search_phrases)}
+
+    ## TASK
+    Produce up to {max_queries} distinct, **short** search strings that
+    capture the business needs implied by the company description. Each
+    string should be 2-7 words, look like something that could appear in
+    a tender title, and avoid generic filler words.
+
+    ## RESPONSE FORMAT (JSON)
+    {{
+      "queries": ["...", "..."]
+    }}
+    """
+    model = "gpt-4.1"
+    provider, max_tokens = get_model_config(model)
+    optimized_tokens = get_optimal_max_tokens(model, "high")
+
+    req = LLMRAGRequest(
+        query=user_prompt,
+        rag_query="",
+        vector_store=None,
+        llm={
+            "provider": provider,
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": optimized_tokens,
+            "system_message": system_prompt,
+            "stream": False,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                        "name": "pinecone_request_queries_response",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "queries": {
+                                    "type": "array",
+                                    "description": "List of queries to pinecone.",
+                                    "items": {"type": "string", "description": "Pinecone query"}
+                                }
+                            },
+                            "required": ["queries"],
+                            "additionalProperties": False
+                        }
+                    }
+            }
+        }
+    )
+    raw = await ask_llm_logic(req)
+    try:
+        parsed = json.loads(raw.llm_response)
+        return parsed.get("queries", [])[:max_queries]
+    except Exception as e:
+        logger.warning(f"Query-expander JSON parse failed: {e}")
+        return []
+
 async def perform_tender_search(
     search_phrase: str,
+    company_description: str,      
     tender_names_index_name: str,
     elasticsearch_index_name: str = "tenders",
     embedding_model: str = "text-embedding-3-large",
@@ -142,6 +224,8 @@ async def perform_tender_search(
 
     search_phrases = [phrase.strip() for phrase in search_phrase.split(",")]
 
+    semantic_phrases = await generate_pinecone_queries(search_phrase, company_description)
+
     pinecone_filters = translate_filters_to_pinecone(filter_conditions or [])
     es_filters = translate_filters_to_elasticsearch(filter_conditions or [])
 
@@ -189,8 +273,8 @@ async def perform_tender_search(
 
 
             # Add keyword search filters for each search phrase
-            for phrase in search_phrases:
-                logger.info(f"Querying Pinecone for source: {source} with vector search and keyword filters: {source_pinecone_filters}")
+            for phrase in semantic_phrases:
+                logger.info(f"Querying Pinecone for source: {source} with vector search, phrase: {phrase} and keyword filters: {source_pinecone_filters}")
                 
                 # Perform vector similarity search
                 pinecone_results = await query_tool.query_by_text(
@@ -294,12 +378,12 @@ async def perform_tender_search(
             filter_conditions=pinecone_filters
         )
         # Add keyword search filters for each search phrase
-        for phrase in search_phrases:
+        for phrase in semantic_phrases:
 
             logger.info(f"Querying Pinecone with vector search and keyword filters: {pinecone_filters}")
             
             pinecone_results = await query_tool.query_by_text(
-                query_text=search_phrase,
+                query_text=phrase,
                 top_k=top_k,
                 score_threshold=score_threshold,
                 filter_conditions=pinecone_filters

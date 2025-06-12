@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class TenderSearchRequest(BaseModel):
     search_phrase: Optional[str] = None
+    company_description: Optional[str] = None
     tender_names_index_name: Optional[str] = "tenders"
     elasticsearch_index_name: Optional[str] = "tenders"
     embedding_model: Optional[str] = "text-embedding-3-large"
@@ -55,6 +56,7 @@ async def search_tenders(
 ):
     try:
         search_phrase_to_use = request.search_phrase
+        company_description_to_use = request.company_description
         analysis_id_to_use = request.analysis_id
         sources_to_use = request.sources
 
@@ -72,6 +74,7 @@ async def search_tenders(
                         detail=f"Tender analysis with ID {analysis_id_to_use} not found."
                     )
                 tender_analysis = TenderAnalysis(**analysis_doc)
+                company_description_to_use = tender_analysis.company_description
                 search_phrase_to_use = tender_analysis.search_phrase
                 sources_to_use = tender_analysis.sources
                 if not search_phrase_to_use:
@@ -97,6 +100,7 @@ async def search_tenders(
 
         search_results = await perform_tender_search(
             search_phrase=search_phrase_to_use,
+            company_description=company_description_to_use,
             tender_names_index_name=request.tender_names_index_name,
             elasticsearch_index_name=request.elasticsearch_index_name,
             embedding_model=request.embedding_model,

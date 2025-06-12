@@ -30,6 +30,7 @@ DEFAULT_PAGE_TYPE_MAP: dict[str, str] = {
     "https://vmp-rheinland.de/VMPSatellite": "Rheinland",
     "https://www.vergabe.rlp.de/VMPCenter": "Vergabe Rheinland-Pfalz",
     "https://vergabe.hilgmbh.de/VMPCenter": "HIL GmbH",
+    "https://vergabeportal-bw.de/Satellite": "VergabePortal BW"
 }
 
 class DTVPLikeTenderExtractor():

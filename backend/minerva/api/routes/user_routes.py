@@ -563,7 +563,7 @@ async def send_test_email(current_user: User = Depends(get_current_user)):
             status_code=500,
             detail=f"Failed to send test email: {str(e)}"
         )
-
+    
 @router.put("/{user_id}/set-active-status")
 async def set_user_active_status(
     user_id: str,
@@ -602,7 +602,7 @@ async def set_user_active_status(
             f"Dzień dobry,<br><br>"
             f"Pragniemy poinformować, że Twoje konto w serwisie <b>Asystent AI</b> zostało dezaktywowane.<br><br>"
             f"Jeśli masz pytania lub uważasz, że to pomyłka, prosimy o kontakt z naszym działem obsługi klienta.<br><br>"
-            f"Z poważaniem,<br>Zespół Asystent AI"
+            f"Pozdrawiam,<br>Asystent AI :)"
         )
         try:
             await send_email(

@@ -7,7 +7,8 @@ from minerva.config.logging_config import setup_logging
 from minerva.tasks.scraping_runner import main as scraping_main
 from minerva.tasks.analysis_runner import main as analysis_main
 from minerva.tasks.monitoring_runner import main as monitoring_main
-from datetime import datetime
+from minerva.tasks.cleanup_runner import main as cleanup_main
+from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
 import nltk
@@ -56,24 +57,29 @@ def configure_scheduler(loop):
     def get_today():
         return datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d")
 
+    # New helper – previous week's same weekday
+    def get_last_week_date():
+        return (datetime.now(pytz.timezone("Europe/Warsaw")).date() - timedelta(days=7)).strftime("%Y-%m-%d")
+
     # Use WORKER_INDEX, TOTAL_*_WORKERS, and WORKER_TYPE from environment
     worker_index = int(os.getenv("WORKER_INDEX", 0))
     total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 6))
     total_analysis_workers = int(os.getenv("TOTAL_ANALYSIS_WORKERS", 5))
+    total_cleanup_workers = int(os.getenv("TOTAL_CLEANUP_WORKERS", 1))
     worker_type = os.getenv("WORKER_TYPE", "scraping")  # Default to scraping if not set
 
     # Schedule jobs based on worker type
     if worker_type == "scraping":
         scheduler.add_job(
             lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
-            trigger=CronTrigger(hour=20, minute=40, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=19, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )
     elif worker_type == "analysis":
         scheduler.add_job(
             lambda: run_coroutine(analysis_main(worker_index, total_analysis_workers, get_today())),
-            trigger=CronTrigger(hour=23, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=22, minute=45, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"analysis_worker_{worker_index}",
             replace_existing=True
         )
@@ -82,6 +88,13 @@ def configure_scheduler(loop):
             lambda: run_coroutine(monitoring_main(0, 1, None)),
             trigger=CronTrigger(hour=18, minute=0, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name="monitoring_worker_0",
+            replace_existing=True
+        )
+    elif worker_type == "cleanup":
+        scheduler.add_job(
+            lambda: run_coroutine(cleanup_main(worker_index, total_cleanup_workers, get_last_week_date())),
+            trigger=CronTrigger(hour=12, minute=0, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name=f"cleanup_worker_{worker_index}",
             replace_existing=True
         )
 

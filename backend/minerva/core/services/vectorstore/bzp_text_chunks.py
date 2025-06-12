@@ -91,7 +91,6 @@ class BZPDocumentChunker:
             if not has_bzp_number:
                 reasons.append("No official BZP number (YYYY/BZP XXXXXXXX) found")
             
-            logger.info(f"BZP Detection FAILED - Reasons: {'; '.join(reasons)}")
             
         # Document is BZP if it has:
         # - Announcement header (3 pts)

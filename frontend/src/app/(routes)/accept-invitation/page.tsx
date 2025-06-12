@@ -4,14 +4,19 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 import { AcceptInvitationForm } from "@/components/auth/AcceptInvitationForm"
+import { useTranslations } from 'next-intl'
+import { getTranslations } from 'next-intl/server'
 
 /**
- * Page Metadata
- * Defines SEO-friendly title and description for the page
+ * Generate dynamic metadata based on locale
  */
-export const metadata: Metadata = {
-  title: "Asystent AI - Akceptacja Zaproszenia",
-  description: "Zaakceptuj zaproszenie do dołączenia do organizacji na platformie Asystent AI.",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('auth.accept_invitation')
+  
+  return {
+    title: t('page_title'),
+    description: t('page_description'),
+  }
 }
 
 /**
@@ -40,12 +45,15 @@ export default async function AcceptInvitationPage({
   // Safely resolve searchParams in case it's a Promise
   const params = await Promise.resolve(searchParams);
   const token = params.token;
+  
+  // Get translations
+  const t = await getTranslations('auth.accept_invitation')
 
   // Early return with error message if token is missing
   if (!token) {
     return (
       <div className="h-[100svh] flex items-center justify-center">
-        <p className="text-red-500">Brak ważnego tokenu zaproszenia.</p>
+        <p className="text-red-500">{t('missing_token_error')}</p>
       </div>
     )
   }
@@ -61,9 +69,9 @@ export default async function AcceptInvitationPage({
             buttonVariants({ variant: "ghost" }),
             "absolute right-4 top-4 md:right-8 md:top-8"
           )}
-          aria-label="Przejdź do strony logowania"
+          aria-label={t('login_link')}
         >
-          Zaloguj się
+          {t('login_link')}
         </Link>
 
         {/* Left sidebar with background image and testimonial (hidden on mobile) */}
@@ -101,9 +109,9 @@ export default async function AcceptInvitationPage({
           <div className="relative z-20 mt-auto">
             <blockquote className="space-y-2 text-neutral-100">
               <p className="text-lg">
-                `&quot;`Asystent AI totalnie zrewolucjonizował sposób, w jaki analizujemy przetargi.`&quot;`
+                &quot;{t('testimonial_quote')}&quot;
               </p>
-              <footer className="text-sm">Marcin Przybylski, Specjalista ds. Przetargów</footer>
+              <footer className="text-sm">{t('testimonial_author')}</footer>
             </blockquote>
           </div>
         </div>
@@ -114,10 +122,10 @@ export default async function AcceptInvitationPage({
             {/* Page title and subtitle */}
             <div className="flex flex-col space-y-2 text-center">
               <h1 className="text-2xl font-semibold tracking-tight mt-28 sm:mt-0">
-                Zaakceptuj zaproszenie
+                {t('title')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Utwórz konto lub podaj dane to istniejącego konta, aby dołączyć do organizacji.
+                {t('create_or_login_description')}
               </p>
             </div>
             
@@ -126,19 +134,19 @@ export default async function AcceptInvitationPage({
             
             {/* Terms and privacy policy acceptance text */}
             <p className="px-8 text-center text-sm text-muted-foreground">
-              Klikając `&quot;`Akceptuj zaproszenie`&quot;`, akceptujesz nasz{" "}
+              {t('terms_acceptance')}{" "}
               <Link
                 href="/documents/Polityka_Prywatności.pdf"
                 className="underline underline-offset-4 hover:text-primary"
               >
-                Regulamin
+                {t('terms_link')}
               </Link>{" "}
-              oraz{" "}
+              {t('and')}{" "}
               <Link
                 href="/documents/Polityka_Prywatności.pdf"
                 className="underline underline-offset-4 hover:text-primary"
               >
-                Politykę Prywatności
+                {t('privacy_policy_link')}
               </Link>
               .
             </p>

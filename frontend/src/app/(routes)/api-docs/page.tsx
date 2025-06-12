@@ -25,16 +25,27 @@ import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { atomOneDark } from "react-syntax-highlighter/dist/cjs/styles/hljs";
+import { useTranslations } from 'next-intl';
 
 const ApiDocsPage = () => {
     const [selectedEndpoint, setSelectedEndpoint] = useState("results");
     const { toast } = useToast();
+    
+    // Get translations
+    const t = useTranslations('api');
+    const tPage = useTranslations('api.page');
+    const tEndpoints = useTranslations('api.endpoints');
+    const tTabs = useTranslations('api.tabs');
+    const tOverview = useTranslations('api.overview');
+    const tRequest = useTranslations('api.request');
+    const tResponse = useTranslations('api.response');
+    const tExamples = useTranslations('api.examples');
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         toast({
-            title: "Skopiowano!",
-            description: "Kod został skopiowany do schowka.",
+            title: tPage('copied'),
+            description: tPage('copied_description'),
         });
     };
 
@@ -47,12 +58,11 @@ const ApiDocsPage = () => {
             id: "results",
             method: "POST",
             path: "/api/results",
-            title: "Lista wyników",
-            description:
-                "Zwraca listę wyników analizy przetargów z podstawowymi informacjami (nazwa, organizacja, termin składania ofert).",
-            detailedDescription: "Ten endpoint pozwala na pobieranie spaginowanych wyników analizy przetargów. Możesz filtrować wyniki według daty, ograniczać liczbę zwracanych elementów oraz kontrolować czy uwzględnić wyniki historyczne.",
+            title: tEndpoints('results.title'),
+            description: tEndpoints('results.description'),
+            detailedDescription: tEndpoints('results.detailed_description'),
             icon: <Search className="w-4 h-4" />,
-            useCase: "Używaj do wyświetlania tabeli wyników i filtrowania po dacie.",
+            useCase: tEndpoints('results.use_case'),
             requestBodyExample: `{
   "analysis_id": "string",
   "date_from": "YYYY-MM-DD",
@@ -89,12 +99,11 @@ const ApiDocsPage = () => {
             id: "criteria",
             method: "GET",
             path: "/api/results/{result_id}/criteria",
-            title: "Kryteria oceny",
-            description:
-                "Szczegółowa analiza spełnienia kryteriów dla konkretnego przetargu z oceną punktową.",
-            detailedDescription: "Pobiera kompletną analizę tego, jak dany przetarg został oceniony według zdefiniowanych kryteriów. Każde kryterium zawiera ocenę punktową, poziom pewności AI, uzasadnienie oraz informację czy jest dyskwalifikujące. Dane te pozwalają zrozumieć dlaczego przetarg otrzymał konkretną ocenę.",
+            title: tEndpoints('criteria.title'),
+            description: tEndpoints('criteria.description'),
+            detailedDescription: tEndpoints('criteria.detailed_description'),
             icon: <FileText className="w-4 h-4" />,
-            useCase: "Używaj do wyświetlania szczegółowej analizy dlaczego dany przetarg otrzymał konkretną ocenę.",
+            useCase: tEndpoints('criteria.use_case'),
             response: {
                 result_id: "string",
                 criteria_analysis: "Array<CriteriaItem>",
@@ -135,12 +144,11 @@ const ApiDocsPage = () => {
             id: "files",
             method: "GET",
             path: "/api/results/{result_id}/files",
-            title: "Pliki przetargu",
-            description:
-                "Lista dokumentów związanych z przetargiem (SIWZ, specyfikacje, załączniki) z opcją podglądu.",
-            detailedDescription: "Zwraca kompletną listę wszystkich dokumentów pobranych dla danego przetargu. Każdy plik zawiera link do pobrania, rozmiar, oraz opcjonalny podgląd pierwszych fragmentów treści. Dokumenty są automatycznie pobierane i analizowane podczas procesu oceny przetargu.",
+            title: tEndpoints('files.title'),
+            description: tEndpoints('files.description'),
+            detailedDescription: tEndpoints('files.detailed_description'),
             icon: <Download className="w-4 h-4" />,
-            useCase: "Używaj do wyświetlania listy dokumentów do pobrania i ich podglądu.",
+            useCase: tEndpoints('files.use_case'),
             queryParams: {
                 include_preview: "boolean (opcjonalne)",
             },
@@ -242,12 +250,11 @@ console.log(data);`;
                         <div className="flex items-center justify-center mb-4">
                             <BookOpen className="w-8 h-8 text-primary mr-3" />
                             <h1 className="text-4xl tracking-tight text-foreground sm:text-5xl">
-                                Dokumentacja API
+                                {tPage('title')}
                             </h1>
                         </div>
                         <p className="mt-6 text-lg text-body-text">
-                            Integruj Asystenta AI z Twoją aplikacją. Uzyskaj dostęp do wyników
-                            analizy przetargów poprzez nasze REST API.
+                            {tPage('description')}
                         </p>
                     </div>
                 </div>
@@ -260,7 +267,7 @@ console.log(data);`;
                     <div className="lg:col-span-1">
                         <Card className="sticky top-24">
                             <CardHeader>
-                                <CardTitle className="text-lg">Endpoints</CardTitle>
+                                <CardTitle className="text-lg">{tEndpoints('title')}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-2">
                                 {endpoints.map((endpoint) => (
@@ -289,13 +296,12 @@ console.log(data);`;
                             <CardHeader>
                                 <div className="flex items-center">
                                     <Key className="w-5 h-5 text-primary mr-2" />
-                                    <CardTitle>Autoryzacja</CardTitle>
+                                    <CardTitle>{tPage('auth.title')}</CardTitle>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <p className="text-body-text">
-                                    Wszystkie zapytania do API wymagają klucza. Przekaż go w
-                                    nagłówku{" "}
+                                    {tPage('auth.description')}{" "}
                                     <code className="bg-secondary px-2 py-1 rounded">
                                         X-API-Key
                                     </code>
@@ -303,7 +309,7 @@ console.log(data);`;
                                 </p>
 
                                 <div className="bg-secondary p-4 rounded-lg">
-                                    <code className="text-sm">X-API-Key: ak_xxxxxxxxxxxxx</code>
+                                    <code className="text-sm">{tPage('auth.header_example')}</code>
                                 </div>
                             </CardContent>
                         </Card>
@@ -334,23 +340,23 @@ console.log(data);`;
                                         <CardContent>
                                             <Tabs defaultValue="overview" className="w-full">
                                                 <TabsList className="grid w-full grid-cols-4">
-                                                    <TabsTrigger value="overview">Przegląd</TabsTrigger>
-                                                    <TabsTrigger value="request">Request</TabsTrigger>
-                                                    <TabsTrigger value="response">Response</TabsTrigger>
-                                                    <TabsTrigger value="examples">Przykłady</TabsTrigger>
+                                                    <TabsTrigger value="overview">{tTabs('overview')}</TabsTrigger>
+                                                    <TabsTrigger value="request">{tTabs('request')}</TabsTrigger>
+                                                    <TabsTrigger value="response">{tTabs('response')}</TabsTrigger>
+                                                    <TabsTrigger value="examples">{tTabs('examples')}</TabsTrigger>
                                                 </TabsList>
 
                                                 {/* ----------------------------- OVERVIEW */}
                                                 <TabsContent value="overview" className="space-y-4">
                                                     <div>
-                                                        <h4 className="font-medium mb-2">Opis</h4>
+                                                        <h4 className="font-medium mb-2">{tOverview('description')}</h4>
                                                         <p className="text-body-text">
                                                             {endpoint.detailedDescription}
                                                         </p>
                                                     </div>
 
                                                     <div>
-                                                        <h4 className="font-medium mb-2">Endpoint</h4>
+                                                        <h4 className="font-medium mb-2">{tOverview('endpoint')}</h4>
                                                         <div className="flex items-center space-x-2">
                                                             <Badge variant="default">
                                                                 {endpoint.method}
@@ -363,7 +369,7 @@ console.log(data);`;
 
                                                     {endpoint.useCase && (
                                                         <div>
-                                                            <h4 className="font-medium mb-2">Kiedy używać</h4>
+                                                            <h4 className="font-medium mb-2">{tOverview('when_to_use')}</h4>
                                                             <div className="bg-secondary border-l-4 border-accent p-3 rounded">
                                                                 <p className="text-sm text-primary">
                                                                     {endpoint.useCase}
@@ -373,18 +379,18 @@ console.log(data);`;
                                                     )}
 
                                                     <div>
-                                                        <h4 className="font-medium mb-2">Szybki start</h4>
+                                                        <h4 className="font-medium mb-2">{tOverview('quick_start')}</h4>
                                                         <div className="space-y-2">
                                                             <p className="text-sm text-body-text">
-                                                                1. Dodaj nagłówek autoryzacji z kluczem API
+                                                                1. {tOverview('step1')}
                                                             </p>
                                                             <p className="text-sm text-body-text">
                                                                 2. {endpoint.method === "POST" 
-                                                                    ? "Wyślij dane w body zapytania" 
-                                                                    : "Zastąp {result_id} prawdziwym ID wyniku"}
+                                                                    ? tOverview('step2_post')
+                                                                    : tOverview('step2_get')}
                                                             </p>
                                                             <p className="text-sm text-body-text">
-                                                                3. Otrzymasz dane w formacie JSON
+                                                                3. {tOverview('step3')}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -394,7 +400,7 @@ console.log(data);`;
                                                 <TabsContent value="request" className="space-y-4">
                                                     {endpoint.requestBodyExample && (
                                                         <div>
-                                                            <h4 className="font-medium mb-3">Request Body</h4>
+                                                            <h4 className="font-medium mb-3">{tRequest('body')}</h4>
                                                             <div className="bg-neutral-900 p-4 rounded-lg">
                                                                 <SyntaxHighlighter
                                                                     language="json"
@@ -413,7 +419,7 @@ console.log(data);`;
                                                     {endpoint.queryParams && (
                                                         <div>
                                                             <h4 className="font-medium mb-3">
-                                                                Query Parameters
+                                                                {tRequest('query_params')}
                                                             </h4>
                                                             <div className="bg-neutral-900 p-4 rounded-lg">
                                                                 <SyntaxHighlighter
@@ -435,7 +441,7 @@ console.log(data);`;
                                                     )}
 
                                                     <div>
-                                                        <h4 className="font-medium mb-3">Headers</h4>
+                                                        <h4 className="font-medium mb-3">{tRequest('headers')}</h4>
                                                         <div className="bg-neutral-900 p-4 rounded-lg">
                                                             <SyntaxHighlighter
                                                                 language="json"
@@ -458,7 +464,7 @@ console.log(data);`;
                                                 <TabsContent value="response" className="space-y-4">
                                                     <div>
                                                         <h4 className="font-medium mb-3">
-                                                            Struktura odpowiedzi
+                                                            {tResponse('structure')}
                                                         </h4>
                                                         <div className="bg-neutral-900 p-4 rounded-lg">
                                                             <SyntaxHighlighter
@@ -477,7 +483,7 @@ console.log(data);`;
                                                     {endpoint.responseExample && (
                                                         <div>
                                                             <h4 className="font-medium mb-3">
-                                                                Przykład odpowiedzi
+                                                                {tResponse('example')}
                                                             </h4>
                                                             <div className="bg-neutral-900 p-4 rounded-lg">
                                                                 <SyntaxHighlighter
@@ -496,30 +502,30 @@ console.log(data);`;
 
                                                     <div>
                                                         <h4 className="font-medium mb-3">
-                                                            Status Codes
+                                                            {tResponse('status_codes')}
                                                         </h4>
                                                         <div className="space-y-2">
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge className="bg-green-600 text-white">
                                                                     200
                                                                 </Badge>
-                                                                <span className="text-sm">Sukces</span>
+                                                                <span className="text-sm">{tResponse('success')}</span>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge variant="destructive">401</Badge>
                                                                 <span className="text-sm">
-                                                                    Nieautoryzowany – błędny klucz API
+                                                                    {tResponse('unauthorized')}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge variant="destructive">404</Badge>
                                                                 <span className="text-sm">
-                                                                    Nie znaleziono zasobu
+                                                                    {tResponse('not_found')}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge variant="destructive">500</Badge>
-                                                                <span className="text-sm">Błąd serwera</span>
+                                                                <span className="text-sm">{tResponse('server_error')}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -530,7 +536,7 @@ console.log(data);`;
                                                     {/* JS / Node */}
                                                     <div>
                                                         <div className="flex items-center justify-between mb-3">
-                                                            <h4 className="font-medium">JavaScript</h4>
+                                                            <h4 className="font-medium">{tExamples('javascript')}</h4>
                                                             <Button
                                                                 variant="outline"
                                                                 size="sm"
@@ -539,7 +545,7 @@ console.log(data);`;
                                                                 }
                                                             >
                                                                 <Copy className="w-4 h-4 mr-1" />
-                                                                Kopiuj
+                                                                {tExamples('copy')}
                                                             </Button>
                                                         </div>
                                                         <div className="bg-neutral-900 p-0 rounded-lg overflow-x-auto">
@@ -569,7 +575,7 @@ console.log(data);`;
                                                                 }
                                                             >
                                                                 <Copy className="w-4 h-4 mr-1" />
-                                                                Kopiuj
+                                                                {tExamples('copy')}
                                                             </Button>
                                                         </div>
                                                         <div className="bg-neutral-900 p-0 rounded-lg overflow-x-auto">

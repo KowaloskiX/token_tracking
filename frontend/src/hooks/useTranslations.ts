@@ -43,3 +43,7 @@ export function useTendersTranslations() {
 export function useErrorsTranslations() {
   return useNextIntlTranslations('errors');
 }
+
+export function useApiTranslations() {
+  return useNextIntlTranslations('api');
+}
