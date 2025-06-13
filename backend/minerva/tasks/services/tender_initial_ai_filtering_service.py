@@ -27,7 +27,6 @@ async def perform_ai_filtering(
     all_tender_matches: List[Dict[str, Any]],
     combined_search_matches: Dict[str, Any],
     analysis_id: str,
-    cost_record_id: str,  # ✅ Make this required, not optional
     current_user: Optional[User] = None,
     ai_batch_size: int = 50,
     save_results: bool = False,
@@ -41,7 +40,6 @@ async def perform_ai_filtering(
         all_tender_matches: List of all tender matches from search
         combined_search_matches: Combined matches with details
         analysis_id: Analysis ID to associate with filtered results
-        cost_record_id: Cost record ID for tracking LLM costs (REQUIRED)
         current_user: Optional user making the request
         ai_batch_size: Batch size for AI processing
         save_results: Whether to save filter results to database
@@ -53,9 +51,6 @@ async def perform_ai_filtering(
     # --- Memory usage BEFORE AI filtering ---
     log_mem("perform_ai_filtering:start")
     logger.info(f"Starting AI filtering for {len(all_tender_matches)} tenders")
-    
-    if not cost_record_id:
-        raise ValueError("cost_record_id is required for AI filtering cost tracking")
     
     if not all_tender_matches:
         logger.info("No tenders found to filter.")
@@ -71,7 +66,6 @@ async def perform_ai_filtering(
                 tender_analysis=tender_analysis,
                 tender_matches=batch,
                 current_user=current_user,
-                cost_record_id=cost_record_id,  # ✅ Pass the provided cost_record_id
             )
             return filtered_batch.matches if filtered_batch and filtered_batch.matches else []
         except Exception as e:
@@ -104,7 +98,6 @@ async def perform_ai_filtering(
             tender_analysis=tender_analysis,
             tender_matches=all_tender_matches,
             current_user=current_user,
-            cost_record_id=cost_record_id,          # ⇦ keyword!
         )
         all_filtered_tenders = filtered_results.matches if filtered_results and filtered_results.matches else []
         logger.info(f"AI filtering reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")

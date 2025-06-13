@@ -64,7 +64,6 @@ async def perform_file_extraction(
     save_results: bool = False,
     check_existing_analysis: bool = False,
     use_elasticsearch: bool = False,
-    cost_record_id: Optional[str] = None
 ) -> Dict[str, Any]:
 
     context: Optional[BrowserContext] = None
@@ -273,7 +272,7 @@ async def perform_file_extraction(
             async with file_semaphore:
                 try:
                     # Embed & upsert
-                    file_pinecone_config = await rag_manager.upload_file_content_to_pinecone(file_content, filename, cost_record_id=cost_record_id)
+                    file_pinecone_config = await rag_manager.upload_file_content_to_pinecone(file_content, filename)
 
                     # Release raw content
                     file_content = None

@@ -1,7 +1,7 @@
 import re
 from uuid import uuid4
 from bson import ObjectId
-from minerva.core.services.cost_tracking_service import CostTrackingService
+from minerva.core.services.cost_tracking_service import AutomaticLLMCostWrapper
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
 from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.models.file import FilePineconeConfig
@@ -14,7 +14,6 @@ from minerva.core.services.vectorstore.file_content_extract.base import Extracto
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
-from minerva.core.services.llm_cost_wrapper import LLMCostWrapper
 from openai import AssistantEventHandler
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -222,7 +221,7 @@ class RAGManager:
             logger.error(f"Error indexing chunk to Elasticsearch: {str(e)}")
             return False
 
-    async def upload_file_content_to_pinecone(self, file_content: bytes, filename: str, cost_record_id: Optional[str] = None):
+    async def upload_file_content_to_pinecone(self, file_content: bytes, filename: str):
         # Memory log before chunking
         log_mem(f"{self.tender_pinecone_id} upload_file_content_to_pinecone:start:{filename}")
 
@@ -334,25 +333,18 @@ class RAGManager:
                 logger.error(f"Error during bulk Elasticsearch indexing: {str(e)}")
                 es_success = False
 
-        # ✅ Track embedding costs if cost_record_id is provided
-        if cost_record_id and total_tokens_for_embedding > 0:
-            try:
-                await CostTrackingService.track_operation_cost(
-                    cost_record_id=cost_record_id,
-                    operation_type="file_extraction",  # Categorize under file extraction
+        if total_tokens_for_embedding > 0:
+                from minerva.core.services.cost_tracking_service import AutomaticCostTracker
+                await AutomaticCostTracker.track_embedding_call(
                     model_name=self.embedding_model,
                     input_tokens=total_tokens_for_embedding,
-                    output_tokens=0,  # Embeddings don't have output tokens
-                    operation_id=f"embed_{filename}",
+                    operation_type="embedding",
                     metadata={
                         "filename": filename,
                         "chunks_processed": chunk_index_global,
                         "tender_pinecone_id": self.tender_pinecone_id
                     }
                 )
-                logger.info(f"Tracked embedding cost for {filename}: {total_tokens_for_embedding} tokens")
-            except Exception as e:
-                logger.error(f"Error tracking embedding cost for {filename}: {str(e)}")
 
         # release large string 'text'
         text = None
@@ -378,13 +370,9 @@ class RAGManager:
         tender_analysis: TenderAnalysis,
         tender_matches: List[dict],
         current_user: Optional[User] = None,
-        cost_record_id: Optional[str] = None, 
     ) -> TenderProfileMatches:
         # Memory log before AI tender filtering
         log_mem("ai_filter_tenders:start")
-        
-        if not cost_record_id:
-            raise ValueError("cost_record_id must be supplied by caller")
         
         system_message = (
             "You are a well-balanced system that identifies public tenders that best match the company profile and offer. "
@@ -448,12 +436,10 @@ class RAGManager:
         )
 
         try:
-            response = await LLMCostWrapper.ask_llm_with_cost_tracking(
-            request=request_data,
-            cost_record_id=cost_record_id,
-            operation_type="ai_filtering",
-            operation_id="initial_filter",
-            metadata={
+            response = await AutomaticLLMCostWrapper.ask_llm(
+                request=request_data,
+                operation_type="ai_filtering",
+                metadata={
                     "total_tenders": len(tender_matches),
                     "company": tender_analysis.company_description[:100] + "..." if len(tender_analysis.company_description) > 100 else tender_analysis.company_description
                 }
@@ -573,7 +559,6 @@ class RAGManager:
         self, 
         current_user: User, 
         criteria: List[AnalysisCriteria], 
-        cost_record_id: str,
         include_vector_results: bool = False
     ) -> Dict[str, Any]:        # Memory log at start
         log_mem(f"{self.tender_pinecone_id} analyze_tender_criteria_and_location:start")
@@ -832,12 +817,10 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+                response = await AutomaticLLMCostWrapper.llm_rag_search(
                     request=request_data,
-                    cost_record_id=cost_record_id,
-                    operation_type="criteria_analysis",
                     tender_pinecone_id=self.tender_pinecone_id,
-                    operation_id=criterion.name,
+                    operation_type="criteria_analysis",
                     metadata={
                         "criterion_name": criterion.name,
                         "criterion_weight": criterion.weight,
@@ -917,12 +900,10 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+                response = await AutomaticLLMCostWrapper.llm_rag_search(
                     request=request_data,
-                    cost_record_id=cost_record_id,
-                    operation_type="criteria_analysis",
                     tender_pinecone_id=self.tender_pinecone_id,
-                    operation_id="location_analysis",
+                    operation_type="criteria_analysis",
                     metadata={"analysis_type": "location"}
                 )
                 parsed_output = json.loads(response.llm_response)
@@ -983,7 +964,7 @@ class RAGManager:
         return result
 
 
-    async def generate_tender_description(self, cost_record_id: str) -> str:
+    async def generate_tender_description(self) -> str:
         """Enhanced version with cost tracking"""
         # Memory log before generating description
         log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:start")
@@ -1013,12 +994,10 @@ class RAGManager:
             }
         )
         
-        from minerva.core.services.llm_cost_wrapper import LLMCostWrapper
-        response = await LLMCostWrapper.llm_rag_search_with_cost_tracking(
+        response = await AutomaticLLMCostWrapper.llm_rag_search(
             request=request_data,
-            cost_record_id=cost_record_id,
-            operation_type="description_generation",
             tender_pinecone_id=self.tender_pinecone_id,
+            operation_type="description_generation",
             metadata={"prompt_type": "tender_description"}
         )
 

@@ -20,7 +20,6 @@ async def generate_tender_description(
     tender_pinecone_id: str,
     rag_index_name: str,
     embedding_model: str,
-    cost_record_id: str,
     analysis_id: Optional[str] = None,
     current_user: Optional[User] = None,
     save_results: bool = False
@@ -36,7 +35,6 @@ async def generate_tender_description(
         
         # Generate description
         tender_description = await rag_manager.generate_tender_description(
-            cost_record_id=cost_record_id
         )        
         logger.info(f"[{tender_pinecone_id}] Completed tender description generation")
         

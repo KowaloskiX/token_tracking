@@ -4,7 +4,6 @@ from pathlib import Path
 import shutil
 import tempfile
 from uuid import uuid4
-from minerva.core.services.cost_tracking_service import CostTrackingService
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -194,9 +193,6 @@ async def run_all_analyses_for_user_endpoint(
 
 @router.post("/test-tender-analysis", response_model=Dict[str, Any])
 async def run_tender_search(request: TenderSearchRequest, current_user: User = Depends(get_current_user)):
-    # ❌ Remove the analysis_session_id here - it will be created in the analysis service
-    # analysis_session_id = str(uuid4())
-    
     try:
         analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(request.analysis_id)})
         if not analysis_doc:
@@ -246,102 +242,16 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             rag_index_name="files-rag-23-04-2025",
             criteria_definitions=criteria_definitions
         )
-
-        # ✅ Get cost summary for this specific analysis
-        cost_summary = await get_analysis_cost_summary_by_analysis_id(request.analysis_id)
-        
-        # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
 
         return {
             "status": "Tender analysis completed",
             "result": result,
-            "cost_summary": {
-                "total_cost_usd": cost_summary.get("total_cost_usd", 0),
-                "total_tokens": cost_summary.get("total_tokens", 0),
-                "analysis_records": cost_summary.get("analysis_records", 0),
-                "breakdown": cost_summary.get("breakdown", {})
-            }
         }
     except Exception as e:
         logger.error(f"Error running tender search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running tender search: {str(e)}")
     
-async def get_analysis_cost_summary_by_analysis_id(analysis_id: str) -> Dict[str, Any]:
-    """Get aggregated cost summary for a specific analysis_id"""
-    try:
-        pipeline = [
-            {
-                "$match": {
-                    "tender_analysis_id": ObjectId(analysis_id),
-                    "status": "completed"
-                }
-            },
-            {
-                "$group": {
-                    "_id": None,
-                    "total_cost_usd": {"$sum": "$total_cost_usd"},
-                    "total_tokens": {"$sum": "$total_tokens"},
-                    "analysis_records": {"$sum": 1},
-                    # Get breakdown by operation type
-                    "ai_filtering_cost": {"$sum": {"$sum": "$ai_filtering_costs.total_cost_usd"}},
-                    "criteria_analysis_cost": {"$sum": {"$sum": "$criteria_analysis_costs.total_cost_usd"}},
-                    "description_generation_cost": {"$sum": {"$sum": "$description_generation_costs.total_cost_usd"}},
-                    "file_extraction_cost": {"$sum": {"$sum": "$file_extraction_costs.total_cost_usd"}},
-                    # Token breakdown
-                    "ai_filtering_tokens": {"$sum": {"$sum": "$ai_filtering_costs.total_tokens"}},
-                    "criteria_analysis_tokens": {"$sum": {"$sum": "$criteria_analysis_costs.total_tokens"}},
-                    "description_generation_tokens": {"$sum": {"$sum": "$description_generation_costs.total_tokens"}},
-                    "file_extraction_tokens": {"$sum": {"$sum": "$file_extraction_costs.total_tokens"}}
-                }
-            }
-        ]
-        
-        result = await db.tender_analysis_costs.aggregate(pipeline).to_list(1)
-        
-        if result:
-            data = result[0]
-            return {
-                "total_cost_usd": data.get("total_cost_usd", 0.0),
-                "total_tokens": data.get("total_tokens", 0),
-                "analysis_records": data.get("analysis_records", 0),
-                "breakdown": {
-                    "costs": {
-                        "ai_filtering": data.get("ai_filtering_cost", 0.0),
-                        "criteria_analysis": data.get("criteria_analysis_cost", 0.0),
-                        "description_generation": data.get("description_generation_cost", 0.0),
-                        "file_extraction": data.get("file_extraction_cost", 0.0)
-                    },
-                    "tokens": {
-                        "ai_filtering": data.get("ai_filtering_tokens", 0),
-                        "criteria_analysis": data.get("criteria_analysis_tokens", 0),
-                        "description_generation": data.get("description_generation_tokens", 0),
-                        "file_extraction": data.get("file_extraction_tokens", 0)
-                    }
-                }
-            }
-        else:
-            return {
-                "total_cost_usd": 0.0,
-                "total_tokens": 0,
-                "analysis_records": 0,
-                "breakdown": {
-                    "costs": {"ai_filtering": 0.0, "criteria_analysis": 0.0, "description_generation": 0.0, "file_extraction": 0.0},
-                    "tokens": {"ai_filtering": 0, "criteria_analysis": 0, "description_generation": 0, "file_extraction": 0}
-                }
-            }
-    except Exception as e:
-        logger.error(f"Error getting cost summary for analysis {analysis_id}: {str(e)}")
-        return {
-            "total_cost_usd": 0.0,
-            "total_tokens": 0,
-            "analysis_records": 0,
-            "breakdown": {
-                "costs": {"ai_filtering": 0.0, "criteria_analysis": 0.0, "description_generation": 0.0, "file_extraction": 0.0},
-                "tokens": {"ai_filtering": 0, "criteria_analysis": 0, "description_generation": 0, "file_extraction": 0}
-            }
-        }
-
 @router.post("/run_all_tender_analyses", response_model=Dict[str, Any])
 async def run_all_analyses():
     try:
