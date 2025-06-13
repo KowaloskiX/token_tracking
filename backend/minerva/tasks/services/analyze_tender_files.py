@@ -2,7 +2,6 @@ import pprint
 import re
 from uuid import uuid4
 from bson import ObjectId
-from minerva.core.services.cost_tracking_service import AutomaticLLMCostWrapper
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
 from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.models.file import FilePineconeConfig
@@ -470,9 +469,38 @@ class RAGManager:
                 chunk_index_global += 1
 
                 if len(batch_for_pinecone) >= self.EMBED_BATCH_SIZE:
+                    # Direct embedding cost tracking without separate function
+                    batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
+                    
+                    # Track embedding costs directly
+                    try:
+                        from minerva.core.services.llm_logic import track_embedding_call
+                        await track_embedding_call(
+                            model_name=self.embedding_model,
+                            input_tokens=batch_tokens
+                        )
+                    except Exception as e:
+                        logger.debug(f"Error tracking embedding costs: {str(e)}")
+                        # Don't fail the embedding operation if cost tracking fails
+                    
                     await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
                     batch_for_pinecone.clear()
+                    
             if batch_for_pinecone:
+                # Track embedding cost for final batch - directly inline
+                batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
+                
+                # Track embedding costs directly
+                try:
+                    from minerva.core.services.llm_logic import track_embedding_call
+                    await track_embedding_call(
+                        model_name=self.embedding_model,
+                        input_tokens=batch_tokens
+                    )
+                except Exception as e:
+                    logger.debug(f"Error tracking embedding costs: {str(e)}")
+                    # Don't fail the embedding operation if cost tracking fails
+                
                 await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
 
         # Always process Elasticsearch if enabled
@@ -494,7 +522,7 @@ class RAGManager:
         text = None
         gc.collect(); malloc_trim()
         log_mem(f"{self.tender_pinecone_id} upload:after:{filename}")
-       
+    
 
         return FilePineconeConfig(
             query_config=QueryConfig(
@@ -504,7 +532,7 @@ class RAGManager:
             ),
             pinecone_unique_id_prefix=filename_unique_prefix,
             elasticsearch_indexed=self.use_elasticsearch,
-        )
+        )  
 
         
     @staticmethod
@@ -584,14 +612,7 @@ class RAGManager:
         )
 
         try:
-            response = await AutomaticLLMCostWrapper.ask_llm(
-                request=request_data,
-                operation_type="ai_filtering",
-                metadata={
-                    "total_tenders": len(tender_matches),
-                    "company": tender_analysis.company_description[:100] + "..." if len(tender_analysis.company_description) > 100 else tender_analysis.company_description
-                }
-            )
+            response = await ask_llm_logic(request_data)
             try:
                 parsed_output = json.loads(response.llm_response)
             except json.JSONDecodeError as json_error:
@@ -1190,12 +1211,7 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await AutomaticLLMCostWrapper.llm_rag_search(
-                    request=request_data,
-                    tender_pinecone_id=self.tender_pinecone_id,
-                    operation_type="criteria_analysis",
-                    metadata={"analysis_type": "location"}
-                )                
+                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)              
                 # Add robust JSON parsing with error handling
                 try:
                     parsed_output = json.loads(response.llm_response)
@@ -1312,12 +1328,7 @@ class RAGManager:
             }
         )
         
-        response = await AutomaticLLMCostWrapper.llm_rag_search(
-            request=request_data,
-            tender_pinecone_id=self.tender_pinecone_id,
-            operation_type="description_generation",
-            metadata={"prompt_type": "tender_description"}
-        )
+        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)
 
         # Remove any '【...】' placeholders using regex
         description = re.sub(r'【.*?】', '', response.llm_response)

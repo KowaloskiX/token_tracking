@@ -211,7 +211,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-10"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-05-21"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({

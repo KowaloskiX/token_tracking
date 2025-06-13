@@ -12,7 +12,6 @@ class LLMModelPricing(BaseModel):
     
 class OperationCost(BaseModel):
     """Cost breakdown for a specific operation"""
-    operation_type: str  # e.g., "criteria_analysis", "ai_filtering", "description_generation"
     operation_id: Optional[str] = None  # Specific ID if applicable
     model_name: str
     input_tokens: int

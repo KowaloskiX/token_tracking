@@ -13,7 +13,7 @@ from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.models.file import File
 from minerva.core.models.request.tender_analysis import BatchAnalysisResult, TenderAnalysisResponse, TenderSearchResponse
 from minerva.core.models.user import User
-from minerva.core.services.cost_tracking_service import CostTrackingContext, AutomaticLLMCostWrapper
+from minerva.core.services.cost_tracking_service import CostTrackingContext
 from minerva.core.models.extensions.tenders.tender_analysis import (
     AnalysisCriteria,
     Citation,
