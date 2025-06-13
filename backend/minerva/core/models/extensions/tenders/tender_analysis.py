@@ -27,11 +27,20 @@ class CriteriaAnalysis(BaseModel):
     criteria_met: Optional[bool] = False  # Default to False if nothing is returned
     weight: int = Field(default=3)
 
+class Citation(BaseModel):
+    """A citation snippet extracted from tender documentation referencing the source file."""
+    text: str
+    source: Optional[str] = None  # original filename or other identifier
+    keyword: Optional[str] = None  # keyword that triggered this citation
+    file_id: Optional[str] = None  # unique file identifier for better matching
+    sanitized_filename: Optional[str] = None  # normalized filename for fallback matching
+
 class CriteriaAnalysisResult(BaseModel):
     criteria: str
     analysis: CriteriaAnalysis
     exclude_from_score: Optional[bool] = False
     is_disqualifying: Optional[bool] = False
+    citations: Optional[List[Citation]] = None  # Snippets supporting the analysis
     class Config:
         extra = "allow"
 
@@ -76,6 +85,7 @@ class TenderAnalysisResult(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     opened_at: Optional[datetime] = None
     order_number: Optional[int] = None
+    language: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -94,6 +104,7 @@ class AnalysisCriteria(BaseModel):
     exclude_from_score: Optional[bool] = None
     instruction: Optional[str] = None  # New field for optional LLM instruction
     subcriteria: Optional[list[str]] = None
+    keywords: Optional[str] = None
 
 class TenderAnalysis(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -106,9 +117,24 @@ class TenderAnalysis(BaseModel):
     criteria: List[AnalysisCriteria]
     filtering_rules: Optional[str] = None
     last_run: Optional[datetime] = None
+    language: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     active: bool = Field(default=True)
+    assigned_users: List[str] = Field(default_factory=list)  # Add this field
+    email_recipients: List[str] = Field(default_factory=list)  # NEW: Users who receive email notifications
+    
+    def get_email_recipients(self) -> List[str]:
+        """Get users who should receive email notifications.
+        
+        Returns:
+            List[str]: User IDs who should receive emails. 
+                      Defaults to assigned_users if email_recipients is empty.
+        """
+        # Default to all assigned users if email_recipients is empty
+        if not self.email_recipients:
+            return self.assigned_users
+        return self.email_recipients
     
     class Config:
         arbitrary_types_allowed = True
@@ -165,7 +191,7 @@ class FilterStage(str, Enum):
     CRITERIA_NOT_MET = 'criteria_not_met'
 
 class FilteredTenderAnalysisResult(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default_factory=lambda: str(ObjectId()))
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     tender_id: str
     tender_name: str
     organization: Optional[str] = None

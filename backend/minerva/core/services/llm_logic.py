@@ -3,6 +3,7 @@ from fastapi import HTTPException
 import json
 from minerva.core.models.request.ai import LLMSearchRequest, LLMSearchResponse, SearchResult
 from minerva.core.services.llm_providers.anthropic import AnthropicLLM
+from minerva.core.services.llm_providers.google_gemini import GeminiLLM
 from minerva.core.services.llm_providers.openai import OpenAILLM, LLMResponse
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
@@ -58,14 +59,14 @@ async def rag_search_logic(query: str, vector_store_config: QueryConfig, tender_
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: str = None):
+async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: str = None, top_k: int = 4):
     """
     Internal function that performs the LLM RAG search.
     Returns either a LLMSearchResponse (non-streaming) or an async generator (for streaming).
     """
     try:
         # Build the initial prompt
-        user_content = f"Query: {request.query}"
+        user_content = f"{request.query}"
         vector_search_results = []
 
         filter_conditions = None
@@ -77,7 +78,7 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
             query_tool = QueryTool(config=request.vector_store)
             search_results = await query_tool.query_by_text(
                 query_text=request.rag_query,
-                top_k=4,
+                top_k=top_k,
                 score_threshold=0.1,
                 filter_conditions=filter_conditions
             )
@@ -92,7 +93,7 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
                     formatted_chunks.append(
                         f"{idx}. From {match['metadata'].get('source', 'unknown')}:\n{snippet}\n"
                     )
-                search_context = "\n<DOCUMENT_CONTEXT>\n" + "\n".join(formatted_chunks) + "\n</DOCUMENT_CONTEXT>\n"
+                search_context = "\n<DOCUMENTATION_CONTEXT>\n" + "\n".join(formatted_chunks) + "\n</DOCUMENTATION_CONTEXT>\n"
                 user_content += search_context
 
             vector_search_results = [
@@ -106,9 +107,10 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
 
         # Build the messages for the LLM
         messages = [{"role": "user", "content": user_content}]
-
+        # print(f"prompt to LLM with rag: {user_content}")
         # Initialize the LLM
         llm_cls = OpenAILLM if request.llm.provider == "openai" else AnthropicLLM
+        llm_cls = GeminiLLM if request.llm.provider == "google" else llm_cls
         llm = llm_cls(
             model=request.llm.model,
             stream=request.llm.stream,
@@ -173,6 +175,7 @@ async def ask_llm_logic(request: LLMSearchRequest):
 
         # Initialize the LLM with user-supplied tools and instructions
         llm_cls = OpenAILLM if request.llm.provider == "openai" else AnthropicLLM
+        llm_cls = GeminiLLM if request.llm.provider == "google" else llm_cls
         llm = llm_cls(
             model=request.llm.model,
             stream=request.llm.stream,

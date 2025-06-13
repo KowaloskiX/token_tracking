@@ -82,21 +82,16 @@ async def get_single_board(
     if not ObjectId.is_valid(board_id):
         raise HTTPException(status_code=400, detail="Invalid board ID.")
 
-    # If the user has an org_id, allow boards owned by them or with matching org_id
-    if current_user.org_id and current_user.org_id.strip() != "":
-        query = {
-            "_id": ObjectId(board_id),
-            "$or": [
-                {"user_id": str(current_user.id)},
-                {"org_id": current_user.org_id}
-            ]
-        }
-    else:
-        # User has no org, so only return private boards
-        query = {
-            "_id": ObjectId(board_id),
-            "user_id": str(current_user.id)
-        }
+    # Only user-based principals now
+    principals = [
+        {"user_id": str(current_user.id)},
+        {"assigned_users": str(current_user.id)}
+    ]
+
+    query = {
+        "_id": ObjectId(board_id),
+        "$or": principals
+    }
 
     board = await db["kanban_boards"].find_one(query)
     if not board:
@@ -104,26 +99,24 @@ async def get_single_board(
             status_code=404,
             detail="Board not found or not accessible by user."
         )
-    
+
     return KanbanBoardModel.parse_obj(board)
 
+
+# ── GET /boards ───────────────────────────────────────────────────────────────
 @router.get("/boards", response_model=List[KanbanBoardModel])
 async def get_boards(current_user: User = Depends(get_current_user)):
-    if current_user.org_id and current_user.org_id.strip() != "":
-        query = {
-            "$or": [
-                {"user_id": str(current_user.id)},
-                {"org_id": current_user.org_id}
-            ]
-        }
-    else:
-        query = {"user_id": str(current_user.id)}
+    principals = [
+        {"user_id": str(current_user.id)},
+        {"assigned_users": str(current_user.id)}
+    ]
+
+    query = {"$or": principals}
 
     cursor = db["kanban_boards"].find(query)
-    boards = []
-    async for doc in cursor:
-        boards.append(doc)
+    boards = [doc async for doc in cursor]
     return [KanbanBoardModel.parse_obj(b) for b in boards]
+
 
 @router.post("/boards", response_model=KanbanBoardModel, status_code=status.HTTP_201_CREATED)
 async def create_board(
@@ -131,6 +124,7 @@ async def create_board(
     current_user: User = Depends(get_current_user),
 ):
     board_dict = board_data.dict(by_alias=True, exclude_unset=True)
+    board_dict.pop("org_id", None)
     board_dict["user_id"] = str(current_user.id)
     board_dict["created_at"] = datetime.now()
     board_dict["updated_at"] = datetime.now()
@@ -148,45 +142,64 @@ async def update_board(
     board_data: KanbanBoardModelUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    # Validate the board ID format
+    # ── 1.  Basic validation & access check ──────────────────────────────────────
     if not ObjectId.is_valid(board_id):
         raise HTTPException(status_code=400, detail="Invalid board ID.")
 
-    # Construct query to allow updates if the user is the owner or if the board belongs to the user's organization
-    if current_user.org_id and current_user.org_id.strip() != "":
-        query = {
-            "_id": ObjectId(board_id),
-            "$or": [
-                {"user_id": str(current_user.id)},
-                {"org_id": current_user.org_id}
-            ]
-        }
-    else:
-        query = {"_id": ObjectId(board_id), "user_id": str(current_user.id)}
+    principals = [
+        {"user_id": str(current_user.id)},
+        {"assigned_users": str(current_user.id)},
+    ]
+    if current_user.org_id and current_user.org_id.strip():
+        principals.append({"org_id": current_user.org_id})
 
-    # Check if the board exists and is accessible by the user
+    query = {"_id": ObjectId(board_id), "$or": principals}
+
     existing = await db["kanban_boards"].find_one(query)
     if not existing:
-        raise HTTPException(status_code=404, detail="Board not found or not accessible by user.")
+        raise HTTPException(
+            status_code=404,
+            detail="Board not found or not accessible by user.",
+        )
 
-    # Prepare the update data, excluding unset fields and adding a timestamp for `updated_at`
-    update_dict = board_data.dict(by_alias=True, exclude_unset=True)
-    update_dict["updated_at"] = datetime.now()
+    # ── 2.  Build the update payload ────────────────────────────────────────────
+    base_set: dict = board_data.dict(by_alias=True, exclude_unset=True)
+    base_set["updated_at"] = datetime.now()
 
-    # Perform the update operation and fetch the updated board document
+    # New rule: conditionally add / remove org_id based on assigned_users
+    unset_ops: dict = {}  # keep it empty unless we have something to unset
+
+    if "assigned_users" in base_set:  # means the caller tried to change the list
+        assigned = base_set["assigned_users"]
+
+        # If the list is empty → remove org_id
+        if isinstance(assigned, list) and len(assigned) == 0:
+            unset_ops["org_id"] = ""  # empty string is fine for $unset
+
+        # If the list has elements → (re-)attach org_id (if user has one)
+        elif isinstance(assigned, list) and len(assigned) > 0:
+            if current_user.org_id and current_user.org_id.strip():
+                base_set["org_id"] = current_user.org_id
+
+    # Assemble the update document that MongoDB expects
+    update_ops: dict = {"$set": base_set}
+    if unset_ops:  # only include $unset when needed
+        update_ops["$unset"] = unset_ops
+
+    # ── 3.  Persist the update & post-processing ────────────────────────────────
     result = await db["kanban_boards"].find_one_and_update(
         query,
-        {"$set": update_dict},
-        return_document=True
+        update_ops,
+        return_document=True,  # returns the updated document
     )
     if not result:
         raise HTTPException(status_code=400, detail="Unable to update board.")
-    
-    # Reorder columns to ensure consistent ordering after the update
+
+    # Keep your extra housekeeping logic
     await reorder_columns(board_id)
 
-    # Return the updated board as a response
     return KanbanBoardModel.parse_obj(result)
+
 
 @router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_board(
@@ -196,22 +209,23 @@ async def delete_board(
     if not ObjectId.is_valid(board_id):
         raise HTTPException(status_code=400, detail="Invalid board ID.")
     
-    # Allow deletion if the user is the owner or a member of the board's organization
-    if current_user.org_id and current_user.org_id.strip() != "":
-        query = {
-            "_id": ObjectId(board_id),
-            "$or": [
-                {"user_id": str(current_user.id)},
-                {"org_id": current_user.org_id}
-            ]
-        }
-    else:
-        query = {"_id": ObjectId(board_id), "user_id": str(current_user.id)}
-    
+    principals = [
+        {"user_id": str(current_user.id)},
+        {"assigned_users": str(current_user.id)}
+    ]
+    if current_user.org_id and current_user.org_id.strip():
+        principals.append({"org_id": current_user.org_id})
+
+    query = {
+        "_id": ObjectId(board_id),
+        "$or": principals
+    }
+
     delete_result = await db["kanban_boards"].delete_one(query)
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Board not found or not accessible by user.")
     return None
+
 
 # -----------------------------------------------------------------------------
 # COLUMNS (GET, POST, PUT, DELETE)

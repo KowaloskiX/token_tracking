@@ -40,6 +40,7 @@ class KanbanBoardModel(BaseModel):
     created_at: Optional[datetime] = datetime.now()
     updated_at: Optional[datetime] = datetime.now()
     columns: List[KanbanColumnModel] = []
+    assigned_users: List[str] = Field(default_factory=list)  # Add this field
     
     class Config:
         allow_population_by_field_name = True
@@ -54,6 +55,7 @@ class KanbanBoardModelUpdate(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     columns: Optional[List[KanbanColumnModel]] = None
+    assigned_users: Optional[List[str]] = None
 
 class KanbanColumnModelUpdate(BaseModel):
     name: Optional[str] = None

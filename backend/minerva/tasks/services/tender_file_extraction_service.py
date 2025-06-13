@@ -30,7 +30,7 @@ def log_mem(tag: str = ""):
         logger.debug(f"Unable to log memory usage for tag '{tag}': {mem_exc}")
 
 # Configurable max parallel file tasks (per tender)
-MAX_PARALLEL_FILE_TASKS = int(os.getenv("MAX_PARALLEL_FILE_TASKS", "20"))
+MAX_PARALLEL_FILE_TASKS = int(os.getenv("MAX_PARALLEL_FILE_TASKS", "28"))
 
 # Helper function to sanitize filenames
 
@@ -82,14 +82,20 @@ async def perform_file_extraction(
                 logger.info(f"[{tender_id_str}] Found existing analysis. Reusing file extraction results.")
                 
                 # Gather the necessary data from the existing analysis
-                are_files_in_correct_index = True
+                are_files_ready_to_reuse = True
                 successful_files = []
                 for file in existing_analysis.get("uploaded_files", []):
                     if file.get("file_pinecone_config").get("query_config").get("index_name") != rag_index_name:
                         logger.info(f"[{tender_id_str}] Skipping files reuse {file.get('filename')} because it is not in the correct pinecone index.")
-                        are_files_in_correct_index = False
+                        are_files_ready_to_reuse = False
                         break
 
+                    if use_elasticsearch:
+                        if not file.get("file_pinecone_config").get("elasticsearch_indexed", False):
+                            logger.info(f"[{tender_id_str}] Skipping files reuse {file.get('filename')} because it is not in elastic search index.")
+                            are_files_ready_to_reuse = False
+                            break
+                        
                     successful_files.append({
                         "filename": file.get("filename"),
                         "type": file.get("type"),
@@ -101,7 +107,7 @@ async def perform_file_extraction(
                         "file_pinecone_config": file.get("file_pinecone_config")
                     })
                 
-                if are_files_in_correct_index:
+                if are_files_ready_to_reuse:
                     processed_files_summary = {
                         'successful_files': successful_files,
                         'total_processed': len(successful_files),
@@ -207,7 +213,8 @@ async def perform_file_extraction(
         namespace = ""
         tender_name = tender.get('name', "")
         tender_pinecone_id = f"{sanitize_id(tender_name)}_{uuid4()}"
-        rag_manager = RAGManager(rag_index_name, namespace, embedding_model, tender_pinecone_id, use_elasticsearch=use_elasticsearch)
+        rag_manager = RAGManager(rag_index_name, namespace, embedding_model, tender_pinecone_id, use_elasticsearch=use_elasticsearch, tender_url=tender_id_str)
+        await rag_manager.ensure_elasticsearch_index_initialized()
         
         # Extract files
         logger.info(f"[{tender_id_str}] Starting file extraction from {details_url}")
@@ -220,27 +227,34 @@ async def perform_file_extraction(
         
         if not processed_files:
             logger.warning(f"[{tender_id_str}] No files successfully processed.")
-            filtered_tender = FilteredTenderAnalysisResult(
-                            tender_id=tender_id_str,
-                            tender_name=getattr(tender, 'name', ""),
-                            organization=getattr(tender, 'organization', None),
-                            location=getattr(tender, 'location', None),
-                            analysis_id=str(analysis_id),
-                            filter_stage=FilterStage.FILE_EXTRACTION,
-                            filter_reason="No files successfully processed or error during processing",
-                            search_phrase=getattr(tender, 'search_phrase', None),
-                            source=getattr(tender, 'source', None),
-                            details_url=details_url,
-                            user_id=str(current_user.id) if current_user else None
-                        )
-            await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
-            logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
+            # filtered_tender = FilteredTenderAnalysisResult(
+            #                 tender_id=tender_id_str,
+            #                 tender_name=getattr(tender, 'name', ""),
+            #                 organization=getattr(tender, 'organization', None),
+            #                 location=getattr(tender, 'location', None),
+            #                 analysis_id=str(analysis_id),
+            #                 filter_stage=FilterStage.FILE_EXTRACTION,
+            #                 filter_reason="No files successfully processed or error during processing",
+            #                 search_phrase=getattr(tender, 'search_phrase', None),
+            #                 source=getattr(tender, 'source', None),
+            #                 details_url=details_url,
+            #                 user_id=str(current_user.id) if current_user else None
+            #             )
+            # await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
+            # logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
             return {
-                "status": "no_files",
+                "status": "success",
+                "has_files": False,
                 "reason": "No files successfully processed",
                 "tender_id": tender_id_str,
                 "details_url": details_url,
-                "original_match": tender
+                "original_match": tender,
+                "processed_files": {
+                    'successful_files': [],
+                    'total_processed': 0,
+                    'successful_count': 0
+                },
+                "tender_pinecone_id": tender_pinecone_id
             }
             
         # Process files
@@ -272,7 +286,7 @@ async def perform_file_extraction(
             async with file_semaphore:
                 try:
                     # Embed & upsert
-                    file_pinecone_config = await rag_manager.upload_file_content_to_pinecone(file_content, filename)
+                    file_pinecone_config = await rag_manager.upload_file_content(file_content, filename)
 
                     # Release raw content
                     file_content = None
@@ -282,14 +296,13 @@ async def perform_file_extraction(
                     file_extension = os.path.splitext(filename)[1].lower()
                     file_type = "file" if file_extension else "website"
 
-                    # Sanitize filename before uploading to Vercel Blob
-                    sanitized_blob_filename = safe_filename(filename)
-                    logger.info(f"[{tender_id_str}] Uploading file '{filename}' as '{sanitized_blob_filename}' ({bytes_len} bytes) to S3")
-                    blob_url = upload_file_to_s3(sanitized_blob_filename, original_bytes)
+                    # Use original filename for blob storage to maintain consistency
+                    logger.info(f"[{tender_id_str}] Uploading file '{filename}' ({bytes_len} bytes) to S3")
+                    blob_url = upload_file_to_s3(filename, original_bytes)
 
                     # Build record
                     record = {
-                        "filename": filename,
+                        "filename": filename,  # Keep original filename
                         "type": file_type,
                         "url": url,
                         "blob_url": blob_url,
@@ -331,27 +344,34 @@ async def perform_file_extraction(
         
         if not successful_files:
             logger.warning(f"[{tender_id_str}] No files were successfully uploaded after processing.")
-            filtered_tender = FilteredTenderAnalysisResult(
-                            tender_id=tender_id_str,
-                            tender_name=getattr(tender, 'name', ""),
-                            organization=getattr(tender, 'organization', None),
-                            location=getattr(tender, 'location', None),
-                            analysis_id=str(analysis_id),
-                            filter_stage=FilterStage.FILE_EXTRACTION,
-                            filter_reason="No files were successfully uploaded after processing",
-                            search_phrase=getattr(tender, 'search_phrase', None),
-                            source=getattr(tender, 'source', None),
-                            details_url=details_url,
-                            user_id=str(current_user.id) if current_user else None
-                        )
-            await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
-            logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
+            # filtered_tender = FilteredTenderAnalysisResult(
+            #                 tender_id=tender_id_str,
+            #                 tender_name=getattr(tender, 'name', ""),
+            #                 organization=getattr(tender, 'organization', None),
+            #                 location=getattr(tender, 'location', None),
+            #                 analysis_id=str(analysis_id),
+            #                 filter_stage=FilterStage.FILE_EXTRACTION,
+            #                 filter_reason="No files were successfully uploaded after processing",
+            #                 search_phrase=getattr(tender, 'search_phrase', None),
+            #                 source=getattr(tender, 'source', None),
+            #                 details_url=details_url,
+            #                 user_id=str(current_user.id) if current_user else None
+            #             )
+            # await db.filtered_tender_analysis_results.insert_one(filtered_tender.dict(by_alias=True))
+            # logger.warning(f"Saved filtered tender (no files) to database: {tender_id_str}")
             return {
-                "status": "upload_failed",
+                "status": "success",
+                "has_files": False,
                 "reason": "No files were successfully uploaded",
                 "tender_id": tender_id_str,
                 "details_url": details_url,
-                "original_match": tender
+                "original_match": tender,
+                "processed_files": {
+                    'successful_files': [],
+                    'total_processed': total_processed_count,
+                    'successful_count': 0
+                },
+                "tender_pinecone_id": tender_pinecone_id
             }
             
         result = {

@@ -24,6 +24,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CUDA_VISIBLE_DEVICES=""
+      - TORCH_DEVICE=cpu
       - TZ=Europe/Warsaw
     networks:
       - tasks_network
@@ -55,6 +58,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=0
       - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
@@ -82,6 +86,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=1
       - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
@@ -109,8 +114,95 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
-      - WORKER_INDEX=1
+      - WORKER_INDEX=2
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  scraping-worker-3:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=3
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+
+  scraping-worker-4:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=4
+      - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
+      - WORKER_TYPE=scraping
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+
+  scraping-worker-5:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=5
       - TOTAL_SCRAPING_WORKERS=${TOTAL_SCRAPING_WORKERS}
       - WORKER_TYPE=scraping
       - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
@@ -137,6 +229,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=0
       - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
@@ -164,6 +257,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=1
       - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
@@ -191,6 +285,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=2
       - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
@@ -218,6 +313,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=3
       - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
@@ -245,6 +341,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=4
       - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
@@ -255,32 +352,32 @@ services:
       - tasks_network
     restart: always
 
-  analysis-worker-5:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=5
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
+  # analysis-worker-5:
+  #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+  #   depends_on:
+  #     - log-init
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   environment:
+  #     - MONGODB_URI=${MONGODB_URI}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - PINECONE_API_KEY=${PINECONE_API_KEY}
+  #     - RESEND_API_KEY=${RESEND_API_KEY}
+  #     - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  #     - AWS_REGION=${AWS_REGION}
+  #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - TZ=Europe/Warsaw
+  #     - WORKER_INDEX=5
+  #     - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+  #     - WORKER_TYPE=analysis
+  #     - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+  #     - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+  #   networks:
+  #     - tasks_network
+  #   restart: always
 
   # Monitoring Worker (Deployed on Droplet #2)
   monitoring-worker-0:
@@ -300,12 +397,42 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TZ=Europe/Warsaw
       - WORKER_INDEX=0
       - TOTAL_MONITORING_WORKERS=${TOTAL_MONITORING_WORKERS}
       - WORKER_TYPE=monitoring
       - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
       - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  # Cleanup Worker (Deployed on Droplet #2)
+  cleanup-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_CLEANUP_WORKERS=${TOTAL_CLEANUP_WORKERS}
+      - WORKER_TYPE=cleanup
     networks:
       - tasks_network
     restart: always
@@ -330,7 +457,7 @@ services:
   #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
   #     - TZ=Europe/Warsaw
   #     - WORKER_INDEX=0
-  #     - WORKER_TYPE=tender_analysis_scheduler
+  #     - WORKER_TYPE=tender_analysis_schedudler
   #     - USER_ID=67c6cb742fee91862e135247
   #     - ANALYSIS_ID=680eb345e1189b4f5ce9dd32
   #   command: python -m minerva.tasks.tender_analysis_scheduler

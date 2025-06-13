@@ -14,7 +14,7 @@ logger = logging.getLogger("minerva.tender_analysis_scheduler")
 USER_ID = "67c6cb742fee91862e135247"    
 ANALYSIS_ID = "680eb345e1189b4f5ce9dd32" 
 DATES = [
-    "2025-04-28",
+    "2025-05-30",
 ]  #dates, one for each worker
 
 # --- MAIN SCHEDULER LOGIC ---

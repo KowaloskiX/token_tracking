@@ -6,7 +6,7 @@ authors = ["Piotr Gerke <gerke.contact@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 fastapi = "^0.110.1"
 uvicorn = "^0.29.0"
 python-dotenv = "^1.0.1"
@@ -68,6 +68,16 @@ odfpy = "^1.4.1"
 py7zr = "^0.22.0"
 rarfile = "^4.2"
 boto3 = "^1.34.0"
+opencv-python-headless = "^4.11.0.86"
+imutils = "^0.5.4"
+numpy = "^2.2.6"
+transformers = "^4.52.4"
+google-genai = "^1.19.0"
+
+# For local development - regular PyTorch with platform support
+[tool.poetry.group.dev.dependencies]
+torch = ">=2.6.0"
+torchvision = ">=0.21.0"
 
 [tool.poetry.scripts]
 start = "minerva.api.main:start"

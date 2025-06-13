@@ -1,9 +1,7 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Dict, List, Type, Optional
 import logging
 
-from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.services.tender_insert_service import TenderInsertConfig, TenderInsertService, GenericTenderAdapter
 from minerva.tasks.sources.bazakonkurencyjnosci.extract_tenders import BazaKonkurencyjnosciTenderExtractor
 from minerva.tasks.sources.eb2b.extract_tenders import Eb2bTenderExtractor
@@ -17,8 +15,36 @@ from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
 from minerva.tasks.sources.platformazakupowa.extract_tenders import PlatformaZakupowaTenderExtractor
 from minerva.tasks.sources.smartpzp.extract_tenders import SmartPZPTenderExtractor
 from minerva.tasks.sources.source_types import TenderSourceType
-from minerva.tasks.sources.tedeuropa.extract_tenders import TedTenderExtractor
-from minerva.tasks.sources.tedgermany.extract_tenders import GermanTedTenderExtractor
+from minerva.tasks.sources.vergabe.extract_tender import DTVPLikeTenderExtractor
+from minerva.tasks.sources.ted.tender_countries import (
+    TedTenderExtractor,
+    GermanTedTenderExtractor,
+    FrenchTedTenderExtractor,
+    SpainTedTenderExtractor,
+    ItalyTedTenderExtractor,
+    BelgiumTedTenderExtractor,
+    NetherlandsTedTenderExtractor,
+    SwedenTedTenderExtractor,
+    CzechiaTedTenderExtractor,
+    AustriaTedTenderExtractor,
+    PortugalTedTenderExtractor,
+    DenmarkTedTenderExtractor,
+    FinlandTedTenderExtractor,
+    NorwayTedTenderExtractor,
+    IrelandTedTenderExtractor,
+    GreeceTedTenderExtractor,
+    HungaryTedTenderExtractor,
+    SlovakiaTedTenderExtractor,
+    SloveniaTedTenderExtractor,
+    CroatiaTedTenderExtractor,
+    RomaniaTedTenderExtractor,
+    BulgariaTedTenderExtractor,
+    EstoniaTedTenderExtractor,
+    LatviaTedTenderExtractor,
+    LithuaniaTedTenderExtractor,
+    LuxembourgTedTenderExtractor,
+)
+from minerva.tasks.sources.vergapeplatforms.extract_tender import VergabePlatformsTenderExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +76,109 @@ class TenderSourceManager:
             extractor_class=Eb2bTenderExtractor
         )
         configs[TenderSourceType.TED] = TenderSourceConfig(
-            source_type=TenderSourceType.TED,
-            extractor_class=TedTenderExtractor
+                    source_type=TenderSourceType.TED,
+                    extractor_class=TedTenderExtractor
         )
         configs[TenderSourceType.TED_GERMANY] = TenderSourceConfig(
             source_type=TenderSourceType.TED_GERMANY,
             extractor_class=GermanTedTenderExtractor
         )
+        # configs[TenderSourceType.TED_FRANCE] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_FRANCE,
+        #     extractor_class=FrenchTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_SPAIN] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_SPAIN,
+        #     extractor_class=SpainTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_ITALY] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_ITALY,
+        #     extractor_class=ItalyTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_BELGIUM] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_BELGIUM,
+        #     extractor_class=BelgiumTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_NETHERLANDS] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_NETHERLANDS,
+        #     extractor_class=NetherlandsTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_SWEDEN] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_SWEDEN,
+        #     extractor_class=SwedenTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_CZECHIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_CZECHIA,
+        #     extractor_class=CzechiaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_AUSTRIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_AUSTRIA,
+        #     extractor_class=AustriaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_PORTUGAL] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_PORTUGAL,
+        #     extractor_class=PortugalTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_DENMARK] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_DENMARK,
+        #     extractor_class=DenmarkTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_FINLAND] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_FINLAND,
+        #     extractor_class=FinlandTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_NORWAY] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_NORWAY,
+        #     extractor_class=NorwayTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_IRELAND] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_IRELAND,
+        #     extractor_class=IrelandTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_GREECE] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_GREECE,
+        #     extractor_class=GreeceTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_HUNGARY] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_HUNGARY,
+        #     extractor_class=HungaryTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_SLOVAKIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_SLOVAKIA,
+        #     extractor_class=SlovakiaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_SLOVENIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_SLOVENIA,
+        #     extractor_class=SloveniaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_CROATIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_CROATIA,
+        #     extractor_class=CroatiaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_ROMANIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_ROMANIA,
+        #     extractor_class=RomaniaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_BULGARIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_BULGARIA,
+        #     extractor_class=BulgariaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_ESTONIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_ESTONIA,
+        #     extractor_class=EstoniaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_LATVIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_LATVIA,
+        #     extractor_class=LatviaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_LITHUANIA] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_LITHUANIA,
+        #     extractor_class=LithuaniaTedTenderExtractor
+        # )
+        # configs[TenderSourceType.TED_LUXEMBOURG] = TenderSourceConfig(
+        #     source_type=TenderSourceType.TED_LUXEMBOURG,
+        #     extractor_class=LuxembourgTedTenderExtractor
+        # )
         configs[TenderSourceType.PLATFORMAZAKUPOWA] = TenderSourceConfig(
             source_type=TenderSourceType.PLATFORMAZAKUPOWA,
             extractor_class=PlatformaZakupowaTenderExtractor
@@ -93,6 +215,15 @@ class TenderSourceManager:
             source_type=TenderSourceType.PGE,
             extractor_class=PGETenderExtractor
         )
+        configs[TenderSourceType.DTVP_LIKE] = TenderSourceConfig(
+            source_type=TenderSourceType.DTVP_LIKE,
+            extractor_class=DTVPLikeTenderExtractor
+        )
+        configs[TenderSourceType.VERGABEPLATFORMS] = TenderSourceConfig(
+            source_type=TenderSourceType.VERGABEPLATFORMS,
+            extractor_class=VergabePlatformsTenderExtractor
+        )
+        
         # Add all ezamawiajacy organizations
         # for source_type in EzamawiajacyConfig.ORGANIZATIONS.keys():
         #     configs[source_type] = TenderSourceConfig(

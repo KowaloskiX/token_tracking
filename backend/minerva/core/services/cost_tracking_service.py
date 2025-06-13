@@ -1,5 +1,3 @@
-# backend/minerva/core/services/automatic_cost_tracking.py
-
 import asyncio
 import logging
 from contextvars import ContextVar

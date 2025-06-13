@@ -7,7 +7,7 @@ from minerva.tasks.services.tender_criteria_analysis_service import perform_crit
 from minerva.tasks.services.tender_description_filtering_service import perform_description_filtering
 from minerva.tasks.services.tender_description_generation_service import generate_tender_description
 from minerva.tasks.services.tender_file_extraction_service import perform_file_extraction
-from minerva.tasks.services.tender_initial_ai_filtering_service import perform_ai_filtering
+from minerva.tasks.services.tender_initial_ai_filtering_service import AIFilteringMode, perform_ai_filtering
 from minerva.tasks.services.search_service import perform_tender_search
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.models.file import File
@@ -16,6 +16,7 @@ from minerva.core.models.user import User
 from minerva.core.services.cost_tracking_service import CostTrackingContext, AutomaticLLMCostWrapper
 from minerva.core.models.extensions.tenders.tender_analysis import (
     AnalysisCriteria,
+    Citation,
     FilterStage,
     FilteredTenderAnalysisResult,
     TenderAnalysis,
@@ -106,6 +107,7 @@ def create_tender_analysis_result_v2(
     criteria_definitions: list, 
     tender_pinecone_id: str,
     tender_description: Optional[str] = None,
+    language: Optional[str] = None
 ) -> TenderAnalysisResult:
     # Map criteria name to AnalysisCriteria definition
     criteria_defs_map = {c.name: c for c in criteria_definitions}
@@ -140,6 +142,7 @@ def create_tender_analysis_result_v2(
             ),
             exclude_from_score=getattr(criteria_defs_map.get(item["criteria"]), "exclude_from_score", False),
             is_disqualifying=getattr(criteria_defs_map.get(item["criteria"]), "is_disqualifying", False),
+            citations=item.get("model_citations", [])  # Use the model's actual citations instead of keyword-based ones
         )
         for item in raw_criteria_analysis if isinstance(item, dict) and "criteria" in item and "analysis" in item # Ensure item is a valid dict
     ]
@@ -214,7 +217,8 @@ def create_tender_analysis_result_v2(
         tender_description=tender_description,
         pinecone_config=pinecone_config,
         tender_pinecone_id=tender_pinecone_id,
-        updates=[]
+        updates=[],
+        language=language
     )
 
 async def _process_tender_pipeline(
@@ -230,6 +234,7 @@ async def _process_tender_pipeline(
     criteria_definitions: List[AnalysisCriteria],
     semaphore: asyncio.Semaphore,
     source_manager: TenderSourceManager,
+    language: str = "polish"
 ):
     """End-to-end processing for one tender with cost tracking"""
     async with semaphore:
@@ -251,14 +256,31 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
-                check_existing_analysis=False,
-                use_elasticsearch=False,
+                check_existing_analysis=True,
+                use_elasticsearch=True
             )
             
             if extraction_res.get("status") != "success":
                 logger.warning(f"Extraction failed/skipped for tender {tender_id_str}: {extraction_res.get('reason')}")
+                return None
 
-            # --- Criteria analysis with cost tracking ---
+            # If no files were found, create a basic result without criteria/description analysis
+            if not extraction_res.get("has_files", True):
+                logger.info(f"Tender {tender_id_str} has no files, skipping criteria and description analysis")
+                return create_tender_analysis_result_v2(
+                    original_tender_metadata=original_metadata,
+                    processed_files_data=extraction_res.get("processed_files", {}),
+                    criteria_and_location_result={"analysis": {"criteria_analysis": [], "location": {}}},
+                    analysis_id=analysis_id,
+                    current_user=current_user,
+                    tender_url=tender_dict["id"],
+                    tender_description="",
+                    pinecone_config=QueryConfig(index_name=rag_index_name, namespace="", embedding_model=embedding_model),
+                    criteria_definitions=criteria_definitions,
+                    tender_pinecone_id=extraction_res["tender_pinecone_id"],
+                )
+
+            # --- Criteria analysis ---
             criteria_res = await perform_criteria_analysis(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 rag_index_name=rag_index_name,
@@ -269,6 +291,9 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
+                language=language,
+                original_tender_metadata=original_metadata,
+                use_elasticsearch=True
             )
             
             if criteria_res.get("status") != "success":
@@ -282,6 +307,7 @@ async def _process_tender_pipeline(
                 analysis_id=analysis_id,
                 current_user=current_user,
                 save_results=False,
+                language=language
             )
             description_text = desc_res.get("tender_description", "") if desc_res.get("status") == "success" else ""
 
@@ -297,6 +323,7 @@ async def _process_tender_pipeline(
                 pinecone_config=QueryConfig(index_name=rag_index_name, namespace="", embedding_model=embedding_model),
                 criteria_definitions=criteria_definitions,
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
+                language=language
             )
                         
             return tender_result_obj
@@ -311,18 +338,16 @@ async def analyze_relevant_tenders_with_our_rag(
     rag_index_name: str,
     embedding_model: str = "text-embedding-3-large",
     elasticsearch_index_name: str = "tenders",
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     top_k: int = 25,
     current_user: User = None,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 10
+    batch_size: int = 10,
+    language: str = "polish"
 ):
-    # Generate unique session ID for this analysis run
     analysis_session_id = str(uuid4())
-    
-    # ✅ All cost tracking happens automatically within this context
     async with CostTrackingContext.for_analysis(
         user_id=str(current_user.id),
         tender_analysis_id=analysis_id,
@@ -331,7 +356,7 @@ async def analyze_relevant_tenders_with_our_rag(
         playwright: Optional[Playwright] = None
         browser: Optional[Browser] = None
         try:
-            # Start Playwright and create shared browser (existing code)
+            # Start Playwright and create shared browser
             playwright = await async_playwright().start()
             browser = await playwright.chromium.launch(headless=True)
             logger.info(f"Playwright browser started. Concurrency set to: {batch_size}")
@@ -343,6 +368,9 @@ async def analyze_relevant_tenders_with_our_rag(
                 return TenderAnalysis(**tender_analysis_doc)
 
             tender_analysis = await initialize_services()
+
+            if tender_analysis.language:
+                language = tender_analysis.language
 
             if criteria_definitions is None or len(criteria_definitions) == 0:
                 criteria_definitions = tender_analysis.criteria
@@ -362,6 +390,7 @@ async def analyze_relevant_tenders_with_our_rag(
             # Search logic (existing code)
             search_results = await perform_tender_search(
                 search_phrase=tender_analysis.search_phrase,
+                company_description=tender_analysis.company_description,
                 tender_names_index_name=tender_names_index_name,
                 elasticsearch_index_name=elasticsearch_index_name,
                 embedding_model=embedding_model,
@@ -373,7 +402,7 @@ async def analyze_relevant_tenders_with_our_rag(
                 current_user_id=str(current_user.id) if current_user else None,
                 save_results=False
             )
-                
+                    
             all_tender_matches = search_results["all_tender_matches"]
             combined_search_matches = search_results["combined_search_matches"]
             search_id = search_results.get("search_id")
@@ -398,10 +427,11 @@ async def analyze_relevant_tenders_with_our_rag(
                 current_user=current_user,
                 ai_batch_size=ai_batch_size,
                 search_id=search_id
+                # filtering_mode=AIFilteringMode.TRIPLE_RUN
             )
             
             all_filtered_tenders = filter_results["filtered_tenders"]
-            initial_ai_filter_id = filter_results.get("initial_ai_filter_id")
+            initial_ai_filter_id = filter_results.get("initial_ai_filter_id") # Get the ID
 
             if not all_filtered_tenders:
                 logger.info("No tenders left after initial AI filtering.")
@@ -421,14 +451,14 @@ async def analyze_relevant_tenders_with_our_rag(
             async def build_pipeline_tasks():
                 tasks = []
                 for tender in all_filtered_tenders:
-                    original_metadata = combined_search_matches.get(tender.id, {}).get("metadata", {})
-                    if not original_metadata:
+                    original_meta = combined_search_matches.get(tender.id, {}).get("metadata", {})
+                    if not original_meta:
                         logger.warning(f"Missing original metadata for tender {tender.id}; skipping")
                         continue
                     tasks.append(
                         _process_tender_pipeline(
                             tender_obj=tender,
-                            original_metadata=original_metadata,
+                            original_metadata=original_meta,
                             shared_browser=browser,
                             tender_analysis=tender_analysis,
                             analysis_id=analysis_id,
@@ -439,6 +469,7 @@ async def analyze_relevant_tenders_with_our_rag(
                             criteria_definitions=criteria_definitions,
                             semaphore=semaphore,
                             source_manager=source_manager,
+                            language=language
                         )
                     )
                 return tasks
@@ -504,7 +535,7 @@ async def analyze_relevant_tenders_with_our_rag(
                             },
                             "pinecone_unique_id_prefix": file.file_pinecone_config.pinecone_unique_id_prefix
                         }
-                    
+                        
                     file_info = {
                         "filename": file.filename,
                         "blob_url": file.blob_url if hasattr(file, 'blob_url') and file.blob_url else None,
@@ -514,14 +545,14 @@ async def analyze_relevant_tenders_with_our_rag(
                         "deletion_error": None
                     }
                     file_storage_info.append(file_info)
-                
+                    
                 # Maintain the original processed_files structure while adding storage info
                 processed_files = {
                     "successful_count": len(filtered_out_tender.uploaded_files),
                     "filenames": [file.filename for file in filtered_out_tender.uploaded_files],
                     "storage_info": file_storage_info
                 }
-                
+                    
                 description_filtered_tender = FilteredTenderAnalysisResult(
                     tender_id=str(filtered_out_tender.id),
                     tender_name=filtered_out_tender.tender_metadata.name,
@@ -558,8 +589,6 @@ async def analyze_relevant_tenders_with_our_rag(
                 }}
             )
 
-            # ✅ No manual cost completion needed - context manager handles it
-
             logger.info(f"Completed analysis run. Saved {len(filtered_tenders)} final results.")
             return TenderSearchResponse(
                 query=tender_analysis.search_phrase,
@@ -571,7 +600,6 @@ async def analyze_relevant_tenders_with_our_rag(
 
         except Exception as e:
             logger.error(f"Fatal error in combined analysis: {str(e)}", exc_info=True)
-            # ✅ No manual cost completion needed - context manager handles exceptions
             raise HTTPException(
                 status_code=500,
                 detail=f"Error in combined analysis: {str(e)}"
@@ -581,26 +609,26 @@ async def analyze_relevant_tenders_with_our_rag(
             if browser:
                 logger.info("Closing shared Playwright browser...")
                 try:
-                     await browser.close()
-                     logger.info("Shared browser closed.")
+                    await browser.close()
+                    logger.info("Shared browser closed.")
                 except Exception as browser_close_err:
-                     logger.error(f"Error closing browser: {browser_close_err}")
+                    logger.error(f"Error closing browser: {browser_close_err}")
             if playwright:
                 logger.info("Stopping Playwright...")
                 try:
-                     await playwright.stop()
-                     logger.info("Playwright stopped.")
+                    await playwright.stop()
+                    logger.info("Playwright stopped.")
                 except Exception as playwright_stop_err:
-                     logger.error(f"Error stopping playwright: {playwright_stop_err}")
-            
-            # Final garbage collection
+                    logger.error(f"Error stopping playwright: {playwright_stop_err}")
+                
+                # Final garbage collection
             gc.collect()
             logger.info("Final garbage collection performed after analysis completed")
 
 async def run_all_tender_analyses(
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 20,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None
 ) -> "TenderAnalysisResponse":
     analyses_cursor = db.tender_analysis.find({"active": True})
@@ -707,7 +735,7 @@ async def run_all_tender_analyses(
 async def run_all_analyses_for_user(
     user_id: str,
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     index_name: str = "tenders"
 ) -> Dict[str, Any]:
@@ -811,7 +839,7 @@ async def run_partial_tender_analyses(
     analyses: list,
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None
 ) -> "TenderAnalysisResponse":
     active_analyses = [a for a in analyses if a.get("active", False)]

@@ -1,10 +1,14 @@
 from datetime import datetime
+import json
 import logging
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from bson import ObjectId
 from minerva.core.database.database import db
+from minerva.core.models.request.ai import LLMRAGRequest
 from minerva.core.services.keyword_search.elasticsearch import es_client
+from minerva.core.services.llm_logic import ask_llm_logic
+from minerva.core.services.llm_providers.model_config import get_model_config, get_optimal_max_tokens
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from pinecone import Pinecone
 import os
@@ -89,12 +93,90 @@ def translate_filters_to_elasticsearch(filters: List[Dict[str, Any]]) -> List[Di
     
     return es_filters
 
+async def generate_pinecone_queries(
+        search_phrases: List[str],
+        company_description: str,
+        max_queries: int = 20
+) -> List[str]:
+    """
+    Turn keyword-style search_phrases + company_description into
+    short, name-like semantic queries optimised for Pinecone.
+    """
+    system_prompt = (
+        "You are an expert procurement analyst who rewrites keyword lists "
+        "into concise tender-title style phrases suitable for semantic "
+        "vector search. You NEVER invent company names."
+    )
+
+    user_prompt = f"""
+    ## COMPANY DESCRIPTION
+    {company_description}
+
+    ## ORIGINAL KEYWORDS
+    {", ".join(search_phrases)}
+
+    ## TASK
+    Produce up to {max_queries} distinct, **short** search strings that
+    capture the business needs implied by the company description. Each
+    string should be 2-7 words, look like something that could appear in
+    a tender title, and avoid generic filler words.
+
+    ## RESPONSE FORMAT (JSON)
+    {{
+      "queries": ["...", "..."]
+    }}
+    """
+    model = "gpt-4.1"
+    provider, max_tokens = get_model_config(model)
+    optimized_tokens = get_optimal_max_tokens(model, "high")
+
+    req = LLMRAGRequest(
+        query=user_prompt,
+        rag_query="",
+        vector_store=None,
+        llm={
+            "provider": provider,
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": optimized_tokens,
+            "system_message": system_prompt,
+            "stream": False,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                        "name": "pinecone_request_queries_response",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "queries": {
+                                    "type": "array",
+                                    "description": "List of queries to pinecone.",
+                                    "items": {"type": "string", "description": "Pinecone query"}
+                                }
+                            },
+                            "required": ["queries"],
+                            "additionalProperties": False
+                        }
+                    }
+            }
+        }
+    )
+    raw = await ask_llm_logic(req)
+    try:
+        parsed = json.loads(raw.llm_response)
+        return parsed.get("queries", [])[:max_queries]
+    except Exception as e:
+        logger.warning(f"Query-expander JSON parse failed: {e}")
+        return []
+
 async def perform_tender_search(
     search_phrase: str,
+    company_description: str,      
     tender_names_index_name: str,
     elasticsearch_index_name: str = "tenders",
     embedding_model: str = "text-embedding-3-large",
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     top_k: int = 30,
     sources: Optional[List[str]] = None,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
@@ -142,6 +224,8 @@ async def perform_tender_search(
 
     search_phrases = [phrase.strip() for phrase in search_phrase.split(",")]
 
+    semantic_phrases = await generate_pinecone_queries(search_phrase, company_description)
+
     pinecone_filters = translate_filters_to_pinecone(filter_conditions or [])
     es_filters = translate_filters_to_elasticsearch(filter_conditions or [])
 
@@ -151,42 +235,83 @@ async def perform_tender_search(
             # Correct filter application for Pinecone
             source_pinecone_filters["source_type"] = {"$eq": source}
 
-            logger.info(f"Querying Pinecone for source: {source} with filter: {source_pinecone_filters}")
-            pinecone_results = await query_tool.query_by_text(
-                query_text=search_phrase,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                filter_conditions=source_pinecone_filters
-            )
+            # logger.info(f"Querying Pinecone for source: {source} with filter: {source_pinecone_filters}")
+            # pinecone_results = await query_tool.query_by_text(
+            #     query_text=search_phrase,
+            #     top_k=top_k,
+            #     score_threshold=score_threshold,
+            #     filter_conditions=source_pinecone_filters
+            # )
+            # if pinecone_results.get("matches"):
+            #     for match in pinecone_results["matches"]:
+            #         match_id = match["id"]
+            #         if match_id in processed_ids:
+            #             continue
+            #         processed_ids.add(match_id)
+            #         tender_name = match["metadata"].get("name", "")
+            #         all_tender_matches.append({
+            #             "id": match_id,
+            #             "name": tender_name,
+            #             "organization": match["metadata"].get("organization", ""),
+            #             "location": match["metadata"].get("location", ""),
+            #             "source": "pinecone",
+            #             "search_phrase": search_phrase,
+            #             "source_type": match["metadata"].get("source_type")
+            #         })
+            #         combined_search_matches[match_id] = match
+            #         detailed_results.setdefault(search_phrase, {}).setdefault("pinecone", []).append({
+            #             "id": match_id,
+            #             "name": tender_name,
+            #             "score": match.get("score"),
+            #             "source": "pinecone",
+            #             "source_type": match["metadata"].get("source_type")
+            #         })
 
-            if pinecone_results.get("matches"):
-                for match in pinecone_results["matches"]:
-                    match_id = match["id"]
-                    if match_id in processed_ids:
-                        continue
-                    processed_ids.add(match_id)
-                    tender_name = match["metadata"].get("name", "")
-                    all_tender_matches.append({
-                        "id": match_id,
-                        "name": tender_name,
-                        "organization": match["metadata"].get("organization", ""),
-                        "location": match["metadata"].get("location", ""),
-                        "source": "pinecone",
-                        "search_phrase": search_phrase,
-                        "source_type": match["metadata"].get("source_type")
-                    })
-                    combined_search_matches[match_id] = match
-                    detailed_results.setdefault(search_phrase, {}).setdefault("pinecone", []).append({
-                        "id": match_id,
-                        "name": tender_name,
-                        "score": match.get("score"),
-                        "source": "pinecone",
-                        "source_type": match["metadata"].get("source_type")
-                    })
+            # pinecone_matches = pinecone_results.get("matches", [])
+            # pinecone_count = len(pinecone_matches)
+            # logger.info(f"Pinecone found: {pinecone_count} unique tenders for source: {source}.")
 
-            pinecone_matches = pinecone_results.get("matches", [])
-            pinecone_count = len(pinecone_matches)
-            logger.info(f"Pinecone found: {pinecone_count} unique tenders for source: {source}.")
+
+            # Add keyword search filters for each search phrase
+            for phrase in semantic_phrases:
+                logger.info(f"Querying Pinecone for source: {source} with vector search, phrase: {phrase} and keyword filters: {source_pinecone_filters}")
+                
+                # Perform vector similarity search
+                pinecone_results = await query_tool.query_by_text(
+                    query_text=phrase,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                    filter_conditions=source_pinecone_filters
+                )
+
+                if pinecone_results.get("matches"):
+                    for match in pinecone_results["matches"]:
+                        match_id = match["id"]
+                        if match_id in processed_ids:
+                            continue
+                        processed_ids.add(match_id)
+                        tender_name = match["metadata"].get("name", "")
+                        all_tender_matches.append({
+                            "id": match_id,
+                            "name": tender_name,
+                            "organization": match["metadata"].get("organization", ""),
+                            "location": match["metadata"].get("location", ""),
+                            "source": "pinecone",
+                            "search_phrase": phrase,
+                            "source_type": match["metadata"].get("source_type")
+                        })
+                        combined_search_matches[match_id] = match
+                        detailed_results.setdefault(phrase, {}).setdefault("pinecone", []).append({
+                            "id": match_id,
+                            "name": tender_name,
+                            "score": match.get("score"),
+                            "source": "pinecone",
+                            "source_type": match["metadata"].get("source_type")
+                        })
+
+                pinecone_matches = pinecone_results.get("matches", [])
+                pinecone_count = len(pinecone_matches)
+                logger.info(f"Pinecone found: {pinecone_count} unique tenders for source: {source} and phrase: {phrase}.")
 
             for phrase in search_phrases:
                 es_query = {
@@ -201,7 +326,7 @@ async def perform_tender_search(
                 }
 
                 logger.info(f"Querying Elasticsearch for source: {source} with query: {es_query}")
-                es_result = es_client.search(
+                es_result = await es_client.search(
                     index=elasticsearch_index_name,
                     body={
                         "query": es_query,
@@ -252,35 +377,74 @@ async def perform_tender_search(
             score_threshold=score_threshold,
             filter_conditions=pinecone_filters
         )
+        # Add keyword search filters for each search phrase
+        for phrase in semantic_phrases:
 
-        if pinecone_results.get("matches"):
-            for match in pinecone_results["matches"]:
-                match_id = match["id"]
-                if match_id in processed_ids:
-                    continue
-                processed_ids.add(match_id)
-                tender_name = match["metadata"].get("name", "")
-                all_tender_matches.append({
-                    "id": match_id,
-                    "name": tender_name,
-                    "organization": match["metadata"].get("organization", ""),
-                    "location": match["metadata"].get("location", ""),
-                    "source": "pinecone",
-                    "search_phrase": search_phrase,
-                    "source_type": match["metadata"].get("source_type")
-                })
-                combined_search_matches[match_id] = match
-                detailed_results.setdefault(search_phrase, {}).setdefault("pinecone", []).append({
-                    "id": match_id,
-                    "name": tender_name,
-                    "score": match.get("score"),
-                    "source": "pinecone",
-                    "source_type": match["metadata"].get("source_type")
-                })
+            logger.info(f"Querying Pinecone with vector search and keyword filters: {pinecone_filters}")
+            
+            pinecone_results = await query_tool.query_by_text(
+                query_text=phrase,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=pinecone_filters
+            )
 
-        pinecone_matches = pinecone_results.get("matches", [])
-        pinecone_count = len(pinecone_matches)
-        logger.info(f"Pinecone found: {pinecone_count} unique tenders.")
+            if pinecone_results.get("matches"):
+                for match in pinecone_results["matches"]:
+                    match_id = match["id"]
+                    if match_id in processed_ids:
+                        continue
+                    processed_ids.add(match_id)
+                    tender_name = match["metadata"].get("name", "")
+                    all_tender_matches.append({
+                        "id": match_id,
+                        "name": tender_name,
+                        "organization": match["metadata"].get("organization", ""),
+                        "location": match["metadata"].get("location", ""),
+                        "source": "pinecone",
+                        "search_phrase": phrase,
+                        "source_type": match["metadata"].get("source_type")
+                    })
+                    combined_search_matches[match_id] = match
+                    detailed_results.setdefault(phrase, {}).setdefault("pinecone", []).append({
+                        "id": match_id,
+                        "name": tender_name,
+                        "score": match.get("score"),
+                        "source": "pinecone",
+                        "source_type": match["metadata"].get("source_type")
+                    })
+        # if pinecone_results.get("matches"):
+        #     for match in pinecone_results["matches"]:
+        #         match_id = match["id"]
+        #         if match_id in processed_ids:
+        #             continue
+        #         processed_ids.add(match_id)
+        #         tender_name = match["metadata"].get("name", "")
+        #         all_tender_matches.append({
+        #             "id": match_id,
+        #             "name": tender_name,
+        #             "organization": match["metadata"].get("organization", ""),
+        #             "location": match["metadata"].get("location", ""),
+        #             "source": "pinecone",
+        #             "search_phrase": search_phrase,
+        #             "source_type": match["metadata"].get("source_type")
+        #         })
+        #         combined_search_matches[match_id] = match
+        #         detailed_results.setdefault(search_phrase, {}).setdefault("pinecone", []).append({
+        #             "id": match_id,
+        #             "name": tender_name,
+        #             "score": match.get("score"),
+        #             "source": "pinecone",
+        #             "source_type": match["metadata"].get("source_type")
+        #         })
+        # pinecone_matches = pinecone_results.get("matches", [])
+        # pinecone_count = len(pinecone_matches)
+        # logger.info(f"Pinecone found: {pinecone_count} unique tenders.")
+
+
+            pinecone_matches = pinecone_results.get("matches", [])
+            pinecone_count = len(pinecone_matches)
+            logger.info(f"Pinecone found: {pinecone_count} unique tenders for phrase: {phrase}.")
 
         for phrase in search_phrases:
             es_query = {
@@ -293,7 +457,7 @@ async def perform_tender_search(
             }
 
             logger.info(f"Querying Elasticsearch with query: {es_query}")
-            es_result = es_client.search(
+            es_result = await es_client.search(
                 index=elasticsearch_index_name,
                 body={
                     "query": es_query,
@@ -339,6 +503,20 @@ async def perform_tender_search(
     
     # --- Memory usage after search aggregation ---
     log_mem("perform_tender_search:end")
+    
+    pinecone_tenders = set()
+    elasticsearch_tenders = set()
+    
+    for match in all_tender_matches:
+        if match["source"] == "pinecone":
+            pinecone_tenders.add(match["id"])
+        elif match["source"] == "elasticsearch":
+            elasticsearch_tenders.add(match["id"])
+    
+    logger.info("Unique tenders found:")
+    logger.info(f"Pinecone: {len(pinecone_tenders)} unique tenders")
+    logger.info(f"Elasticsearch: {len(elasticsearch_tenders)} unique tenders")
+    logger.info(f"Total unique tenders: {len(processed_ids)}")
     
     result = {
         "all_tender_matches": all_tender_matches,
@@ -463,7 +641,7 @@ async def compare_tender_search_results(
         # Check Elasticsearch
         # Note: mget might return fewer docs if some IDs don't exist
         if tender_ids_to_compare: # Avoid empty mget request
-            mget_response = es_client.mget(index=es_index_name, body={"ids": tender_ids_to_compare})
+            mget_response = await es_client.mget(index=es_index_name, body={"ids": tender_ids_to_compare})
             found_in_es = {doc['_id'] for doc in mget_response.get('docs', []) if doc.get('found')}
             existing_ids_in_source.update(found_in_es)
             logger.info(f"Checked {len(tender_ids_to_compare)} IDs in Elasticsearch index '{es_index_name}'. Found {len(found_in_es)} existing IDs.")

@@ -58,6 +58,8 @@ class TenderExtractor:
         unique_id = str(uuid4())
         temp_dir_path = Path(os.getcwd()) / "temp_downloads" / unique_id
         temp_dir_path.mkdir(parents=True, exist_ok=True)
+        bzp_extracted = False
+        plan_num, plan_id = None, None
         
         try:
             # Navigate to detail page with retry and increased timeout
@@ -168,59 +170,56 @@ class TenderExtractor:
                             if not content_text or len(content_text) < 200:
                                 content_text = self._html_to_text(html_content)
 
-                            # =============== EXTRACTION OF PLAN FIELDS AND BUDGET ===============
-                            # Use helper function on the extracted text
-                            plan_num, plan_id = extract_bzp_plan_fields(content_text)
-                            budget_info = "" # Reset for each announcement
-                            if plan_num and plan_id:
-                                # Plan ID might have extra details, try splitting if needed, but pass the original to the helper
-                                plan_short_id = plan_id.split()[0] if plan_id else plan_id # Helper expects the precise ID
-                                logging.info(f"{self.source_type}: Found BZP details: Plan={plan_num}, ID={plan_id}. Attempting budget scrape.")
-                                try:
-                                    budget_row_data = await scrape_bzp_budget_row(context, plan_num, plan_short_id)
-                                    if budget_row_data:
-                                        row_str, bzp_url = budget_row_data
+                            if not bzp_extracted:
+                                logging.info(f"{self.source_type}: Attempting BZP extraction from announcement content...")
+                                plan_num, plan_id = extract_bzp_plan_fields(content_text)
+                                logging.info(f"{self.source_type}: BZP extraction result - plan_num: '{plan_num}', plan_id: '{plan_id}'")
+                                
+                                if plan_num and plan_id:
+                                    bzp_extracted = True  # Mark as extracted to avoid duplicates
+                                    # Plan ID might have extra details, try splitting if needed, but pass the original to the helper
+                                    plan_short_id = plan_id.split()[0] if plan_id else plan_id # Helper expects the precise ID
+                                    logging.info(f"{self.source_type}: Found BZP details in announcement text: Plan={plan_num}, ID={plan_id}. Attempting budget scrape.")
+                                    try:
+                                        budget_row_data = await scrape_bzp_budget_row(context, plan_num, plan_short_id)
+                                        if budget_row_data:
+                                            row_str, bzp_url = budget_row_data
+                                            budget_info = (
+                                                f"\n\n---\n"
+                                                f"**Dane z planu postępowań BZP (z treści ogłoszenia)**\n"
+                                                f"Przewidywany budżet/Orientacyjna wartość/cena zamówienia:\n{row_str}\n"
+                                            )
+                                            logging.info(f"{self.source_type}: Successfully scraped BZP budget row for Plan={plan_num}, PosID={plan_short_id}.")
+                                        else:
+                                             # Construct URL for logging even if row not found
+                                            bzp_url_checked = f"https://ezamowienia.gov.pl/mo-client-board/bzp/tender-details/{urllib.parse.quote(plan_num, safe='')}"
+                                            budget_info = (
+                                                f"\n\n---\n"
+                                                f"Nie znaleziono pozycji {plan_short_id} w planie {plan_num} na BZP.\n"
+                                                f"URL sprawdzony: {bzp_url_checked}\n"
+                                                f"---"
+                                            )
+                                            logging.warning(f"{self.source_type}: BZP budget row not found for Plan={plan_num}, PosID={plan_short_id}. URL: {bzp_url_checked}")
+                                    except Exception as e_bzp:
+                                        logging.error(f"{self.source_type}: Error during BZP budget scraping for Plan={plan_num}, PosID={plan_short_id}: {e_bzp}")
                                         budget_info = (
                                             f"\n\n---\n"
-                                            f"**Dane z planu postępowań BZP**\n"
-                                            f"Przewidywany budżet/Orientacyjna wartość/cena zamówienia:\n{row_str}\n"
-                                        )
-                                        logging.info(f"{self.source_type}: Successfully scraped BZP budget row for Plan={plan_num}, PosID={plan_short_id}.")
-                                    else:
-                                         # Construct URL for logging even if row not found
-                                        bzp_url_checked = f"https://ezamowienia.gov.pl/mo-client-board/bzp/tender-details/{urllib.parse.quote(plan_num, safe='')}"
-                                        budget_info = (
-                                            f"\n\n---\n"
-                                            f"Nie znaleziono pozycji {plan_short_id} w planie {plan_num} na BZP.\n"
-                                            f"URL sprawdzony: {bzp_url_checked}\n"
+                                            f"Błąd podczas pobierania danych BZP dla planu {plan_num}, pozycji {plan_short_id}: {e_bzp}\n"
                                             f"---"
                                         )
-                                        logging.warning(f"{self.source_type}: BZP budget row not found for Plan={plan_num}, PosID={plan_short_id}. URL: {bzp_url_checked}")
-                                except Exception as e_bzp:
-                                    logging.error(f"{self.source_type}: Error during BZP budget scraping for Plan={plan_num}, PosID={plan_short_id}: {e_bzp}")
-                                    budget_info = (
-                                        f"\n\n---\n"
-                                        f"Błąd podczas pobierania danych BZP dla planu {plan_num}, pozycji {plan_short_id}: {e_bzp}\n"
-                                        f"---"
-                                    )
 
-                            else:
-                                # No plan num/pos id found in this announcement text
-                                # logging.info(f"{self.source_type}: No BZP plan/id fields found in announcement: {url}")
-                                pass # No budget info to add
+                                    # Add budget info as a separate file (only once per tender)
+                                    processed_files.append((
+                                        budget_info.encode("utf-8"),
+                                        "bzp_budget.txt",
+                                        bzp_url if 'bzp_url' in locals() else None, # Use BZP URL if available
+                                        budget_info[:200],
+                                        None # No original_bytes for generated text
+                                    ))
+                                    logging.info(f"{self.source_type}: Added bzp_budget.txt for Plan={plan_num}, PosID={plan_short_id}")
+                                    announcement_count += 1 # Count it as a processed file
 
-                            # If budget_info was generated, save it as a separate file
-                            if budget_info:
-                                processed_files.append((
-                                    budget_info.encode("utf-8"),
-                                    "bzp_budget.txt",
-                                    bzp_url if 'bzp_url' in locals() else None, # Use BZP URL if available
-                                    budget_info[:200],
-                                    None # No original_bytes for generated text
-                                ))
-                                logging.info(f"{self.source_type}: Added bzp_budget.txt for Plan={plan_num}, PosID={plan_short_id}")
-                                announcement_count += 1 # Count it as a processed file
-
+                            # Save the announcement content as a text file
                             if len(content_text) > 50: # Reduced minimum size slightly
                                 filename = f"{link_text.replace(' ', '_').replace('/', '-')}.txt"
                                 preview_chars = content_text[:200] if len(content_text) > 200 else content_text

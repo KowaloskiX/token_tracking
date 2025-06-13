@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak
+venv.bak
+
+# Cache
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# NLTK data
+nltk_data/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Other
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+Downloads/
+.DS_Store 

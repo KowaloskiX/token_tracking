@@ -84,7 +84,7 @@ class TenderMonitoringService:
 
                 for (file_content, filename, url, preview_chars, original_bytes) in new_files:
                     try:
-                        file_pinecone_config = await rag_manager.upload_file_content_to_pinecone(file_content, filename)
+                        file_pinecone_config = await rag_manager.upload_file_content(file_content, filename)
 
 
                         bytes_to_upload: bytes | bytearray = original_bytes if isinstance(original_bytes, (bytes, bytearray)) and original_bytes is not None else file_content

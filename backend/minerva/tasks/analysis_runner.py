@@ -4,13 +4,21 @@ from datetime import datetime
 import pytz
 import os
 from minerva.api.routes.extensions.tenders.tender_analysis_routes import DEFAULT_CRITERIA
-from minerva.core.models.extensions.tenders.tender_analysis import AnalysisCriteria, TenderAnalysis
+from minerva.core.models.extensions.tenders.tender_analysis import (
+    AnalysisCriteria,
+    TenderAnalysis,
+    TenderAnalysisResult,
+)
 from minerva.tasks.sources.helpers import assign_order_numbers
 import resend
 from bson import ObjectId
 from typing import Dict, List, Optional, Any
 from minerva.core.database.database import db
 from minerva.core.models.user import User
+from minerva.core.utils.email_utils import (
+    handle_send_email,
+    build_tender_results_email_html,
+)
 from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag, run_partial_tender_analyses
 from minerva.tasks.services.tender_initial_ai_filtering_service import get_saved_initial_ai_filter_results
 from minerva.tasks.services.tender_description_filtering_service import get_saved_description_filter_results
@@ -37,10 +45,56 @@ async def send_summary_email(html_content: str):
     except Exception as e:
         logger.error(f"Error sending analysis summary email: {str(e)}")
 
+
+async def send_user_result_email(user_email: str, analysis_name: str, analysis_id: str, tenders: List[TenderAnalysisResult]):
+    """Send an individualized email with tender links and descriptions."""
+    try:
+        html_content = build_tender_results_email_html(
+            analysis_name=analysis_name,
+            analysis_id=analysis_id,
+            tenders=tenders,
+        )
+
+        await handle_send_email(
+            user_email,
+            f"Nowe przetargi - {analysis_name}",
+            html_content,
+        )
+        logger.info(
+            f"Sent tender summary email to {user_email} for {analysis_name}"
+        )
+    except Exception as exc:
+        logger.error(
+            f"Error sending tender summary email to {user_email}: {exc}"
+        )
+
+async def send_emails_to_recipients(recipient_user_ids: List[str], analysis_name: str, analysis_id: str, tenders: List[TenderAnalysisResult]):
+    """Send emails to multiple recipients based on their user IDs."""
+    if not recipient_user_ids:
+        logger.info(f"No email recipients configured for analysis {analysis_name}")
+        return
+    
+    for user_id in recipient_user_ids:
+        try:
+            user_data = await db.users.find_one({"_id": ObjectId(user_id)})
+            if not user_data:
+                logger.warning(f"User {user_id} not found for email notification")
+                continue
+                
+            await send_user_result_email(
+                user_email=user_data["email"],
+                analysis_name=analysis_name,
+                analysis_id=analysis_id,
+                tenders=tenders,
+            )
+            logger.info(f"Email sent to {user_data['email']} for {analysis_name} - {len(tenders)} tenders found")
+        except Exception as exc:
+            logger.error(f"Failed to send email to user {user_id}: {exc}")
+
 async def run_all_tender_analyses_task(
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),
     top_k: int = 30,
-    score_threshold: float = 0.1,
+    score_threshold: float = 0.5,
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     worker_index: int = 0,
     total_workers: int = 1
@@ -101,6 +155,10 @@ async def run_all_tender_analyses_task(
             continue
         user_email = user_data.get("email", "unknown@example.com")
 
+        # Get email recipients using TenderAnalysis model
+        tender_analysis = TenderAnalysis(**analysis_doc)
+        email_recipient_ids = tender_analysis.get_email_recipients()
+
         # Fetch filter stats
         initial_ai_filter_stats = None
         if batch_result.initial_ai_filter_id:
@@ -129,6 +187,22 @@ async def run_all_tender_analyses_task(
             "tenders_after_description_filter": tenders_after_description_filter, # Tenders after description filter (final count)
             "tender_names_list_str": "<br>".join(tender_names_list) if tender_names_list else "No tenders found for this analysis."
         })
+        # Only send email if at least one tender was found with score > 0.6
+        qualifying_tenders = [
+            tender for tender in batch_result.analysis_results 
+            if getattr(tender, "tender_score", 0) > 0.6
+        ]
+        
+        if qualifying_tenders and len(qualifying_tenders) > 0:
+            await send_emails_to_recipients(
+                recipient_user_ids=email_recipient_ids,
+                analysis_name=analysis_name,
+                analysis_id=analysis_id,
+                tenders=batch_result.analysis_results,  # Send all results, filtering happens in email building
+            )
+            logger.info(f"Emails sent to {len(email_recipient_ids)} recipients for {analysis_name} - {len(qualifying_tenders)} qualifying tenders found (score > 0.6)")
+        else:
+            logger.info(f"No emails sent for {analysis_name} - no qualifying tenders found (all scores <= 0.6)")
 
     html_lines.append("<h3>Detailed Analysis Results (This Worker)</h3>")
     if not analysis_details_list:
@@ -248,7 +322,7 @@ async def run_tender_analysis_for_user_and_date(user_id: str, analysis_id: str, 
         analysis_id=analysis_id,
         current_user=user,
         top_k=30,
-        score_threshold=0.1,
+        score_threshold=0.5,
         filter_conditions=filter_conditions,
         tender_names_index_name="tenders",
         elasticsearch_index_name="tenders",

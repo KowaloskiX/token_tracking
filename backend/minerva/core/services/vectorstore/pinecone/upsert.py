@@ -61,13 +61,14 @@ class EmbeddingTool:
         processed_count = 0
         failed_items = []
 
-        batch_size = min(self.config.batch_size, len(items)) # Use config.batch_size
+        # Always use the configured batch_size (default 100). This is the maximum supported by
+        # Pinecone bulk-upsert and gives best throughput.
+        batch_size = self.config.batch_size
 
-        logging.info(f"Processing {len(items)} items in batches of {batch_size if batch_size > 0 else len(items)} items per batch")
+        logging.info(f"Processing {len(items)} items in batches of {batch_size} items per batch")
 
-        for i in range(0, len(items), batch_size if batch_size > 0 else 1): # Handle batch_size=0 to mean all items
-            actual_batch_size = batch_size if batch_size > 0 else len(items)
-            batch_items_to_process = items[i:i + actual_batch_size]
+        for i in range(0, len(items), batch_size):
+            batch_items_to_process = items[i:i + batch_size]
             
             batch_texts_for_embedding = []
             valid_items_for_batch = [] # Items that are within token limits and will be attempted

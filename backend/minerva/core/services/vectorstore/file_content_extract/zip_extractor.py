@@ -28,20 +28,25 @@ class ZipFileExtractor(BaseFileExtractor):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Extract based on file type
-            if ext == '.zip':
-                self.logger.info(f"Processing ZIP archive: {file_path}")
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-            elif ext == '.7z':
-                self.logger.info(f"Processing 7Z archive: {file_path}")
-                with py7zr.SevenZipFile(file_path, mode='r') as archive:
-                    archive.extractall(path=temp_dir)
-            elif ext == '.rar':
-                self.logger.info(f"Processing RAR archive: {file_path}")
-                with rarfile.RarFile(file_path) as rar_ref:
-                    rar_ref.extractall(temp_dir)
-            else:
-                raise ValueError(f"Unsupported archive format: {ext}")
+            try:
+                if ext == '.zip':
+                    self.logger.info(f"Processing ZIP archive: {file_path}")
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        zip_ref.extractall(temp_dir)
+                elif ext == '.7z':
+                    self.logger.info(f"Processing 7Z archive: {file_path}")
+                    with py7zr.SevenZipFile(file_path, mode='r') as archive:
+                        archive.extractall(path=temp_dir)
+                elif ext == '.rar':
+                    self.logger.info(f"Processing RAR archive: {file_path}")
+                    with rarfile.RarFile(file_path) as rar_ref:
+                        rar_ref.extractall(temp_dir)
+                else:
+                    raise ValueError(f"Unsupported archive format: {ext}")
+            except Exception as e:
+                self.logger.warning(
+                            f"Failed to process archive '{file_path}': {str(e)}"
+                        )
 
             # Process extracted files (same for all archive types)
             for root, _, files in os.walk(temp_dir):
@@ -58,22 +63,18 @@ class ZipFileExtractor(BaseFileExtractor):
                             for content in extractor.extract_file_content(extracted_path):
                                 if content.metadata is None:
                                     content.metadata = {}
+                                # Always keep the inner extractor’s own fields
+                                content.metadata.setdefault("filename", extracted_path.name)
+                                content.metadata.setdefault("inner_temp_path", str(extracted_path))
+                                content.metadata.setdefault("original_filename", extracted_path.name)
+
+                                # Add archive provenance (these are new keys, so setdefault not required)
                                 content.metadata["archive_source"] = file_path.name
-                                content.metadata["archive_type"] = ext[1:]  # 'zip', '7z', or 'rar'
-                                content.metadata["filename"] = extracted_path.name
-                                # Instead of loading bytes here (which can be huge and double held),
-                                # attach the temporary file path so the downstream service can lazily
-                                # read bytes **once** and then delete the temp file.
-                                content.metadata["inner_temp_path"] = str(extracted_path)
-                                content.metadata["original_filename"] = extracted_path.name
+                                content.metadata["archive_type"]   = ext[1:]     
                                 yield content
                                 # We can safely delete the extracted file after it has been yielded;
                                 # FileExtractionService will have copied the bytes by the time the
                                 # generator advances again.
-                                try:
-                                    os.remove(extracted_path)
-                                except Exception:
-                                    pass
                                 gc.collect()
                         else:
                             self.logger.warning(

@@ -380,34 +380,21 @@ async def patch_assistant(
 
 
 @router.get("/owner/{owner_id}", response_model=List[Assistant])
-async def get_assistants_by_owner(owner_id: str, org_id: Optional[str] = None):
+async def get_assistants_by_owner(owner_id: str):
     try:
-        # Build the query to handle cases based on org_id
-        if org_id and org_id.strip():  # If org_id is not empty or None
-            query = {
-                "$or": [
-                    {"owner_id": owner_id, "org_id": org_id},  # Organization-owned assistants created by the user
-                    {"org_id": org_id},  # Organization-owned assistants created by others
-                    {"owner_id": owner_id, "org_id": None},  # Personal assistants (no org_id)
-                    {"owner_id": owner_id, "org_id": ""}   # Personal assistants (empty org_id)
-                ]
-            }
-        else:  # If org_id is empty or None
-            query = {
-                "$or": [
-                    {"owner_id": owner_id, "org_id": None},  # Personal assistants (no org_id)
-                    {"owner_id": owner_id, "org_id": ""}   # Personal assistants (empty org_id)
-                ]
-            }
+        principals = [
+            {"owner_id": owner_id},
+            {"assigned_users": owner_id}
+        ]
+
+        query = {"$or": principals}
 
         assistants = await db["assistants"].find(query).to_list(None)
-        if not assistants:
-            return []
-        return [Assistant(**assistant) for assistant in assistants]
+        return [Assistant(**a) for a in assistants]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
 
+    
 @router.get("/all", response_model=List[Assistant])
 async def get_all_assistants(
     skip: int = Query(default=0, ge=0, description="Number of assistants to skip"),
