@@ -1,7 +1,6 @@
 import pprint
 import re
 from uuid import uuid4
-from bson import ObjectId
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
 from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.models.file import FilePineconeConfig
@@ -412,34 +411,26 @@ class RAGManager:
         if not text or not text.strip():
             logger.info(f"{tender_context} No text content extracted from {filename}")
             return FilePineconeConfig(
-                query_config=QueryConfig(
-                    index_name=self.index_name,
-                    namespace=self.namespace,
-                    embedding_model=self.embedding_model
-                ),
-                pinecone_unique_id_prefix=filename_unique_prefix
+                query_config=QueryConfig(self.index_name, self.namespace, self.embedding_model),
+                pinecone_unique_id_prefix=filename_unique_prefix,
             )
-                
+
         logger.info(f"{tender_context} Processing {filename} - {len(text)} characters extracted")
 
+        # ─────────────── action generator ──────────────
         async def gen_actions():
             chunk_index_global = 0
             batch_for_pinecone = []
-            total_tokens_for_embedding = 0
-        
+
             for chunk in safe_chunk_text(text, self.chunker, self.embedding_model):
                 if not chunk or not chunk.strip():
                     continue
-
-                tokens = count_tokens(chunk, self.embedding_model)
-                total_tokens_for_embedding += tokens
                 if count_tokens(chunk, self.embedding_model) > MAX_TOKENS:
                     logger.error("Chunk %s from %s over token limit", chunk_index_global, filename)
                     chunk_index_global += 1
                     continue
 
                 chunk_id = f"{filename_unique_prefix}_{uuid4()}"
-                # Store both a short preview (200 chars) and the full text of the chunk
                 metadata = {
                     "tender_pinecone_id": self.tender_pinecone_id,
                     "source": filename,  # Keep original filename as source
@@ -469,38 +460,10 @@ class RAGManager:
                 chunk_index_global += 1
 
                 if len(batch_for_pinecone) >= self.EMBED_BATCH_SIZE:
-                    # Direct embedding cost tracking without separate function
-                    batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
-                    
-                    # Track embedding costs directly
-                    try:
-                        from minerva.core.services.llm_logic import track_embedding_call
-                        await track_embedding_call(
-                            model_name=self.embedding_model,
-                            input_tokens=batch_tokens
-                        )
-                    except Exception as e:
-                        logger.debug(f"Error tracking embedding costs: {str(e)}")
-                        # Don't fail the embedding operation if cost tracking fails
-                    
                     await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
                     batch_for_pinecone.clear()
-                    
+
             if batch_for_pinecone:
-                # Track embedding cost for final batch - directly inline
-                batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
-                
-                # Track embedding costs directly
-                try:
-                    from minerva.core.services.llm_logic import track_embedding_call
-                    await track_embedding_call(
-                        model_name=self.embedding_model,
-                        input_tokens=batch_tokens
-                    )
-                except Exception as e:
-                    logger.debug(f"Error tracking embedding costs: {str(e)}")
-                    # Don't fail the embedding operation if cost tracking fails
-                
                 await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
 
         # Always process Elasticsearch if enabled
@@ -519,10 +482,11 @@ class RAGManager:
             # If Elasticsearch is disabled, still need to process the generator to handle Pinecone uploads
             async for _ in gen_actions():
                 pass
+
         text = None
         gc.collect(); malloc_trim()
+
         log_mem(f"{self.tender_pinecone_id} upload:after:{filename}")
-    
 
         return FilePineconeConfig(
             query_config=QueryConfig(
@@ -532,15 +496,15 @@ class RAGManager:
             ),
             pinecone_unique_id_prefix=filename_unique_prefix,
             elasticsearch_indexed=self.use_elasticsearch,
-        )  
+        )
 
         
     @staticmethod
     async def ai_filter_tenders(
         tender_analysis: TenderAnalysis,
         tender_matches: List[dict],
-        current_user: Optional[User] = None,  # Made optional to align with previous fix
-        run_id: Optional[str] = None
+        current_user: Optional[User] = None,
+        run_id: Optional[str] = None  # Added for tracking multiple runs
     ) -> TenderProfileMatches:
         # Memory log before AI tender filtering
         log_mem(f"ai_filter_tenders:start:{run_id or 'single'}")
@@ -613,6 +577,8 @@ class RAGManager:
 
         try:
             response = await ask_llm_logic(request_data)
+            
+            # Add robust JSON parsing with error handling
             try:
                 parsed_output = json.loads(response.llm_response)
             except json.JSONDecodeError as json_error:
@@ -632,7 +598,7 @@ class RAGManager:
                     logger.error(f"JSON parsing failed even after sanitization for ai_filter_tenders: {str(second_error)}")
                     # Return a fallback response structure
                     parsed_output = {"matches": []}
-
+            
             # Post-process to ensure 'id' is present (fallback if OpenAI omits it)
             tender_lookup = {match["id"]: match for match in tender_matches}
             for match in parsed_output["matches"]:
@@ -642,12 +608,15 @@ class RAGManager:
                     if match["id"] == "unknown":
                         logger.warning(f"Could not find ID for tender: {match['name']}")
 
+            if current_user and hasattr(response, "usage") and response.usage:
+                await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+
             # Memory log after AI tender filtering
             log_mem(f"ai_filter_tenders:end:{run_id or 'single'}")
             return TenderProfileMatches(**parsed_output)
         
         except Exception as e:
-            logger.error(f"Error filtering tenders with AI: {str(e)}", exc_info=True)
+            logger.error(f"Error filtering tenders with AI using ask_llm_logic: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to filter tenders: {str(e)}")
 
     @staticmethod
@@ -1211,7 +1180,8 @@ class RAGManager:
                         "response_format": response_format
                     }
                 )
-                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)              
+                response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 2)
+                
                 # Add robust JSON parsing with error handling
                 try:
                     parsed_output = json.loads(response.llm_response)
@@ -1294,10 +1264,9 @@ class RAGManager:
 
 
     async def generate_tender_description(self) -> str:
-        """Enhanced version with cost tracking"""
         # Memory log before generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:start")
-        
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description:start")
+        # Create thread and add initial message
         prompt = (
                     f"Summarize exactly what this tender is about in {self.language} (public tender is zamówienie publiczne in polish).."
                     "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
@@ -1312,6 +1281,7 @@ class RAGManager:
         
         request_data = LLMRAGRequest(
             query=prompt,
+            # rag_query="Podaj wszystkie produkty/usługi i opis tego co jest przedmiotem zamówienia.",
             rag_query="Podaj opis tego co jest przedmiotem zamówienia.",
             vector_store={
                 "index_name": self.index_name,
@@ -1327,14 +1297,13 @@ class RAGManager:
                 "stream": False,
             }
         )
-        
-        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 5)
+        response = await llm_rag_search_logic(request_data, self.tender_pinecone_id, 7)
 
         # Remove any '【...】' placeholders using regex
         description = re.sub(r'【.*?】', '', response.llm_response)
 
         # Memory log after generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:end")
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description:end")
 
         # Clean up and return
         return description.strip()

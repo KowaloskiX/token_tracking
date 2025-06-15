@@ -327,9 +327,9 @@ class EproPublicoMainTenderExtractor:
 
                 # If we found no tender meeting the date criteria,
                 # we can break early to avoid scraping "forever."
-                if start_dt and not found_recent_tender:
-                    logging.info(f"No more recent tenders found on page={current_page}. Stopping early.")
-                    break
+                # if start_dt and not found_recent_tender:
+                #     logging.info(f"No more recent tenders found on page={current_page}. Stopping early.")
+                #     break
 
                 current_page += 1  # Move to the next listing page
 

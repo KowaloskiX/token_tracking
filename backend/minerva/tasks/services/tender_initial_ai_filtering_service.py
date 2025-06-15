@@ -248,7 +248,6 @@ async def perform_ai_filtering(
         analysis_id: Analysis ID to associate with filtered results
         current_user: Optional user making the request
         ai_batch_size: Batch size for AI processing
-        save_results: Whether to save filter results to database
         search_id: Optional ID of saved search results used
         filtering_mode: Mode for AI filtering (STANDARD, TRIPLE_RUN, REVIEW_CORRECTION)
         

@@ -35,8 +35,8 @@ async def generate_tender_description(
         logger.info(f"[{tender_pinecone_id}] Starting tender description generation")
         
         # Generate description
-        tender_description = await rag_manager.generate_tender_description(
-        )        
+        tender_description = await rag_manager.generate_tender_description()
+        
         logger.info(f"[{tender_pinecone_id}] Completed tender description generation")
         
         result = {

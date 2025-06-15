@@ -63,7 +63,7 @@ async def perform_file_extraction(
     current_user: Optional[User] = None,
     save_results: bool = False,
     check_existing_analysis: bool = False,
-    use_elasticsearch: bool = False,
+    use_elasticsearch: bool = False
 ) -> Dict[str, Any]:
 
     context: Optional[BrowserContext] = None

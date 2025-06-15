@@ -305,7 +305,7 @@ async def get_generate_full_response_request_data(user_query: str, citations_out
     # Build the prompt by including the user query and the full citations output.
     prompt = f"""
     The citations are given as a JSON object where each entry contains a list of citation strings and a filename.
-    Please generate a full answer in polish (or other language if user prompt is that way) to the user_query.
+    Please generate a full answer in user language if user prompt to the user_query.
     Based on the citations provided, identify which files contained information relevant to generating your answer and list ONLY their filenames and file_ids.
     Return your answer as a JSON object with the following structure:
     {{
@@ -371,7 +371,7 @@ async def get_generate_full_response_request_data(user_query: str, citations_out
 async def file_deep_search(filename: str, file_text_content: str, user_query: str, progress_callback: Optional[Callable[[dict], Awaitable[None]]] = None):
     logger.info(f"Starting deep search for file: {filename}")
     system_message = """
-        You will get USER_QUERY, DOCUMENT_TEXT containing the content of the document and DOCUMENT_NAME (all in polish language).
+        You will get USER_QUERY, DOCUMENT_TEXT containing the content of the document and DOCUMENT_NAME.
         Closely analyze this document content and check if there are any relevant mentions 
         that explicitly mention something related to user query. 
         Return EXACT quotes from the document.
