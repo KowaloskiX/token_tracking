@@ -10,7 +10,7 @@ from minerva.tasks.sources.logintrade.extract_tenders import LoginTradeExtractor
 from minerva.tasks.services.scraping_service import scrape_and_embed_all_sources
 from fastapi import APIRouter, HTTPException
 from typing import Any, Dict, Optional
-from minerva.core.models.request.tender_extract import ExtractionRequest, HistoricalExtractionRequest
+from minerva.core.models.request.tender_extract import ExtractionRequest
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.services.tender_insert_service import TenderInsertConfig, TenderInsertService
 from minerva.tasks.sources.ezamawiajacy.extract_tenders import EzamawiajacyTenderExtractor
@@ -18,7 +18,6 @@ from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryT
 from minerva.tasks.sources.orlenconnect.extract_tenders import OrlenConnectTenderExtractor
 from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
 from minerva.tasks.sources.ted.tender_countries import IrelandTedTenderExtractor, ItalyTedTenderExtractor, TedTenderExtractor
-from minerva.tasks.sources.ezamowienia.extract_historical_tenders import HistoricalTenderExtractor, HistoricalTender
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
 from openai import OpenAI
 from pinecone import Pinecone
@@ -250,148 +249,3 @@ async def compare_scraping_results(request: CompareScrapingRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error comparing scraping results: {str(e)}")
-
-@router.post("/fetch-and-embed-historical")
-async def fetch_and_embed_historical_tenders(request: HistoricalExtractionRequest) -> Dict:
-    try:
-        try:
-            datetime.strptime(request.start_date, '%Y-%m-%d')
-            datetime.strptime(request.end_date, '%Y-%m-%d')
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid date format. Please use YYYY-MM-DD format."
-            )
-
-        historical_config = TenderInsertConfig.create_default(
-            pinecone_index="historical-tenders",
-            pinecone_namespace="",
-            embedding_model="text-embedding-3-large",
-            elasticsearch_index="historical-tenders"
-        )
-        
-        historical_extractor = HistoricalTenderExtractor()
-        
-        tender_service = TenderInsertService(
-            config=historical_config,
-            tender_source=historical_extractor
-        )
-
-        inputs = {
-            'start_date': request.start_date,
-            'end_date': request.end_date,
-            'max_pages': request.max_pages
-        }
-
-        result = await historical_extractor.execute(inputs)
-        
-        historical_tenders_for_embedding = []
-        for tender in result["tenders"]:
-            tender_dict = {
-                "name": tender.name,
-                "organization": tender.organization,
-                "location": tender.location,
-                "submission_deadline": tender.announcement_date,
-                "initiation_date": tender.announcement_date,
-                "details_url": tender.details_url,
-                "content_type": tender.content_type,
-                "source_type": tender.source_type,
-                "completion_status": tender.completion_status,
-                "total_offers": tender.total_offers,
-                "sme_offers": tender.sme_offers,
-                "lowest_price": tender.lowest_price,
-                "highest_price": tender.highest_price,
-                "winning_price": tender.winning_price,
-                "winner_name": tender.winner_name,
-                "winner_location": tender.winner_location,
-                "winner_size": tender.winner_size,
-                "contract_date": tender.contract_date,
-                "contract_value": tender.contract_value,
-                "realization_period": tender.realization_period,
-                "full_content": tender.full_content
-            }
-            historical_tenders_for_embedding.append(tender_dict)
-
-        if historical_tenders_for_embedding:
-            embedding_config = EmbeddingConfig(
-                index_name=historical_config.pinecone_config.index_name,
-                namespace=historical_config.pinecone_config.namespace,
-                embedding_model=historical_config.pinecone_config.embedding_model,
-                batch_size=50
-            )
-            
-            from minerva.core.services.vectorstore.pinecone.upsert import UpsertTool
-            upsert_tool = UpsertTool(config=embedding_config)
-            
-            embedding_result = await upsert_tool.upsert_tenders_from_dict(historical_tenders_for_embedding)
-            
-            es_result = {"stored_count": len(historical_tenders_for_embedding)}
-            
-            return {
-                "result": {
-                    "embedding_result": embedding_result,
-                    "elasticsearch_result": es_result
-                },
-                "summary": {
-                    "historical_tenders_found": len(result["tenders"]),
-                    "pages_scraped": result["metadata"].pages_scraped,
-                    "pinecone_processed": embedding_result.get("processed_count", 0),
-                    "elasticsearch_processed": es_result.get("stored_count", 0),
-                    "date_range": f"{request.start_date} to {request.end_date}"
-                }
-            }
-        else:
-            return {
-                "result": {
-                    "embedding_result": {"processed_count": 0},
-                    "elasticsearch_result": {"stored_count": 0}
-                },
-                "summary": {
-                    "historical_tenders_found": 0,
-                    "pages_scraped": result["metadata"].pages_scraped,
-                    "pinecone_processed": 0,
-                    "elasticsearch_processed": 0,
-                    "date_range": f"{request.start_date} to {request.end_date}"
-                }
-            }
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting historical tenders: {str(e)}")
-
-
-@router.post("/query-historical")
-async def query_historical_tenders(search_request: SearchRequest):
-    """
-    Query historical tenders from the historical-tenders index
-    """
-    try:
-        historical_search_request = SearchRequest(
-            query=search_request.query,
-            index_name="historical-tenders",
-            top_k=search_request.top_k,
-            embedding_model=search_request.embedding_model,
-            score_threshold=search_request.score_threshold
-        )
-        
-        query_tool = QueryTool(config=QueryConfig(
-            index_name=historical_search_request.index_name,
-            embedding_model=historical_search_request.embedding_model
-        ))
-        
-        results = await query_tool.query_by_text(
-            query_text=historical_search_request.query,
-            top_k=historical_search_request.top_k,
-            score_threshold=historical_search_request.score_threshold
-        )
-        
-        return {
-            "matches": results["matches"],
-            "total_results": len(results["matches"]),
-            "filters_applied": results.get("filter_applied"),
-            "query": historical_search_request.query,
-            "index": "historical-tenders"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error querying historical tenders: {str(e)}")

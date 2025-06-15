@@ -13,6 +13,7 @@ from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.models.file import File
 from minerva.core.models.request.tender_analysis import BatchAnalysisResult, TenderAnalysisResponse, TenderSearchResponse
 from minerva.core.models.user import User
+from minerva.core.services.cost_tracking_service import CostTrackingContext
 from minerva.core.models.extensions.tenders.tender_analysis import (
     AnalysisCriteria,
     Citation,
@@ -226,6 +227,7 @@ async def _process_tender_pipeline(
     shared_browser: Browser,
     tender_analysis: TenderAnalysis,
     analysis_id: str,
+    analysis_session_id: str,  # NEW parameter
     rag_index_name: str,
     embedding_model: str,
     current_user: Optional[User],
@@ -234,14 +236,17 @@ async def _process_tender_pipeline(
     source_manager: TenderSourceManager,
     language: str = "polish"
 ):
-    """End-to-end processing for one tender: extraction → criteria → description."""
+    """End-to-end processing for one tender with cost tracking"""
     async with semaphore:
         tender_id_str = original_metadata.get("details_url", "UNKNOWN_ID")
+        
         try:
             tender_dict = {
                 "id": original_metadata.get("details_url"),
                 **original_metadata
             }
+            
+            # File extraction (existing logic, no LLM costs here typically)
             extraction_res = await perform_file_extraction(
                 playwright_browser=shared_browser,
                 source_manager=source_manager,
@@ -254,6 +259,7 @@ async def _process_tender_pipeline(
                 check_existing_analysis=True,
                 use_elasticsearch=True
             )
+            
             if extraction_res.get("status") != "success":
                 logger.warning(f"Extraction failed/skipped for tender {tender_id_str}: {extraction_res.get('reason')}")
                 return None
@@ -289,12 +295,11 @@ async def _process_tender_pipeline(
                 original_tender_metadata=original_metadata,
                 use_elasticsearch=True
             )
+            
             if criteria_res.get("status") != "success":
                 logger.warning(f"Criteria analysis not successful for tender {tender_id_str}: {criteria_res.get('reason')}")
-                return None
 
-            # --- Description generation ---
-            description_text = ""
+            # --- Description generation with cost tracking ---
             desc_res = await generate_tender_description(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 rag_index_name=rag_index_name,
@@ -304,10 +309,9 @@ async def _process_tender_pipeline(
                 save_results=False,
                 language=language
             )
-            if desc_res.get("status") == "success":
-                description_text = desc_res.get("tender_description", "")
+            description_text = desc_res.get("tender_description", "") if desc_res.get("status") == "success" else ""
 
-            # --- Build final TenderAnalysisResult object ---
+            # --- Build final TenderAnalysisResult object (existing logic) ---
             tender_result_obj = create_tender_analysis_result_v2(
                 original_tender_metadata=original_metadata,
                 processed_files_data=extraction_res.get("processed_files", {}),
@@ -321,7 +325,9 @@ async def _process_tender_pipeline(
                 tender_pinecone_id=extraction_res["tender_pinecone_id"],
                 language=language
             )
+                        
             return tender_result_obj
+            
         except Exception as exc:
             logger.error(f"Pipeline error for tender {tender_id_str}: {exc}", exc_info=True)
             return None
@@ -338,44 +344,51 @@ async def analyze_relevant_tenders_with_our_rag(
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 6,
+    batch_size: int = 10,
     language: str = "polish"
 ):
-    playwright: Optional[Playwright] = None
-    browser: Optional[Browser] = None
-    try:
-        # Start Playwright and create shared browser
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
-        logger.info(f"Playwright browser started. Concurrency set to: {batch_size}")
+    analysis_session_id = str(uuid4())
+    async with CostTrackingContext.for_analysis(
+        user_id=str(current_user.id),
+        tender_analysis_id=analysis_id,
+        analysis_session_id=analysis_session_id
+    ):
+        playwright: Optional[Playwright] = None
+        browser: Optional[Browser] = None
+        try:
+            # Start Playwright and create shared browser
+            playwright = await async_playwright().start()
+            browser = await playwright.chromium.launch(headless=True)
+            logger.info(f"Playwright browser started. Concurrency set to: {batch_size}")
 
-        async def initialize_services():
-            tender_analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(analysis_id)})
-            if not tender_analysis_doc:
-                raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
-            return TenderAnalysis(**tender_analysis_doc)
+            async def initialize_services():
+                tender_analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(analysis_id)})
+                if not tender_analysis_doc:
+                    raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
+                return TenderAnalysis(**tender_analysis_doc)
 
-        tender_analysis = await initialize_services()
+            tender_analysis = await initialize_services()
 
-        if tender_analysis.language:
-            language = tender_analysis.language
+            if tender_analysis.language:
+                language = tender_analysis.language
 
-        if criteria_definitions is None or len(criteria_definitions) == 0:
-            criteria_definitions = tender_analysis.criteria
+            if criteria_definitions is None or len(criteria_definitions) == 0:
+                criteria_definitions = tender_analysis.criteria
 
-        # Initialize semaphore for concurrency control
-        semaphore = asyncio.Semaphore(batch_size)
-        # Embedding configuration
-        embedding_config = EmbeddingConfig(
-            index_name=tender_names_index_name,
-            namespace="",
-            embedding_model=embedding_model
-        )
+            # Initialize semaphore for concurrency control (existing code)
+            semaphore = asyncio.Semaphore(batch_size)
+            # Embedding configuration (existing code)
+            embedding_config = EmbeddingConfig(
+                index_name=tender_names_index_name,
+                namespace="",
+                embedding_model=embedding_model
+            )
 
-        # Initialize source manager
-        source_manager = TenderSourceManager(embedding_config)
+            # Initialize source manager (existing code)
+            source_manager = TenderSourceManager(embedding_config)
 
-        search_results = await perform_tender_search(
+            # Search logic (existing code)
+            search_results = await perform_tender_search(
                 search_phrase=tender_analysis.search_phrase,
                 company_description=tender_analysis.company_description,
                 tender_names_index_name=tender_names_index_name,
@@ -389,233 +402,228 @@ async def analyze_relevant_tenders_with_our_rag(
                 current_user_id=str(current_user.id) if current_user else None,
                 save_results=False
             )
-            
-        all_tender_matches = search_results["all_tender_matches"]
-        combined_search_matches = search_results["combined_search_matches"]
-        search_id = search_results.get("search_id")  # Get the new search_id
+                    
+            all_tender_matches = search_results["all_tender_matches"]
+            combined_search_matches = search_results["combined_search_matches"]
+            search_id = search_results.get("search_id")
 
-
-        # --- AI Filtering Logic (remains the same) ---
-        logger.info(f"Combined search found {len(all_tender_matches)} unique tenders before AI filtering.")
-        if not all_tender_matches:
-            logger.info("No tenders found in either Pinecone or Elasticsearch.")
-            # Ensure cleanup happens even if we return early
-            # No pool cleanup needed now
-            if browser: await browser.close()
-            if playwright: await playwright.stop()
-            return TenderSearchResponse(
-                query=tender_analysis.search_phrase,
-                total_tenders_analyzed=0,
-                analysis_results=[]
-            )
-
-        filter_results = await perform_ai_filtering(
-            tender_analysis=tender_analysis,
-            all_tender_matches=all_tender_matches,
-            combined_search_matches=combined_search_matches,
-            analysis_id=analysis_id,
-            current_user=current_user,
-            ai_batch_size=ai_batch_size,
-            search_id=search_id
-            # filtering_mode=AIFilteringMode.TRIPLE_RUN
-        )
-        
-        all_filtered_tenders = filter_results["filtered_tenders"]
-        initial_ai_filter_id = filter_results.get("initial_ai_filter_id") # Get the ID
-
-        if not all_filtered_tenders:
-            logger.info("No tenders left after initial AI filtering.")
-            # Ensure cleanup happens even if we return early
-            # No pool cleanup needed now
-            if browser: await browser.close()
-            if playwright: await playwright.stop()
-            return TenderSearchResponse(
-                query=tender_analysis.search_phrase,
-                total_tenders_analyzed=0,
-                analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
-                description_filter_id=None
-            )
-
-        # --- File extraction + criteria + description in a single pipeline task ---
-        logger.info(f"Starting unified pipeline for {len(all_filtered_tenders)} tenders with concurrency {batch_size}")
-
-        async def build_pipeline_tasks():
-            tasks = []
-            for tender in all_filtered_tenders:
-                original_meta = combined_search_matches.get(tender.id, {}).get("metadata", {})
-                if not original_meta:
-                    logger.warning(f"Missing original metadata for tender {tender.id}; skipping")
-                    continue
-                tasks.append(
-                    _process_tender_pipeline(
-                        tender_obj=tender,
-                        original_metadata=original_meta,
-                        shared_browser=browser,
-                        tender_analysis=tender_analysis,
-                        analysis_id=analysis_id,
-                        rag_index_name=rag_index_name,
-                        embedding_model=embedding_model,
-                        current_user=current_user,
-                        criteria_definitions=criteria_definitions,
-                        semaphore=semaphore,
-                        source_manager=source_manager,
-                        language=language
-                    )
+            # --- AI Filtering Logic ---
+            logger.info(f"Combined search found {len(all_tender_matches)} unique tenders before AI filtering.")
+            if not all_tender_matches:
+                logger.info("No tenders found in either Pinecone or Elasticsearch.")
+                if browser: await browser.close()
+                if playwright: await playwright.stop()
+                return TenderSearchResponse(
+                    query=tender_analysis.search_phrase,
+                    total_tenders_analyzed=0,
+                    analysis_results=[]
                 )
-            return tasks
 
-        pipeline_results = await asyncio.gather(*await build_pipeline_tasks())
-        successful_tender_results = [r for r in pipeline_results if r is not None]
+            filter_results = await perform_ai_filtering(
+                tender_analysis=tender_analysis,
+                all_tender_matches=all_tender_matches,
+                combined_search_matches=combined_search_matches,
+                analysis_id=analysis_id,
+                current_user=current_user,
+                ai_batch_size=ai_batch_size,
+                search_id=search_id
+                # filtering_mode=AIFilteringMode.TRIPLE_RUN
+            )
+            
+            all_filtered_tenders = filter_results["filtered_tenders"]
+            initial_ai_filter_id = filter_results.get("initial_ai_filter_id") # Get the ID
 
-        logger.info(f"Unified pipeline finished. Successful tender results: {len(successful_tender_results)}")
+            if not all_filtered_tenders:
+                logger.info("No tenders left after initial AI filtering.")
+                if browser: await browser.close()
+                if playwright: await playwright.stop()
+                return TenderSearchResponse(
+                    query=tender_analysis.search_phrase,
+                    total_tenders_analyzed=0,
+                    analysis_results=[],
+                    initial_ai_filter_id=initial_ai_filter_id,
+                    description_filter_id=None
+                )
 
-        if not successful_tender_results:
-            logger.info("No tenders passed full pipeline processing.")
-            if browser: await browser.close()
-            if playwright: await playwright.stop()
-            return TenderSearchResponse(
-                query=tender_analysis.search_phrase,
-                total_tenders_analyzed=0,
-                analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
-                description_filter_id=None
+            # --- File extraction + criteria + description in a single pipeline task ---
+            logger.info(f"Starting unified pipeline for {len(all_filtered_tenders)} tenders with concurrency {batch_size}")
+
+            async def build_pipeline_tasks():
+                tasks = []
+                for tender in all_filtered_tenders:
+                    original_meta = combined_search_matches.get(tender.id, {}).get("metadata", {})
+                    if not original_meta:
+                        logger.warning(f"Missing original metadata for tender {tender.id}; skipping")
+                        continue
+                    tasks.append(
+                        _process_tender_pipeline(
+                            tender_obj=tender,
+                            original_metadata=original_meta,
+                            shared_browser=browser,
+                            tender_analysis=tender_analysis,
+                            analysis_id=analysis_id,
+                            analysis_session_id=analysis_session_id,
+                            rag_index_name=rag_index_name,
+                            embedding_model=embedding_model,
+                            current_user=current_user,
+                            criteria_definitions=criteria_definitions,
+                            semaphore=semaphore,
+                            source_manager=source_manager,
+                            language=language
+                        )
+                    )
+                return tasks
+
+            pipeline_results = await asyncio.gather(*await build_pipeline_tasks())
+            successful_tender_results = [r for r in pipeline_results if r is not None]
+
+            logger.info(f"Unified pipeline finished. Successful tender results: {len(successful_tender_results)}")
+
+            if not successful_tender_results:
+                logger.info("No tenders passed full pipeline processing.")
+                if browser: await browser.close()
+                if playwright: await playwright.stop()
+                return TenderSearchResponse(
+                    query=tender_analysis.search_phrase,
+                    total_tenders_analyzed=0,
+                    analysis_results=[],
+                    initial_ai_filter_id=initial_ai_filter_id,
+                    description_filter_id=None
+                )
+
+            # --- Description-based filtering (existing logic) ---
+            description_filter_results = await perform_description_filtering(
+                tender_analysis=tender_analysis,
+                tender_results=successful_tender_results,
+                analysis_id=analysis_id,
+                current_user=current_user,
+                ai_batch_size=ai_batch_size,
+                save_results=False,
             )
 
-        # --- Description-based filtering ---
-        description_filter_results = await perform_description_filtering(
-            tender_analysis=tender_analysis,
-            tender_results=successful_tender_results,
-            analysis_id=analysis_id,
-            current_user=current_user,
-            ai_batch_size=ai_batch_size,
-            save_results=False, # Set to True
-        )
+            filtered_tenders = description_filter_results.get("filtered_tenders", [])
+            filtered_out_tenders = description_filter_results.get("filtered_out_tenders", [])
+            description_filter_id = description_filter_results.get("description_filter_id")
+            logger.info(f"Description filtering finished. Got {len(filtered_tenders)} tenders.")
 
-        filtered_tenders = description_filter_results.get("filtered_tenders", [])
-        filtered_out_tenders = description_filter_results.get("filtered_out_tenders", [])
-        description_filter_id = description_filter_results.get("description_filter_id") # Get the ID
-        logger.info(f"Description filtering finished. Got {len(filtered_tenders)} tenders.")
+            if not filtered_tenders:
+                logger.info("No tenders passed description filtering.")
+                if browser: await browser.close()
+                if playwright: await playwright.stop()
+                return TenderSearchResponse(
+                    query=tender_analysis.search_phrase,
+                    total_tenders_analyzed=0,
+                    analysis_results=[],
+                    initial_ai_filter_id=initial_ai_filter_id,
+                    description_filter_id=description_filter_id
+                )
 
-        if not filtered_tenders:
-            logger.info("No tenders passed description filtering.")
-            if browser: await browser.close()
-            if playwright: await playwright.stop()
-            return TenderSearchResponse(
-                query=tender_analysis.search_phrase,
-                total_tenders_analyzed=0,
-                analysis_results=[],
-                initial_ai_filter_id=initial_ai_filter_id, # Add ID here
-                description_filter_id=description_filter_id # Add ID here
-            )
-
-        # (Save filtered_out logic stays as is, we keep existing code block but change source list)
-        description_filtered_tenders_results = []
-        for filtered_out_tender in filtered_out_tenders:
-            # Create file storage info while maintaining the existing processed_files structure
-            file_storage_info = []
-            for file in filtered_out_tender.uploaded_files:
-                # Store the entire file_pinecone_config object if available
-                pinecone_config = None
-                if hasattr(file, 'file_pinecone_config') and file.file_pinecone_config:
-                    pinecone_config = {
-                        "query_config": {
-                            "index_name": file.file_pinecone_config.query_config.index_name,
-                            "namespace": file.file_pinecone_config.query_config.namespace,
-                            "embedding_model": file.file_pinecone_config.query_config.embedding_model
-                        },
-                        "pinecone_unique_id_prefix": file.file_pinecone_config.pinecone_unique_id_prefix
+            # (Save filtered_out logic - existing code)
+            description_filtered_tenders_results = []
+            for filtered_out_tender in filtered_out_tenders:
+                # Create file storage info while maintaining the existing processed_files structure
+                file_storage_info = []
+                for file in filtered_out_tender.uploaded_files:
+                    # Store the entire file_pinecone_config object if available
+                    pinecone_config = None
+                    if hasattr(file, 'file_pinecone_config') and file.file_pinecone_config:
+                        pinecone_config = {
+                            "query_config": {
+                                "index_name": file.file_pinecone_config.query_config.index_name,
+                                "namespace": file.file_pinecone_config.query_config.namespace,
+                                "embedding_model": file.file_pinecone_config.query_config.embedding_model
+                            },
+                            "pinecone_unique_id_prefix": file.file_pinecone_config.pinecone_unique_id_prefix
+                        }
+                        
+                    file_info = {
+                        "filename": file.filename,
+                        "blob_url": file.blob_url if hasattr(file, 'blob_url') and file.blob_url else None,
+                        "file_pinecone_config": pinecone_config,
+                        "deletion_status": "pending",
+                        "deletion_timestamp": None,
+                        "deletion_error": None
                     }
-                
-                file_info = {
-                    "filename": file.filename,
-                    "blob_url": file.blob_url if hasattr(file, 'blob_url') and file.blob_url else None,
-                    "file_pinecone_config": pinecone_config,
-                    "deletion_status": "pending",
-                    "deletion_timestamp": None,
-                    "deletion_error": None
+                    file_storage_info.append(file_info)
+                    
+                # Maintain the original processed_files structure while adding storage info
+                processed_files = {
+                    "successful_count": len(filtered_out_tender.uploaded_files),
+                    "filenames": [file.filename for file in filtered_out_tender.uploaded_files],
+                    "storage_info": file_storage_info
                 }
-                file_storage_info.append(file_info)
-            
-            # Maintain the original processed_files structure while adding storage info
-            processed_files = {
-                "successful_count": len(filtered_out_tender.uploaded_files),
-                "filenames": [file.filename for file in filtered_out_tender.uploaded_files],
-                "storage_info": file_storage_info  # Add new field for storage info
-            }
-            
-            description_filtered_tender = FilteredTenderAnalysisResult(
-                tender_id=str(filtered_out_tender.id),
-                tender_name=filtered_out_tender.tender_metadata.name,
-                organization=filtered_out_tender.tender_metadata.organization,
-                location=filtered_out_tender.location.model_dump_json() if filtered_out_tender.location else None,
-                analysis_id=str(analysis_id),
-                filter_stage=FilterStage.AI_DESCRIPTION_FILTER,
-                filter_reason="Filtered out based on description analysis",
-                search_phrase=tender_analysis.search_phrase,
-                tender_description=filtered_out_tender.tender_description,
-                details_url=filtered_out_tender.tender_url,
-                processed_files=processed_files,
-                user_id=str(current_user.id) if current_user else None
+                    
+                description_filtered_tender = FilteredTenderAnalysisResult(
+                    tender_id=str(filtered_out_tender.id),
+                    tender_name=filtered_out_tender.tender_metadata.name,
+                    organization=filtered_out_tender.tender_metadata.organization,
+                    location=filtered_out_tender.location.model_dump_json() if filtered_out_tender.location else None,
+                    analysis_id=str(analysis_id),
+                    filter_stage=FilterStage.AI_DESCRIPTION_FILTER,
+                    filter_reason="Filtered out based on description analysis",
+                    search_phrase=tender_analysis.search_phrase,
+                    tender_description=filtered_out_tender.tender_description,
+                    details_url=filtered_out_tender.tender_url,
+                    processed_files=processed_files,
+                    user_id=str(current_user.id) if current_user else None
+                )
+                description_filtered_tenders_results.append(description_filtered_tender)
+
+            # Save tenders filtered out by description to the database
+            if description_filtered_tenders_results:
+                logger.info(f"Saving {len(description_filtered_tenders_results)} tenders filtered out by description analysis")
+                await db.filtered_tender_analysis_results.insert_many(
+                    [tender.model_dump(by_alias=True) for tender in description_filtered_tenders_results]
+                )
+
+            # --- Final Save and Update Logic (existing code) ---
+            for final_result in filtered_tenders:
+                await db.tender_analysis_results.insert_one(final_result.dict(by_alias=True))
+                logger.info(f"Successfully analyzed and saved tender: {final_result.id}")
+
+            await db.tender_analysis.update_one(
+                {"_id": ObjectId(analysis_id)},
+                {"$set": {
+                    "last_run": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }}
             )
-            description_filtered_tenders_results.append(description_filtered_tender)
 
-        # Save tenders filtered out by description to the database
-        if description_filtered_tenders_results:
-            logger.info(f"Saving {len(description_filtered_tenders_results)} tenders filtered out by description analysis")
-            await db.filtered_tender_analysis_results.insert_many(
-                [tender.model_dump(by_alias=True) for tender in description_filtered_tenders_results]
+            logger.info(f"Completed analysis run. Saved {len(filtered_tenders)} final results.")
+            return TenderSearchResponse(
+                query=tender_analysis.search_phrase,
+                total_tenders_analyzed=len(filtered_tenders),
+                analysis_results=filtered_tenders,
+                initial_ai_filter_id=initial_ai_filter_id,
+                description_filter_id=description_filter_id
             )
-        # --- Final Save and Update Logic (remains the same) ---
-        for final_result in filtered_tenders:
-            await db.tender_analysis_results.insert_one(final_result.dict(by_alias=True))
-            logger.info(f"Successfully analyzed and saved tender: {final_result.id}")
 
-        await db.tender_analysis.update_one(
-            {"_id": ObjectId(analysis_id)},
-            {"$set": {
-                "last_run": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }}
-        )
-
-        logger.info(f"Completed analysis run. Saved {len(filtered_tenders)} final results.")
-        return TenderSearchResponse(
-            query=tender_analysis.search_phrase,
-            total_tenders_analyzed=len(filtered_tenders),
-            analysis_results=filtered_tenders,
-            initial_ai_filter_id=initial_ai_filter_id, # Add ID here
-            description_filter_id=description_filter_id # Add ID here
-        )
-
-    except Exception as e:
-        logger.error(f"Fatal error in combined analysis: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error in combined analysis: {str(e)}"
-        )
-    finally:
-        # --- Shared Browser Cleanup ---
-        if browser:
-            logger.info("Closing shared Playwright browser...")
-            try:
-                 await browser.close()
-                 logger.info("Shared browser closed.")
-            except Exception as browser_close_err:
-                 logger.error(f"Error closing browser: {browser_close_err}")
-        if playwright:
-            logger.info("Stopping Playwright...")
-            try:
-                 await playwright.stop()
-                 logger.info("Playwright stopped.")
-            except Exception as playwright_stop_err:
-                 logger.error(f"Error stopping playwright: {playwright_stop_err}")
-        
-        # Final garbage collection
-        gc.collect()
-        logger.info("Final garbage collection performed after analysis completed")
-
-
+        except Exception as e:
+            logger.error(f"Fatal error in combined analysis: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error in combined analysis: {str(e)}"
+            )
+        finally:
+            # Shared Browser Cleanup (existing code)
+            if browser:
+                logger.info("Closing shared Playwright browser...")
+                try:
+                    await browser.close()
+                    logger.info("Shared browser closed.")
+                except Exception as browser_close_err:
+                    logger.error(f"Error closing browser: {browser_close_err}")
+            if playwright:
+                logger.info("Stopping Playwright...")
+                try:
+                    await playwright.stop()
+                    logger.info("Playwright stopped.")
+                except Exception as playwright_stop_err:
+                    logger.error(f"Error stopping playwright: {playwright_stop_err}")
+                
+                # Final garbage collection
+            gc.collect()
+            logger.info("Final garbage collection performed after analysis completed")
 
 async def run_all_tender_analyses(
     target_date: str = datetime.now(pytz.timezone("Europe/Warsaw")).strftime("%Y-%m-%d"),

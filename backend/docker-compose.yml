@@ -455,6 +455,7 @@ services:
   #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
   #     - AWS_REGION=${AWS_REGION}
   #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY}
   #     - TZ=Europe/Warsaw
   #     - WORKER_INDEX=0
   #     - WORKER_TYPE=tender_analysis_schedudler

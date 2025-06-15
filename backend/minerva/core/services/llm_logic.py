@@ -1,12 +1,75 @@
 from asyncio.log import logger
 from fastapi import HTTPException
 import json
+from contextvars import ContextVar
+from typing import Optional, Dict, Any
 from minerva.core.models.request.ai import LLMSearchRequest, LLMSearchResponse, SearchResult
 from minerva.core.services.llm_providers.anthropic import AnthropicLLM
 from minerva.core.services.llm_providers.google_gemini import GeminiLLM
-from minerva.core.services.llm_providers.openai import OpenAILLM
+from minerva.core.services.llm_providers.openai import OpenAILLM, LLMResponse
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
+# Model pricing configuration with Gemini models added
+MODEL_PRICING = {
+    # OpenAI models
+    "gpt-4o": {"input_cost_per_million": 5.00, "output_cost_per_million": 20.00},
+    "gpt-4o-mini": {"input_cost_per_million": 0.60, "output_cost_per_million": 2.40},
+    "gpt-4.1": {"input_cost_per_million": 2.00, "output_cost_per_million": 8.00},
+    "gpt-4.1-mini": {"input_cost_per_million": 0.40, "output_cost_per_million": 1.60},
+    "gpt-4.1-nano": {"input_cost_per_million": 0.10, "output_cost_per_million": 0.40},
+    "o3": {"input_cost_per_million": 10.00, "output_cost_per_million": 40.00},
+    "o4-mini": {"input_cost_per_million": 1.10, "output_cost_per_million": 4.40},
+    
+    # Gemini models
+    "gemini-2.5-flash-preview-05-20": {"input_cost_per_million": 1.25, "output_cost_per_million": 5.00},
+    "gemini-1.5-pro": {"input_cost_per_million": 3.50, "output_cost_per_million": 10.50},
+    "gemini-1.5-flash": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
+    "gemini-2.0-flash-exp": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
+    "gemini-1.5-pro-002": {"input_cost_per_million": 1.25, "output_cost_per_million": 5.00},
+    "gemini-1.5-flash-002": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
+    
+    # Embedding models
+    "text-embedding-3-large": {"input_cost_per_million": 0.13, "output_cost_per_million": 0.0},
+    "text-embedding-3-small": {"input_cost_per_million": 0.02, "output_cost_per_million": 0.0},
+    "text-embedding-ada-002": {"input_cost_per_million": 0.10, "output_cost_per_million": 0.0},
+}
+
+def calculate_cost(model_name: str, input_tokens: int, output_tokens: int = 0) -> tuple[float, float, float]:
+    """Calculate cost for given tokens and model"""
+    pricing = MODEL_PRICING.get(model_name)
+    if not pricing:
+        logger.warning(f"No pricing found for model: {model_name}. Using default pricing.")
+        pricing = {"input_cost_per_million": 5.00, "output_cost_per_million": 15.00}
+    
+    input_cost = (input_tokens / 1_000_000) * pricing["input_cost_per_million"]
+    output_cost = (output_tokens / 1_000_000) * pricing["output_cost_per_million"]
+    total_cost = input_cost + output_cost
+    
+    return input_cost, output_cost, total_cost
+
+def get_current_cost_context():
+    """Get the current cost tracking context"""
+    try:
+        from minerva.core.services.cost_tracking_service import _current_cost_context
+        return _current_cost_context.get()
+    except ImportError:
+        return None
+
+async def track_ai_call(model_name: str, input_tokens: int, output_tokens: int):
+    """Track an AI call if there's an active cost tracking context"""
+    context = get_current_cost_context()
+    if context:
+        await context.track_ai_operation(
+            model_name, input_tokens, output_tokens
+        )
+
+async def track_embedding_call(model_name: str, input_tokens: int):
+    """Track an embedding call if there's an active cost tracking context"""
+    context = get_current_cost_context()
+    if context:
+        await context.track_embedding_operation(
+            model_name, input_tokens
+        )
 
 async def rag_search_logic(query: str, vector_store_config: QueryConfig, tender_pinecone_id: str = None):
     try:
@@ -61,7 +124,7 @@ async def rag_search_logic(query: str, vector_store_config: QueryConfig, tender_
 
 async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: str = None, top_k: int = 4):
     """
-    Internal function that performs the LLM RAG search.
+    Internal function that performs the LLM RAG search with automatic cost tracking.
     Returns either a LLMSearchResponse (non-streaming) or an async generator (for streaming).
     """
     try:
@@ -123,14 +186,38 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
         response = await llm.generate_response(messages)
 
         if not request.llm.stream:
-            # Non-streaming response: return a complete response object
-            llm_response = response if isinstance(response, str) else ""
-            return LLMSearchResponse(
-                llm_response=llm_response,
+            # Handle LLMResponse wrapper for usage tracking
+            if isinstance(response, LLMResponse):
+                llm_response_text = response.content
+                usage_info = response.usage
+            else:
+                llm_response_text = response if isinstance(response, str) else ""
+                usage_info = None
+            
+            # Track costs automatically if context exists
+            if usage_info:
+                input_tokens = usage_info.get('prompt_tokens', 0)
+                output_tokens = usage_info.get('completion_tokens', 0)
+                total_tokens = usage_info.get('total_tokens', input_tokens + output_tokens)
+                
+                await track_ai_call(
+                    model_name=request.llm.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+                
+            search_response = LLMSearchResponse(
+                llm_response=llm_response_text,
                 vector_search_results=vector_search_results,
                 llm_provider=request.llm.provider,
                 llm_model=request.llm.model
             )
+            
+            # Add usage information for cost tracking
+            if usage_info:
+                search_response.usage = usage_info
+                
+            return search_response
         else:
             # Streaming response: return an async generator
             async def stream_response():
@@ -152,7 +239,7 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
 
 async def ask_llm_logic(request: LLMSearchRequest):
     """
-    Internal function for the simple LLM query.
+    Internal function for the simple LLM query with automatic cost tracking.
     Returns either a LLMSearchResponse (non-streaming) or an async generator (for streaming).
     """
     request_id = f"req_{id(request)}_{request.query[:10].replace(' ', '_')}"
@@ -177,16 +264,44 @@ async def ask_llm_logic(request: LLMSearchRequest):
         response = await llm.generate_response(message_list)
 
         if not request.llm.stream:
-            llm_response = response if isinstance(response, str) else ""
-            # If the response is a function call, adjust the output string accordingly
-            if isinstance(response, dict) and response.get("type") == "function_call":
-                llm_response = f"Function call: {response['name']} with arguments {response['arguments']}"
-            return LLMSearchResponse(
-                llm_response=llm_response,
+            # Handle LLMResponse wrapper for usage tracking
+            if isinstance(response, LLMResponse):
+                if response.response_type == "function_call":
+                    llm_response_text = response.content  # Already JSON string for function calls
+                else:
+                    llm_response_text = response.content
+                usage_info = response.usage
+            else:
+                llm_response_text = response if isinstance(response, str) else ""
+                usage_info = None
+                # Handle dict response (function call) for backward compatibility
+                if isinstance(response, dict) and response.get("type") == "function_call":
+                    llm_response_text = f"Function call: {response['name']} with arguments {response['arguments']}"
+            
+            # Track costs automatically if context exists
+            if usage_info:
+                input_tokens = usage_info.get('prompt_tokens', 0)
+                output_tokens = usage_info.get('completion_tokens', 0)
+                total_tokens = usage_info.get('total_tokens', input_tokens + output_tokens)
+                
+                await track_ai_call(
+                    model_name=request.llm.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+                    
+            search_response = LLMSearchResponse(
+                llm_response=llm_response_text,
                 vector_search_results=vector_search_results,
                 llm_provider=request.llm.provider,
                 llm_model=request.llm.model
             )
+            
+            # Add usage information for cost tracking
+            if usage_info:
+                search_response.usage = usage_info
+                
+            return search_response
         else:
             async def stream_response():
                 async for chunk in response:
