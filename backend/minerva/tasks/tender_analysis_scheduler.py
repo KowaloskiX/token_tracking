@@ -14,48 +14,27 @@ logger = logging.getLogger("minerva.tender_analysis_scheduler")
 USER_ID = "67c6cb742fee91862e135247"    
 ANALYSIS_ID = "680eb345e1189b4f5ce9dd32" 
 DATES = [
-    "2025-06-06",
-    "2025-06-09",
-    "2025-06-10",
-    "2025-06-11"
-]  #dates, run all concurrently
+    "2025-05-30",
+]  #dates, one for each worker
 
 # --- MAIN SCHEDULER LOGIC ---
 
-async def run_analysis_for_date(date: str):
-    """Run analysis for a specific date"""
-    logger.info(f"Starting analysis for date {date} (analysis_id={ANALYSIS_ID}, user_id={USER_ID})")
-    
-    try:
-        result = await run_tender_analysis_for_user_and_date(
-            user_id=USER_ID,
-            analysis_id=ANALYSIS_ID,
-            target_date=date
-        )
-        logger.info(f"Analysis completed for {date}: {result}")
-        return {"date": date, "result": result, "success": True}
-    except Exception as e:
-        logger.error(f"Analysis failed for {date}: {str(e)}")
-        return {"date": date, "error": str(e), "success": False}
-
 async def main():
-    logger.info(f"Starting concurrent analysis for {len(DATES)} dates: {DATES}")
-    
-    # Run all dates concurrently
-    tasks = [run_analysis_for_date(date) for date in DATES]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Log summary
-    successful = sum(1 for r in results if isinstance(r, dict) and r.get("success", False))
-    failed = len(results) - successful
-    
-    logger.info(f"Analysis summary: {successful} successful, {failed} failed")
-    
-    for result in results:
-        if isinstance(result, Exception):
-            logger.error(f"Unexpected error: {result}")
-        elif not result.get("success", False):
-            logger.error(f"Failed analysis for {result.get('date', 'unknown')}: {result.get('error', 'unknown error')}")
+    worker_index = int(os.getenv("WORKER_INDEX", 0))
+    if worker_index >= len(DATES):
+        logger.error(f"WORKER_INDEX {worker_index} out of range for DATES list")
+        return
+
+    target_date = DATES[worker_index]
+    logger.info(f"Worker {worker_index} running analysis for date {target_date} (analysis_id={ANALYSIS_ID}, user_id={USER_ID})")
+
+    # Call the function to run the analysis for this user, analysis_id, and date
+    result = await run_tender_analysis_for_user_and_date(
+        user_id=USER_ID,
+        analysis_id=ANALYSIS_ID,
+        target_date=target_date
+    )
+    logger.info(f"Analysis result for {target_date}: {result}")
 
 if __name__ == "__main__":
     asyncio.run(main())

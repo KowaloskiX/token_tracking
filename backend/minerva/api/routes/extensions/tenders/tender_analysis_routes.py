@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from uuid import uuid4
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -210,6 +209,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
         if not analysis_doc:
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
+        # Use the new filter format
         filter_conditions = [
             {"field": "initiation_date", "op": "eq", "value": "2025-06-10"}
         ]
@@ -234,6 +234,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
                     else:
                         crit.weight = 3
                 
+                # Make sure instruction field is preserved if it exists
                 if not hasattr(crit, 'instruction'):
                     crit.instruction = None
                     
@@ -241,7 +242,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_analysis.criteria = updated_criteria
         
         criteria_definitions = tender_analysis.criteria
-        
+
         result = await analyze_relevant_tenders_with_our_rag(
             analysis_id=request.analysis_id,
             current_user=current_user,
@@ -254,16 +255,21 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             rag_index_name="test-files-rag",
             criteria_definitions=criteria_definitions
         )
+        
+        # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
 
         return {
             "status": "Tender analysis completed",
             "result": result,
         }
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"Error running tender search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running tender search: {str(e)}")
-    
+
+
 @router.post("/run_all_tender_analyses", response_model=Dict[str, Any])
 async def run_all_analyses():
     try:
@@ -326,7 +332,7 @@ async def create_tender_analysis(
             "updated_at": datetime.utcnow(),
             "active": True,
             "assigned_users": [str(current_user.id)],  # Owner is automatically assigned
-            "email_recipients": []  # Empty by default - users must explicitly opt in to email notifications
+            "email_recipients": [str(current_user.id)]  # Owner is automatically in email recipients
         }
 
         tender_analysis = TenderAnalysis(**tender_analysis_data)
