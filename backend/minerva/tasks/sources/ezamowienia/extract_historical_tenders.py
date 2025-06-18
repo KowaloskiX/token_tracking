@@ -247,7 +247,7 @@ class HistoricalTenderExtractor:
         logging.info(f"Starting historical tender extraction from {start_date} to {end_date}")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=False)
             context = await browser.new_context()
             page = await context.new_page()
             
@@ -271,23 +271,155 @@ class HistoricalTenderExtractor:
                 except Exception as e:
                     logging.warning(f"Could not set notice type filter: {e}")
                 
-                start_date_input = await page.query_selector("input[placeholder='od'][formcontrolname='publicationDateFrom']")
-                end_date_input = await page.query_selector("input[placeholder='do'][formcontrolname='publicationDateTo']")
+                # Set both start date ("od") and end date ("do") fields using multiple methods
                 
-                if start_date_input:
-                    await start_date_input.click()
-                    await start_date_input.fill(start_date)
-                    logging.info(f"Set start date to {start_date}")
-                if end_date_input:
-                    await end_date_input.click()
-                    await end_date_input.fill(end_date)
-                    logging.info(f"Set end date to {end_date}")
+                # === SET START DATE ("od") ===
+                start_date_set = False
+                
+                # Method 1: Try lib-date with formcontrolname for start date
+                try:
+                    start_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateFrom'] input")
+                    if start_date_input:
+                        logging.info("Found start date input using lib-date selector")
+                        await start_date_input.click()
+                        await page.wait_for_timeout(500)
+                        await start_date_input.clear()
+                        await start_date_input.type(start_date, delay=100)  # Type with delay
+                        await page.keyboard.press('Tab')  # Tab out to trigger validation
+                        actual_value = await start_date_input.input_value()
+                        logging.info(f"Method 1: Set start date to {start_date}, actual value: {actual_value}")
+                        if actual_value == start_date:
+                            start_date_set = True
+                except Exception as e:
+                    logging.warning(f"Start date Method 1 failed: {e}")
+                
+                # Method 2: Try using placeholder selector if method 1 failed
+                if not start_date_set:
+                    try:
+                        start_date_input = await page.query_selector("input[placeholder='od']")
+                        if start_date_input:
+                            logging.info("Found start date input using placeholder selector")
+                            await start_date_input.click()
+                            await page.wait_for_timeout(500)
+                            # Select all and replace
+                            await page.keyboard.press('Control+a')
+                            await page.keyboard.type(start_date, delay=100)
+                            await page.keyboard.press('Tab')
+                            actual_value = await start_date_input.input_value()
+                            logging.info(f"Method 2: Set start date to {start_date}, actual value: {actual_value}")
+                            if actual_value == start_date:
+                                start_date_set = True
+                    except Exception as e:
+                        logging.warning(f"Start date Method 2 failed: {e}")
+                
+                # Method 3: Try JavaScript injection as last resort for start date
+                if not start_date_set:
+                    try:
+                        logging.info("Trying JavaScript injection method for start date")
+                        await page.evaluate(f"""
+                            const input = document.querySelector('lib-date[formcontrolname="publicationDateFrom"] input') ||
+                                         document.querySelector('input[placeholder="od"]');
+                            if (input) {{
+                                input.value = '{start_date}';
+                                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            }}
+                        """)
+                        # Verify it was set
+                        start_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateFrom'] input") or await page.query_selector("input[placeholder='od']")
+                        if start_date_input:
+                            actual_value = await start_date_input.input_value()
+                            logging.info(f"Method 3: Set start date to {start_date}, actual value: {actual_value}")
+                            if actual_value == start_date:
+                                start_date_set = True
+                    except Exception as e:
+                        logging.warning(f"Start date Method 3 failed: {e}")
+                
+                if start_date_set:
+                    logging.info(f"Successfully set start date to {start_date}")
+                else:
+                    logging.error(f"Failed to set start date using all methods. Proceeding anyway...")
+
+                # === SET END DATE ("do") ===
+                end_date_set = False
+                
+                # Method 1: Try lib-date with formcontrolname for end date
+                try:
+                    end_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateTo'] input")
+                    if end_date_input:
+                        logging.info("Found end date input using lib-date selector")
+                        await end_date_input.click()
+                        await page.wait_for_timeout(500)
+                        await end_date_input.clear()
+                        await end_date_input.type(end_date, delay=100)  # Type with delay
+                        await page.keyboard.press('Tab')  # Tab out to trigger validation
+                        actual_value = await end_date_input.input_value()
+                        logging.info(f"Method 1: Set end date to {end_date}, actual value: {actual_value}")
+                        if actual_value == end_date:
+                            end_date_set = True
+                except Exception as e:
+                    logging.warning(f"End date Method 1 failed: {e}")
+                
+                # Method 2: Try using placeholder selector if method 1 failed
+                if not end_date_set:
+                    try:
+                        end_date_input = await page.query_selector("input[placeholder='do']")
+                        if end_date_input:
+                            logging.info("Found end date input using placeholder selector")
+                            await end_date_input.click()
+                            await page.wait_for_timeout(500)
+                            # Select all and replace
+                            await page.keyboard.press('Control+a')
+                            await page.keyboard.type(end_date, delay=100)
+                            await page.keyboard.press('Tab')
+                            actual_value = await end_date_input.input_value()
+                            logging.info(f"Method 2: Set end date to {end_date}, actual value: {actual_value}")
+                            if actual_value == end_date:
+                                end_date_set = True
+                    except Exception as e:
+                        logging.warning(f"End date Method 2 failed: {e}")
+                
+                # Method 3: Try JavaScript injection as last resort for end date
+                if not end_date_set:
+                    try:
+                        logging.info("Trying JavaScript injection method for end date")
+                        await page.evaluate(f"""
+                            const input = document.querySelector('lib-date[formcontrolname="publicationDateTo"] input') ||
+                                         document.querySelector('input[placeholder="do"]');
+                            if (input) {{
+                                input.value = '{end_date}';
+                                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            }}
+                        """)
+                        # Verify it was set
+                        end_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateTo'] input") or await page.query_selector("input[placeholder='do']")
+                        if end_date_input:
+                            actual_value = await end_date_input.input_value()
+                            logging.info(f"Method 3: Set end date to {end_date}, actual value: {actual_value}")
+                            if actual_value == end_date:
+                                end_date_set = True
+                    except Exception as e:
+                        logging.warning(f"End date Method 3 failed: {e}")
+                
+                if end_date_set:
+                    logging.info(f"Successfully set end date to {end_date}")
+                else:
+                    logging.error(f"Failed to set end date using all methods. Proceeding anyway...")
+                
+                # Summary logging
+                logging.info(f"Date setting summary: Start date {'✓' if start_date_set else '✗'}, End date {'✓' if end_date_set else '✗'}")
+                
+                # Wait a moment for the form to process the date changes
+                await page.wait_for_timeout(1000)
                 
                 search_button = await page.query_selector("button:has-text('Szukaj')")
                 if search_button:
                     await search_button.click()
                     await page.wait_for_timeout(3000)
                     logging.info("Clicked search button")
+                else:
+                    logging.error("Could not find search button")
                 
                 historical_tenders = []
                 current_page = 1
@@ -343,185 +475,6 @@ class HistoricalTenderExtractor:
                                     organization=organization.strip(),
                                     location=location,
                                     announcement_date=standardized_date,
-                                    details_url=details_url,
-                                    **detail_data
-                                )
-                                
-                                historical_tenders.append(tender)
-                                logging.info(f"Extracted historical tender: {tender.name[:50]}...")
-                            else:
-                                logging.warning(f"Could not extract details for tender: {tender_name[:50]}...")
-                            
-                        except Exception as e:
-                            logging.error(f"Error processing row: {e}")
-                            continue
-                    
-                    next_button = await page.query_selector("a.append-arrow:has-text('Następna'):not(.disabled)")
-                    if next_button and current_page < max_pages:
-                        try:
-                            await next_button.click()
-                            await page.wait_for_timeout(3000)
-                            current_page += 1
-                            logging.info(f"Navigated to page {current_page}")
-                        except Exception as e:
-                            logging.info(f"No more pages or error navigating: {e}")
-                            break
-                    else:
-                        logging.info("No next page button found or max pages reached")
-                        break
-                
-                metadata = ExtractorMetadata(
-                    total_tenders=len(historical_tenders),
-                    pages_scraped=current_page
-                )
-                
-                logging.info(f"Extraction complete. Found {len(historical_tenders)} historical tenders from {current_page} pages")
-                
-                return {
-                    "tenders": historical_tenders,
-                    "metadata": metadata
-                }
-                
-            finally:
-                await browser.close()
-        
-        return result
-
-    async def _extract_tender_details(self, context, details_url: str) -> Optional[Dict]:
-        """Extract detailed information from a historical tender page"""
-        page = await context.new_page()
-        
-        try:
-            for attempt in range(MAX_RETRIES):
-                try:
-                    await page.goto(details_url, wait_until='domcontentloaded', timeout=30000)
-                    break
-                except PlaywrightTimeoutError as e:
-                    logging.warning(f"Detail page navigation failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-                    if attempt + 1 == MAX_RETRIES:
-                        logging.error(f"Failed to navigate to {details_url} after {MAX_RETRIES} attempts")
-                        return None
-                    await asyncio.sleep(random.uniform(2.0, 4.0))
-            
-            await page.wait_for_timeout(2000)
-            
-            html_content = await page.content()
-            
-            parsed_data = self._parse_historical_tender_content(html_content)
-            
-            return parsed_data
-            
-        except Exception as e:
-            logging.error(f"Error extracting tender details from {details_url}: {e}")
-            return None
-        finally:
-            await page.close()
-
-    async def execute(self, inputs: Dict) -> Dict:
-        start_date = inputs.get('start_date')
-        end_date = inputs.get('end_date') 
-        max_pages = inputs.get('max_pages', 10)
-        
-        if not start_date or not end_date:
-            raise ValueError("Both start_date and end_date are required")
-        
-        logging.info(f"Starting historical tender extraction from {start_date} to {end_date}")
-        
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
-            page = await context.new_page()
-            
-            try:
-                for attempt in range(MAX_RETRIES):
-                    try:
-                        await page.goto(self.base_url, timeout=30000)
-                        await page.wait_for_selector("form", timeout=20000)
-                        break
-                    except PlaywrightTimeoutError as e:
-                        logging.warning(f"Initial page load failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-                        if attempt + 1 == MAX_RETRIES:
-                            raise e
-                        await asyncio.sleep(random.uniform(2.0, 4.0))
-                
-                try:
-                    notice_type_select = await page.query_selector("select[formcontrolname='noticeType']")
-                    if notice_type_select:
-                        await notice_type_select.select_option(value="TenderResultNotice")
-                        logging.info("Selected 'TenderResultNotice' filter")
-                except Exception as e:
-                    logging.warning(f"Could not set notice type filter: {e}")
-                
-                start_date_input = await page.query_selector("input[placeholder='od'][formcontrolname='publicationDateFrom']")
-                end_date_input = await page.query_selector("input[placeholder='do'][formcontrolname='publicationDateTo']")
-                
-                if start_date_input:
-                    await start_date_input.click()
-                    await start_date_input.fill(start_date)
-                    logging.info(f"Set start date to {start_date}")
-                if end_date_input:
-                    await end_date_input.click()
-                    await end_date_input.fill(end_date)
-                    logging.info(f"Set end date to {end_date}")
-                
-                search_button = await page.query_selector("button:has-text('Szukaj')")
-                if search_button:
-                    await search_button.click()
-                    await page.wait_for_timeout(3000)
-                    logging.info("Clicked search button")
-                
-                historical_tenders = []
-                current_page = 1
-                
-                while current_page <= max_pages:
-                    logging.info(f"Scraping page {current_page}...")
-                    
-                    try:
-                        await page.wait_for_selector("table tbody tr", timeout=20000)
-                    except PlaywrightTimeoutError:
-                        logging.warning(f"No results found on page {current_page}")
-                        break
-                    
-                    rows = await page.query_selector_all("table tbody tr")
-                    logging.info(f"Found {len(rows)} rows on page {current_page}")
-                    
-                    for row in rows:
-                        try:
-                            cells = await row.query_selector_all("td")
-                            if len(cells) < 7:
-                                continue
-                            
-                            announcement_cell = await cells[0].inner_text()
-                            if "Ogłoszenie o wyniku postępowania" not in announcement_cell:
-                                continue
-                            
-                            tender_name = await cells[1].inner_text()  # NAZWA ZAMÓWIENIA
-                            organization = await cells[2].inner_text()  # NAZWA ZAMAWIAJĄCEGO
-                            city = await cells[3].inner_text()  # MIEJSCOWOŚĆ ZAMAWIAJĄCEGO
-                            province = await cells[4].inner_text()  # WOJEWÓDZTWO ZAMAWIAJĄCEGO
-                            date_published = await cells[5].inner_text()  # DATA PUBLIKACJI
-                            
-                            detail_link = await cells[-1].query_selector("a")
-                            if not detail_link:
-                                continue
-                            
-                            details_url = await detail_link.get_attribute("href")
-                            if not details_url:
-                                continue
-                            
-                            if details_url.startswith("/"):
-                                details_url = f"https://ezamowienia.gov.pl{details_url}"
-                            
-                            location = f"{city.strip()}, {province.strip()}" if city and province else city.strip()
-                            
-                            detail_data = await self._extract_tender_details(context, details_url)
-                            
-                            if detail_data:
-                                tender = HistoricalTender(
-                                    name=tender_name.strip(),
-                                    organization=organization.strip(),
-                                    location=location,
-                                    announcement_date=date_published.strip(),
                                     details_url=details_url,
                                     **detail_data
                                 )
