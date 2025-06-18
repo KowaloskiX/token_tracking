@@ -17,9 +17,7 @@ load_dotenv()
 
 openai = AsyncOpenAI()
 
-# Optional: Dedicated thread pool for blocking IO like Pinecone sync client
 pinecone_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-# Register for clean shutdown
 atexit.register(lambda: pinecone_executor.shutdown(wait=False))
 
 pinecone = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -37,7 +35,7 @@ class EmbeddingTool:
         self.openai = openai
         self.index = pinecone.Index(config.index_name)
         self.config = config
-        self.loop = asyncio.get_running_loop() # Get loop for run_in_executor
+        self.loop = asyncio.get_running_loop()
 
     async def create_embedding(self, input: Union[str, List[str]]) -> List[List[float]]:
         """Create embeddings for input text(s)"""
@@ -61,8 +59,6 @@ class EmbeddingTool:
         processed_count = 0
         failed_items = []
 
-        # Always use the configured batch_size (default 100). This is the maximum supported by
-        # Pinecone bulk-upsert and gives best throughput.
         batch_size = self.config.batch_size
 
         logging.info(f"Processing {len(items)} items in batches of {batch_size} items per batch")
@@ -71,7 +67,7 @@ class EmbeddingTool:
             batch_items_to_process = items[i:i + batch_size]
             
             batch_texts_for_embedding = []
-            valid_items_for_batch = [] # Items that are within token limits and will be attempted
+            valid_items_for_batch = []
 
             for item in batch_items_to_process:
                 item_input = item["input"]
@@ -79,7 +75,7 @@ class EmbeddingTool:
                 extractor = item["metadata"].get("extractor", "unknown")
                 source_type = item["metadata"].get("source_type", "unknown")
 
-                if tokens > MAX_TOKENS: # MAX_TOKENS is from .helpers
+                if tokens > MAX_TOKENS:
                     logging.error(
                         f"Chunk OVER LIMIT and SKIPPED: extractor={extractor}, source_type={source_type}, "
                         f"tokens={tokens}/{MAX_TOKENS}, id={item['id']}. Preview: {item_input[:120]!r}"
@@ -87,19 +83,14 @@ class EmbeddingTool:
                     failed_items.append({
                         "item_id": item['id'],
                         "reason": f"Chunk exceeded MAX_TOKENS ({tokens}/{MAX_TOKENS}) and was skipped.",
-                        "preview": item_input[:200] # Add preview of skipped item
+                        "preview": item_input[:200]
                     })
-                    continue # Skip this item, do not add to batch_texts_for_embedding
-                
-                # Original logging for chunks being embedded (optional)
-                # logging.info(
-                #     f"Embedding chunk: extractor={extractor}, source_type={source_type}, "
-                #     f"tokens={tokens}, id={item['id']}, preview={item_input[:120]!r}"
-                # )
+                    continue
+
                 batch_texts_for_embedding.append(item_input)
                 valid_items_for_batch.append(item)
 
-            if not valid_items_for_batch: # If all items in this batch were too long
+            if not valid_items_for_batch:
                 continue
 
             try:
@@ -116,7 +107,7 @@ class EmbeddingTool:
                     })
                     processed_count += 1
 
-                if vectors_to_upsert: # Ensure there's something to upsert
+                if vectors_to_upsert:
                     await self.loop.run_in_executor(
                         pinecone_executor,
                         partial(self.index.upsert, vectors=vectors_to_upsert, namespace=self.config.namespace)
@@ -124,8 +115,6 @@ class EmbeddingTool:
 
             except Exception as e:
                 logging.error(f"Error processing batch starting at index {i}: {str(e)}")
-                # If batch embedding fails, log these items as failed without individual retries here
-                # Individual retries can be complex if the batch error isn't due to a single item
                 for failed_item_in_batch in valid_items_for_batch:
                     failed_items.append({
                         "item_id": failed_item_in_batch['id'],
@@ -151,7 +140,6 @@ class UpsertTool:
         """Create searchable text content from tender data"""
         content_parts = []
         
-        # Basic tender info
         if tender_dict.get("name"):
             content_parts.append(f"Tender: {tender_dict['name']}")
         if tender_dict.get("organization"):
@@ -159,7 +147,12 @@ class UpsertTool:
         if tender_dict.get("location"):
             content_parts.append(f"Location: {tender_dict['location']}")
         
-        # Historical tender specific fields
+        total_parts = tender_dict.get("total_parts", 1)
+        if total_parts > 1:
+            content_parts.append(f"Multi-part tender with {total_parts} parts")
+            if tender_dict.get("parts_summary"):
+                content_parts.append(f"Parts: {tender_dict['parts_summary']}")
+        
         if tender_dict.get("winner_name"):
             content_parts.append(f"Winner: {tender_dict['winner_name']}")
         if tender_dict.get("winner_location"):
@@ -173,7 +166,22 @@ class UpsertTool:
         if tender_dict.get("realization_period"):
             content_parts.append(f"Realization Period: {tender_dict['realization_period']}")
         
-        # Add full content if available (truncated for embedding)
+        if tender_dict.get("parts") and len(tender_dict["parts"]) > 0:
+            parts_details = []
+            for part in tender_dict["parts"]:
+                if isinstance(part, dict):
+                    part_detail = f"Part {part.get('part_number', 'X')}: {part.get('description', 'No description')}"
+                    if part.get('cpv_code'):
+                        part_detail += f" (CPV: {part['cpv_code']})"
+                    if part.get('part_value'):
+                        part_detail += f" Value: {part['part_value']}"
+                    if part.get('winner_name'):
+                        part_detail += f" Winner: {part['winner_name']}"
+                    parts_details.append(part_detail)
+            
+            if parts_details:
+                content_parts.append("Detailed parts: " + " | ".join(parts_details))
+        
         if tender_dict.get("full_content"):
             truncated_content = tender_dict["full_content"][:2000] if len(tender_dict["full_content"]) > 2000 else tender_dict["full_content"]
             content_parts.append(f"Details: {truncated_content}")
@@ -185,33 +193,44 @@ class UpsertTool:
         
         items_for_embedding = []
         
-        # Fields to exclude from metadata due to size limits (40KB max per vector in Pinecone)
         excluded_fields = {
-            "searchable_content",  # Used for embedding input, not needed in metadata
-            "full_content",        # Too large for metadata, but used in searchable content
+            "searchable_content",
+            "full_content",
+            "parts",
+            "content_type",
+            "details_url",
+            "source_type",
+            "_content_type",
+            "_details_url",
+            "_source_type",
         }
         
         for tender_dict in tenders:
-            # Create searchable content for embedding
             searchable_content = tender_dict.get("searchable_content")
             if not searchable_content:
                 searchable_content = self._create_searchable_content(tender_dict)
             
-            # Create unique ID for the tender
             tender_id = tender_dict.get("details_url", f"tender_{len(items_for_embedding)}")
             
-            # Prepare metadata - exclude large fields to stay within Pinecone's 40KB limit
             metadata = {}
             for k, v in tender_dict.items():
                 if k not in excluded_fields and v is not None:
-                    # Convert to string and limit size for safety
                     if isinstance(v, str) and len(v) > 1000:
-                        # Truncate very long string fields
                         metadata[k] = v[:1000] + "..." if len(v) > 1000 else v
+                    elif isinstance(v, list):
+                        if k == "parts" and v:
+                            parts_summary = f"{len(v)} parts: " + ", ".join([
+                                f"Part {p.get('part_number', i+1)}: {p.get('description', 'No desc')[:50]}"
+                                for i, p in enumerate(v[:3])
+                            ])
+                            if len(v) > 3:
+                                parts_summary += f" and {len(v)-3} more"
+                            metadata["parts_info"] = parts_summary
+                        else:
+                            metadata[k] = str(v)[:500] + "..." if len(str(v)) > 500 else str(v)
                     else:
                         metadata[k] = v
             
-            # Create item in the format expected by EmbeddingTool
             item = {
                 "id": tender_id,
                 "input": searchable_content,
@@ -220,5 +239,4 @@ class UpsertTool:
             
             items_for_embedding.append(item)
         
-        # Use the underlying EmbeddingTool to process the batch
         return await self.embedding_tool.embed_and_store_batch(items_for_embedding)

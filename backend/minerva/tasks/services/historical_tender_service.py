@@ -60,6 +60,9 @@ class HistoricalTenderInsertService:
             "content_type": tender.content_type,
             "source_type": tender.source_type,
             
+            "total_parts": tender.total_parts,
+            "parts_summary": tender.parts_summary,
+            
             "completion_status": tender.completion_status,
             "total_offers": tender.total_offers,
             "sme_offers": tender.sme_offers,
@@ -76,7 +79,7 @@ class HistoricalTenderInsertService:
             
             "searchable_content": self._create_searchable_content(tender)
         }
-    
+
     def _create_searchable_content(self, tender: HistoricalTender) -> str:
         """Create searchable text content from historical tender data"""
         content_parts = [
@@ -84,6 +87,11 @@ class HistoricalTenderInsertService:
             f"Organization: {tender.organization}",
             f"Location: {tender.location}"
         ]
+        
+        if tender.total_parts > 1:
+            content_parts.append(f"Multi-part tender with {tender.total_parts} parts")
+            if tender.parts_summary:
+                content_parts.append(f"Parts: {tender.parts_summary}")
         
         if tender.winner_name:
             content_parts.append(f"Winner: {tender.winner_name}")
@@ -97,6 +105,21 @@ class HistoricalTenderInsertService:
             content_parts.append(f"Status: {tender.completion_status}")
         if tender.realization_period:
             content_parts.append(f"Realization Period: {tender.realization_period}")
+        
+        if tender.parts and len(tender.parts) > 0:
+            parts_details = []
+            for part in tender.parts:
+                part_detail = f"Part {part.part_number}: {part.description}"
+                if part.cpv_code:
+                    part_detail += f" (CPV: {part.cpv_code})"
+                if part.part_value:
+                    part_detail += f" Value: {part.part_value}"
+                if part.winner_name:
+                    part_detail += f" Winner: {part.winner_name}"
+                parts_details.append(part_detail)
+            
+            if parts_details:
+                content_parts.append("Detailed parts: " + " | ".join(parts_details))
         
         if tender.full_content:
             truncated_content = tender.full_content[:2000] if len(tender.full_content) > 2000 else tender.full_content

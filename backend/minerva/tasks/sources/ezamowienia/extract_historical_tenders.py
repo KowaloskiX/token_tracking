@@ -1,7 +1,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import asyncio
 import random
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
@@ -13,8 +13,26 @@ logging.basicConfig(level=logging.INFO)
 MAX_RETRIES = 3
 
 @dataclass
+class HistoricalTenderPart:
+    part_number: int
+    description: str
+    cpv_code: Optional[str] = None
+    part_value: Optional[str] = None
+    completion_status: Optional[str] = None
+    total_offers: Optional[int] = None
+    sme_offers: Optional[int] = None
+    lowest_price: Optional[str] = None
+    highest_price: Optional[str] = None
+    winning_price: Optional[str] = None
+    winner_name: Optional[str] = None
+    winner_location: Optional[str] = None
+    winner_size: Optional[str] = None
+    contract_date: Optional[str] = None
+    contract_value: Optional[str] = None
+    realization_period: Optional[str] = None
+
+@dataclass
 class HistoricalTender:
-    """Data class for historical tender information"""
     name: str
     organization: str
     location: str
@@ -22,6 +40,9 @@ class HistoricalTender:
     details_url: str
     content_type: str = "historical_tender"
     source_type: str = "ezamowienia_historical"
+    
+    total_parts: int = 1
+    parts_summary: Optional[str] = None
     
     completion_status: Optional[str] = None
     total_offers: Optional[int] = None
@@ -36,6 +57,8 @@ class HistoricalTender:
     contract_value: Optional[str] = None
     realization_period: Optional[str] = None
     full_content: Optional[str] = None
+    
+    parts: Optional[List[HistoricalTenderPart]] = None
 
 
 class HistoricalTenderExtractor:
@@ -53,11 +76,12 @@ class HistoricalTenderExtractor:
 
     def _parse_historical_tender_content(self, html_content: str) -> Dict:
         soup = BeautifulSoup(html_content, 'html.parser')
-        
         text_content = soup.get_text(separator="\n")
         
         result = {
             'full_content': text_content,
+            'total_parts': 1,
+            'parts_summary': None,
             'completion_status': None,
             'total_offers': None,
             'sme_offers': None,
@@ -69,8 +93,209 @@ class HistoricalTenderExtractor:
             'winner_size': None,
             'contract_date': None,
             'contract_value': None,
-            'realization_period': None
+            'realization_period': None,
+            'parts': []
         }
+        
+        part_matches = re.findall(r'Część (\d+)', text_content)
+        if part_matches:
+            result['total_parts'] = len(set(part_matches))
+            parts_info = self._parse_multi_part_tender(text_content, result['total_parts'])
+            result.update(parts_info)
+        else:
+            single_part_info = self._parse_single_part_tender(text_content)
+            result.update(single_part_info)
+        
+        return result
+
+    def _parse_multi_part_tender(self, text_content: str, total_parts: int) -> Dict:
+        """Parse multi-part tender and aggregate information"""
+        parts = []
+        parts_descriptions = []
+        
+        all_completion_statuses = []
+        all_total_offers = []
+        all_sme_offers = []
+        all_lowest_prices = []
+        all_highest_prices = []
+        all_winning_prices = []
+        all_winners = []
+        all_winner_locations = []
+        all_winner_sizes = []
+        all_contract_dates = []
+        all_contract_values = []
+        all_realization_periods = []
+        
+        for part_num in range(1, total_parts + 1):
+            part_info = self._parse_tender_part(text_content, part_num)
+            if part_info:
+                parts.append(part_info)
+                parts_descriptions.append(f"Część {part_num}: {part_info.description}")
+                
+                if part_info.completion_status:
+                    all_completion_statuses.append(part_info.completion_status)
+                if part_info.total_offers is not None:
+                    all_total_offers.append(part_info.total_offers)
+                if part_info.sme_offers is not None:
+                    all_sme_offers.append(part_info.sme_offers)
+                if part_info.lowest_price:
+                    all_lowest_prices.append(part_info.lowest_price)
+                if part_info.highest_price:
+                    all_highest_prices.append(part_info.highest_price)
+                if part_info.winning_price:
+                    all_winning_prices.append(part_info.winning_price)
+                if part_info.winner_name:
+                    all_winners.append(part_info.winner_name)
+                if part_info.winner_location:
+                    all_winner_locations.append(part_info.winner_location)
+                if part_info.winner_size:
+                    all_winner_sizes.append(part_info.winner_size)
+                if part_info.contract_date:
+                    all_contract_dates.append(part_info.contract_date)
+                if part_info.contract_value:
+                    all_contract_values.append(part_info.contract_value)
+                if part_info.realization_period:
+                    all_realization_periods.append(part_info.realization_period)
+        
+        parts_summary = " | ".join(parts_descriptions) if parts_descriptions else None
+        
+        completion_status = None
+        if all_completion_statuses:
+            unique_statuses = list(set(all_completion_statuses))
+            if len(unique_statuses) == 1:
+                completion_status = unique_statuses[0]
+            else:
+                completion_status = f"Mixed: {', '.join(unique_statuses)}"
+        
+        total_offers = sum(all_total_offers) if all_total_offers else None
+        sme_offers = sum(all_sme_offers) if all_sme_offers else None
+        
+        lowest_price = self._aggregate_price_range(all_lowest_prices, "lowest")
+        highest_price = self._aggregate_price_range(all_highest_prices, "highest")
+        winning_price = self._aggregate_price_range(all_winning_prices, "winning")
+        
+        winner_name = None
+        if all_winners:
+            unique_winners = list(set(all_winners))
+            winner_name = ", ".join(unique_winners) if len(unique_winners) <= 3 else f"{unique_winners[0]} and {len(unique_winners)-1} others"
+        
+        winner_location = None
+        if all_winner_locations:
+            unique_locations = list(set(all_winner_locations))
+            winner_location = ", ".join(unique_locations) if len(unique_locations) <= 3 else f"{unique_locations[0]} and {len(unique_locations)-1} others"
+        
+        winner_size = None
+        if all_winner_sizes:
+            unique_sizes = list(set(all_winner_sizes))
+            winner_size = unique_sizes[0] if len(unique_sizes) == 1 else f"Mixed: {', '.join(unique_sizes)}"
+        
+        contract_date = self._aggregate_date_range(all_contract_dates)
+        
+        contract_value = self._aggregate_price_range(all_contract_values, "contract")
+        
+        realization_period = self._aggregate_periods(all_realization_periods)
+        
+        return {
+            'parts_summary': parts_summary,
+            'completion_status': completion_status,
+            'total_offers': total_offers,
+            'sme_offers': sme_offers,
+            'lowest_price': lowest_price,
+            'highest_price': highest_price,
+            'winning_price': winning_price,
+            'winner_name': winner_name,
+            'winner_location': winner_location,
+            'winner_size': winner_size,
+            'contract_date': contract_date,
+            'contract_value': contract_value,
+            'realization_period': realization_period,
+            'parts': parts
+        }
+
+    def _parse_tender_part(self, text_content: str, part_num: int) -> Optional[HistoricalTenderPart]:
+        """Parse information for a specific tender part"""
+        part_desc_pattern = f"Część {part_num}.*?4\.5\.1\.\).*?Krótki opis przedmiotu zamówienia\s*(.*?)(?=4\.5\.3\.|Część {part_num+1}|SEKCJA V)"
+        desc_match = re.search(part_desc_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        description = desc_match.group(1).strip() if desc_match else f"Part {part_num}"
+        
+        cpv_pattern = f"Część {part_num}.*?4\.5\.3\.\).*?Główny kod CPV:\s*([^<\n]+)"
+        cpv_match = re.search(cpv_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        cpv_code = cpv_match.group(1).strip() if cpv_match else None
+        
+        value_pattern = f"Część {part_num}.*?4\.5\.5\.\).*?Wartość części:\s*([^<\n]+)"
+        value_match = re.search(value_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        part_value = value_match.group(1).strip() if value_match else None
+        
+        completion_pattern = f"SEKCJA V ZAKOŃCZENIE POSTĘPOWANIA \(dla części {part_num}\).*?5\.1\.\).*?:\s*([^<\n]+)"
+        completion_match = re.search(completion_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        completion_status = completion_match.group(1).strip() if completion_match else None
+        
+        offers_pattern = f"SEKCJA VI OFERTY \(dla części {part_num}\).*?6\.1\.\).*?:\s*(\d+)"
+        offers_match = re.search(offers_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        total_offers = int(offers_match.group(1)) if offers_match else None
+        
+        sme_pattern = f"SEKCJA VI OFERTY \(dla części {part_num}\).*?6\.1\.3\.\).*?:\s*(\d+)"
+        sme_match = re.search(sme_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        sme_offers = int(sme_match.group(1)) if sme_match else None
+        
+        lowest_price_pattern = f"SEKCJA VI OFERTY \(dla części {part_num}\).*?6\.2\.\).*?:\s*([^<\n]+)"
+        lowest_match = re.search(lowest_price_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        lowest_price = lowest_match.group(1).strip() if lowest_match else None
+        
+        highest_price_pattern = f"SEKCJA VI OFERTY \(dla części {part_num}\).*?6\.3\.\).*?:\s*([^<\n]+)"
+        highest_match = re.search(highest_price_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        highest_price = highest_match.group(1).strip() if highest_match else None
+        
+        winning_price_pattern = f"SEKCJA VI OFERTY \(dla części {part_num}\).*?6\.4\.\).*?:\s*([^<\n]+)"
+        winning_match = re.search(winning_price_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        winning_price = winning_match.group(1).strip() if winning_match else None
+        
+        winner_name_pattern = f"SEKCJA VII WYKONAWCA.*?\(dla części {part_num}\).*?7\.3\.1\).*?:\s*([^<\n]+)"
+        winner_name_match = re.search(winner_name_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        winner_name = winner_name_match.group(1).strip() if winner_name_match else None
+        
+        winner_size_pattern = f"SEKCJA VII WYKONAWCA.*?\(dla części {part_num}\).*?7\.2\.\).*?:\s*([^<\n]+)"
+        winner_size_match = re.search(winner_size_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        winner_size = winner_size_match.group(1).strip() if winner_size_match else None
+        
+        winner_location_pattern = f"SEKCJA VII WYKONAWCA.*?\(dla części {part_num}\).*?7\.3\.4\)\s*Miejscowość:\s*([^<\n]+)"
+        winner_location_match = re.search(winner_location_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        winner_location = winner_location_match.group(1).strip() if winner_location_match else None
+        
+        contract_date_pattern = f"SEKCJA VIII UMOWA \(dla części {part_num}\).*?8\.1\.\).*?:\s*([^<\n]+)"
+        contract_date_match = re.search(contract_date_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        contract_date = contract_date_match.group(1).strip() if contract_date_match else None
+        
+        contract_value_pattern = f"SEKCJA VIII UMOWA \(dla części {part_num}\).*?8\.2\.\).*?:\s*([^<\n]+)"
+        contract_value_match = re.search(contract_value_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        contract_value = contract_value_match.group(1).strip() if contract_value_match else None
+        
+        realization_period_pattern = f"SEKCJA VIII UMOWA \(dla części {part_num}\).*?8\.3\.\).*?:\s*([^<\n]+)"
+        realization_match = re.search(realization_period_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        realization_period = realization_match.group(1).strip() if realization_match else None
+        
+        return HistoricalTenderPart(
+            part_number=part_num,
+            description=description,
+            cpv_code=cpv_code,
+            part_value=part_value,
+            completion_status=completion_status,
+            total_offers=total_offers,
+            sme_offers=sme_offers,
+            lowest_price=lowest_price,
+            highest_price=highest_price,
+            winning_price=winning_price,
+            winner_name=winner_name,
+            winner_location=winner_location,
+            winner_size=winner_size,
+            contract_date=contract_date,
+            contract_value=contract_value,
+            realization_period=realization_period
+        )
+
+    def _parse_single_part_tender(self, text_content: str) -> Dict:
+        """Parse single part tender using existing logic"""
+        result = {}
         
         completion_patterns = [
             r'Postępowanie zakończyło się.*?:\s*([^<\n]+)',
@@ -113,7 +338,7 @@ class HistoricalTenderExtractor:
         
         for pattern, field_name in price_patterns:
             match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
-            if match and not result[field_name]:
+            if match and not result.get(field_name):
                 result[field_name] = match.group(1).strip()
         
         winner_patterns = [
@@ -125,7 +350,7 @@ class HistoricalTenderExtractor:
         
         for pattern, field_name in winner_patterns:
             match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
-            if match and not result[field_name]:
+            if match and not result.get(field_name):
                 result[field_name] = match.group(1).strip()
         
         winner_location_patterns = [
@@ -134,7 +359,7 @@ class HistoricalTenderExtractor:
         ]
         for pattern in winner_location_patterns:
             matches = re.findall(pattern, text_content, re.IGNORECASE)
-            if matches and not result['winner_location']:
+            if matches and not result.get('winner_location'):
                 result['winner_location'] = matches[-1].strip()
                 break
         
@@ -149,14 +374,54 @@ class HistoricalTenderExtractor:
         
         for pattern, field_name in contract_patterns:
             match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
-            if match and not result[field_name]:
+            if match and not result.get(field_name):
                 result[field_name] = match.group(1).strip()
         
-        for key, value in result.items():
-            if isinstance(value, str) and value:
-                result[key] = re.sub(r'\s+', ' ', value).strip()
-
         return result
+
+    def _aggregate_price_range(self, prices: List[str], price_type: str) -> Optional[str]:
+        """Aggregate price information from multiple parts"""
+        if not prices:
+            return None
+        
+        unique_prices = []
+        seen = set()
+        for price in prices:
+            if price not in seen:
+                unique_prices.append(price)
+                seen.add(price)
+        
+        if len(unique_prices) == 1:
+            return unique_prices[0]
+        elif len(unique_prices) <= 3:
+            return f"{price_type.title()}: {', '.join(unique_prices)}"
+        else:
+            return f"{price_type.title()}: {unique_prices[0]} to {unique_prices[-1]} ({len(unique_prices)} parts)"
+
+    def _aggregate_date_range(self, dates: List[str]) -> Optional[str]:
+        """Aggregate date information from multiple parts"""
+        if not dates:
+            return None
+        
+        unique_dates = list(set(dates))
+        if len(unique_dates) == 1:
+            return unique_dates[0]
+        else:
+            unique_dates.sort()
+            return f"{unique_dates[0]} to {unique_dates[-1]}"
+
+    def _aggregate_periods(self, periods: List[str]) -> Optional[str]:
+        """Aggregate realization periods from multiple parts"""
+        if not periods:
+            return None
+        
+        unique_periods = list(set(periods))
+        if len(unique_periods) == 1:
+            return unique_periods[0]
+        elif len(unique_periods) <= 3:
+            return " | ".join(unique_periods)
+        else:
+            return f"Multiple periods ({len(unique_periods)} parts)"
     
     def _standardize_date(self, date_str: str) -> str:
         """Convert Polish date format to ISO format (YYYY-MM-DD)"""
@@ -247,7 +512,7 @@ class HistoricalTenderExtractor:
         logging.info(f"Starting historical tender extraction from {start_date} to {end_date}")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
+            browser = await p.chromium.launch(headless=True)
             context = await browser.new_context()
             page = await context.new_page()
             
@@ -271,12 +536,8 @@ class HistoricalTenderExtractor:
                 except Exception as e:
                     logging.warning(f"Could not set notice type filter: {e}")
                 
-                # Set both start date ("od") and end date ("do") fields using multiple methods
-                
-                # === SET START DATE ("od") ===
                 start_date_set = False
                 
-                # Method 1: Try lib-date with formcontrolname for start date
                 try:
                     start_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateFrom'] input")
                     if start_date_input:
@@ -284,8 +545,8 @@ class HistoricalTenderExtractor:
                         await start_date_input.click()
                         await page.wait_for_timeout(500)
                         await start_date_input.clear()
-                        await start_date_input.type(start_date, delay=100)  # Type with delay
-                        await page.keyboard.press('Tab')  # Tab out to trigger validation
+                        await start_date_input.type(start_date, delay=100)
+                        await page.keyboard.press('Tab')
                         actual_value = await start_date_input.input_value()
                         logging.info(f"Method 1: Set start date to {start_date}, actual value: {actual_value}")
                         if actual_value == start_date:
@@ -293,7 +554,6 @@ class HistoricalTenderExtractor:
                 except Exception as e:
                     logging.warning(f"Start date Method 1 failed: {e}")
                 
-                # Method 2: Try using placeholder selector if method 1 failed
                 if not start_date_set:
                     try:
                         start_date_input = await page.query_selector("input[placeholder='od']")
@@ -301,7 +561,6 @@ class HistoricalTenderExtractor:
                             logging.info("Found start date input using placeholder selector")
                             await start_date_input.click()
                             await page.wait_for_timeout(500)
-                            # Select all and replace
                             await page.keyboard.press('Control+a')
                             await page.keyboard.type(start_date, delay=100)
                             await page.keyboard.press('Tab')
@@ -312,7 +571,6 @@ class HistoricalTenderExtractor:
                     except Exception as e:
                         logging.warning(f"Start date Method 2 failed: {e}")
                 
-                # Method 3: Try JavaScript injection as last resort for start date
                 if not start_date_set:
                     try:
                         logging.info("Trying JavaScript injection method for start date")
@@ -325,7 +583,6 @@ class HistoricalTenderExtractor:
                                 input.dispatchEvent(new Event('change', {{ bubbles: true }}));
                             }}
                         """)
-                        # Verify it was set
                         start_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateFrom'] input") or await page.query_selector("input[placeholder='od']")
                         if start_date_input:
                             actual_value = await start_date_input.input_value()
@@ -340,10 +597,8 @@ class HistoricalTenderExtractor:
                 else:
                     logging.error(f"Failed to set start date using all methods. Proceeding anyway...")
 
-                # === SET END DATE ("do") ===
                 end_date_set = False
                 
-                # Method 1: Try lib-date with formcontrolname for end date
                 try:
                     end_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateTo'] input")
                     if end_date_input:
@@ -351,8 +606,8 @@ class HistoricalTenderExtractor:
                         await end_date_input.click()
                         await page.wait_for_timeout(500)
                         await end_date_input.clear()
-                        await end_date_input.type(end_date, delay=100)  # Type with delay
-                        await page.keyboard.press('Tab')  # Tab out to trigger validation
+                        await end_date_input.type(end_date, delay=100)
+                        await page.keyboard.press('Tab')
                         actual_value = await end_date_input.input_value()
                         logging.info(f"Method 1: Set end date to {end_date}, actual value: {actual_value}")
                         if actual_value == end_date:
@@ -360,7 +615,6 @@ class HistoricalTenderExtractor:
                 except Exception as e:
                     logging.warning(f"End date Method 1 failed: {e}")
                 
-                # Method 2: Try using placeholder selector if method 1 failed
                 if not end_date_set:
                     try:
                         end_date_input = await page.query_selector("input[placeholder='do']")
@@ -368,7 +622,6 @@ class HistoricalTenderExtractor:
                             logging.info("Found end date input using placeholder selector")
                             await end_date_input.click()
                             await page.wait_for_timeout(500)
-                            # Select all and replace
                             await page.keyboard.press('Control+a')
                             await page.keyboard.type(end_date, delay=100)
                             await page.keyboard.press('Tab')
@@ -379,7 +632,6 @@ class HistoricalTenderExtractor:
                     except Exception as e:
                         logging.warning(f"End date Method 2 failed: {e}")
                 
-                # Method 3: Try JavaScript injection as last resort for end date
                 if not end_date_set:
                     try:
                         logging.info("Trying JavaScript injection method for end date")
@@ -392,7 +644,6 @@ class HistoricalTenderExtractor:
                                 input.dispatchEvent(new Event('change', {{ bubbles: true }}));
                             }}
                         """)
-                        # Verify it was set
                         end_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateTo'] input") or await page.query_selector("input[placeholder='do']")
                         if end_date_input:
                             actual_value = await end_date_input.input_value()
@@ -407,10 +658,8 @@ class HistoricalTenderExtractor:
                 else:
                     logging.error(f"Failed to set end date using all methods. Proceeding anyway...")
                 
-                # Summary logging
                 logging.info(f"Date setting summary: Start date {'✓' if start_date_set else '✗'}, End date {'✓' if end_date_set else '✗'}")
                 
-                # Wait a moment for the form to process the date changes
                 await page.wait_for_timeout(1000)
                 
                 search_button = await page.query_selector("button:has-text('Szukaj')")
@@ -476,11 +725,26 @@ class HistoricalTenderExtractor:
                                     location=location,
                                     announcement_date=standardized_date,
                                     details_url=details_url,
-                                    **detail_data
+                                    total_parts=detail_data.get('total_parts', 1),
+                                    parts_summary=detail_data.get('parts_summary'),
+                                    completion_status=detail_data.get('completion_status'),
+                                    total_offers=detail_data.get('total_offers'),
+                                    sme_offers=detail_data.get('sme_offers'),
+                                    lowest_price=detail_data.get('lowest_price'),
+                                    highest_price=detail_data.get('highest_price'),
+                                    winning_price=detail_data.get('winning_price'),
+                                    winner_name=detail_data.get('winner_name'),
+                                    winner_location=detail_data.get('winner_location'),
+                                    winner_size=detail_data.get('winner_size'),
+                                    contract_date=detail_data.get('contract_date'),
+                                    contract_value=detail_data.get('contract_value'),
+                                    realization_period=detail_data.get('realization_period'),
+                                    full_content=detail_data.get('full_content'),
+                                    parts=detail_data.get('parts', [])
                                 )
                                 
                                 historical_tenders.append(tender)
-                                logging.info(f"Extracted historical tender: {tender.name[:50]}...")
+                                logging.info(f"Extracted historical tender: {tender.name[:50]}... (Parts: {tender.total_parts})")
                             else:
                                 logging.warning(f"Could not extract details for tender: {tender_name[:50]}...")
                             
