@@ -50,6 +50,56 @@ class QueryTool:
         
         return filter_dict if filter_dict else None
 
+    async def query_by_id(
+        self,
+        id: str,
+        top_k: int = 1,
+        filter_conditions: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Query Pinecone by ID with optional filter conditions.
+        
+        Args:
+            id: The ID to search for
+            top_k: Number of results to return
+            filter_conditions: Optional dictionary of filter conditions
+        """
+        try:
+            filter_dict = self._build_filter(filter_conditions)
+
+            query_response = await self.loop.run_in_executor(
+                None,
+                partial(
+                    self.index.query,
+                    namespace=self.config.namespace,
+                    id=id,
+                    top_k=top_k,
+                    include_metadata=True,
+                    filter=filter_dict,
+                ),
+            )
+
+            matches = [
+                {
+                    "id": match.id,
+                    "score": match.score,
+                    "metadata": match.metadata
+                }
+                for match in query_response.matches
+            ]
+
+            return {
+                "matches": matches,
+                "total_matches": len(matches),
+                "filter_applied": filter_dict,
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
     async def query_by_text(
         self,
         query_text: str,

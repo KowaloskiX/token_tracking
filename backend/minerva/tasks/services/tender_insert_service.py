@@ -1,8 +1,11 @@
 import logging
+import pprint
 from typing import Dict, List, Protocol, Any
 from datetime import datetime
 from elasticsearch import helpers
 from minerva.core.models.request.tender_extract import ExtractionRequest, Tender
+from minerva.core.services.vectorstore.helpers import safe_chunk_text
+from minerva.core.services.vectorstore.text_chunks import ChunkingConfig, TextChunker
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, EmbeddingTool
 from minerva.core.services.keyword_search.elasticsearch import es_client
 from dataclasses import dataclass
@@ -11,6 +14,7 @@ from dataclasses import dataclass
 @dataclass
 class TenderInsertConfig:
     pinecone_config: EmbeddingConfig
+    subject_pinecone_config: EmbeddingConfig = None
     elasticsearch_index: str = "tenders"
     skip_elasticsearch: bool = False
     skip_pinecone: bool = False
@@ -19,6 +23,8 @@ class TenderInsertConfig:
     def create_default(cls, 
                        pinecone_index: str = "tenders", 
                        pinecone_namespace: str = "", 
+                       subject_pinecone_index: str = "tender-subjects",
+                       subject_pinecone_namespace: str = "",
                        embedding_model: str = "text-embedding-3-large",
                        elasticsearch_index: str = "tenders"):
         pinecone_config = EmbeddingConfig(
@@ -26,9 +32,16 @@ class TenderInsertConfig:
             namespace=pinecone_namespace,
             embedding_model=embedding_model
         )
+        
+        subject_pinecone_config = EmbeddingConfig(
+            index_name=subject_pinecone_index,
+            namespace=subject_pinecone_namespace,
+            embedding_model=embedding_model
+        )
     
         return cls(
             pinecone_config=pinecone_config,
+            subject_pinecone_config=subject_pinecone_config,
             elasticsearch_index=elasticsearch_index
         )
 
@@ -51,7 +64,11 @@ class GenericTenderAdapter:
         if not input_text:
             input_text = "Unnamed Tender"
         
+        # Get tender metadata but exclude tender_subject
         metadata = tender.dict()
+        if 'tender_subject' in metadata:
+            logging.info(f"Removing tender_subject from metadata for tender {item_id}")
+            del metadata['tender_subject']
         
         return {
             "input": input_text,
@@ -134,10 +151,11 @@ class TenderInsertService:
     ):
         self.config = config
         self.embedding_tool = EmbeddingTool(config.pinecone_config) if not config.skip_pinecone else None
+        self.subject_embedding_tool = EmbeddingTool(config.subject_pinecone_config) if not config.skip_pinecone and config.subject_pinecone_config else None
         self.es_index_name = config.elasticsearch_index
         self.tender_source = tender_source
         self.tender_adapter = tender_adapter or GenericTenderAdapter()
-        
+        self.chunker = TextChunker(ChunkingConfig(chunk_size=400, chunk_overlap=100))
         # Ensure Elasticsearch index is ready if not skipped
         # if not config.skip_elasticsearch:
         #     ensure_elasticsearch_index(self.es_index_name)
@@ -149,6 +167,16 @@ class TenderInsertService:
 
         all_tenders = extraction_result["tenders"]
         logging.info(f"Extracted {len(all_tenders)} tenders")
+
+        # Track tenders with empty and non-empty tender_subject
+        tenders_with_empty_subject = []
+        tenders_with_subject = []
+        
+        for tender in all_tenders:
+            if not hasattr(tender, 'tender_subject') or not tender.tender_subject:
+                tenders_with_empty_subject.append(tender.details_url)
+            else:
+                tenders_with_subject.append(tender.details_url)
 
         if not all_tenders:
             logging.info("No tenders found, nothing to process.")
@@ -162,6 +190,12 @@ class TenderInsertService:
                 "elasticsearch_result": {
                     "stored_count": 0,
                     "failed_count": 0
+                },
+                "tender_subject_stats": {
+                    "total_tenders": 0,
+                    "tenders_with_subject": 0,
+                    "tenders_without_subject": 0,
+                    "tenders_with_empty_subject": []
                 }
             }
         
@@ -183,13 +217,20 @@ class TenderInsertService:
         return {
             "extraction_metadata": extraction_result["metadata"],
             "embedding_result": pinecone_result,
-            "elasticsearch_result": elasticsearch_result
+            "elasticsearch_result": elasticsearch_result,
+            "tender_subject_stats": {
+                "total_tenders": len(all_tenders),
+                "tenders_with_subject": len(tenders_with_subject),
+                "tenders_without_subject": len(tenders_with_empty_subject),
+                "tenders_with_empty_subject": tenders_with_empty_subject
+            }
         }
     
     async def _process_for_pinecone(self, all_tenders: List[Tender]) -> Dict:
         """Process tenders for Pinecone vector embeddings"""
         logging.info("Preparing items for embedding...")
         embedding_items = []
+        subject_embedding_items = []
         
         for tender in all_tenders:
             tender_id = tender.details_url
@@ -197,6 +238,7 @@ class TenderInsertService:
                 logging.info(f"Skipping tender with ID {tender_id} since it already exists in Pinecone.")
                 continue
 
+            # Process main tender data
             item = self.tender_adapter.prepare_embedding_item(tender)
             
             # Validate input text
@@ -206,33 +248,75 @@ class TenderInsertService:
 
             embedding_items.append(item)
 
-        if not embedding_items:
-            logging.info("No new tenders to embed (all duplicates or invalid).")
-            return {
+            # Process tender subject if available and subject embedding is configured
+            pprint.pprint(tender)
+            if hasattr(tender, 'tender_subject') and tender.tender_subject and self.subject_embedding_tool:
+                logging.info(f"Processing tender subject for tender {tender_id}")
+                # Split subject text into chunks (similar to upload_file_content)
+                
+                for i, chunk in enumerate(safe_chunk_text(tender.tender_subject, self.chunker, self.subject_embedding_tool.config.embedding_model)):
+                    subject_item = {
+                        "input": chunk,
+                        "metadata": {
+                            "tender_id": tender_id,
+                            "chunk_index": i,
+                            "source": "tender_subject",
+                            "source_type": tender.source_type,
+                            "initiation_date": tender.initiation_date,
+                            "text": chunk
+                        },
+                        "id": f"{tender_id}_subject_{i}"
+                    }
+                    subject_embedding_items.append(subject_item)
+                    logging.debug(f"Created subject chunk {i+1} for tender {tender_id}")
+            else:
+                if not hasattr(tender, 'tender_subject'):
+                    logging.debug(f"No tender_subject field found for tender {tender_id}")
+                elif not tender.tender_subject:
+                    logging.debug(f"Empty tender_subject for tender {tender_id}")
+                elif not self.subject_embedding_tool:
+                    logging.debug(f"Subject embedding tool not configured for tender {tender_id}")
+
+        results = {
+            "main": {
+                "processed_count": 0,
+                "total_items": 0,
+                "failed_items": []
+            },
+            "subjects": {
                 "processed_count": 0,
                 "total_items": 0,
                 "failed_items": []
             }
+        }
 
-        total_items = len(embedding_items)
-        logging.info(f"Starting embedding process for {total_items} new tenders...")
+        # Process main tender data
+        if embedding_items:
+            total_items = len(embedding_items)
+            logging.info(f"Starting embedding process for {total_items} new tenders...")
 
-        # Log some quick stats
-        unique_ids = len({item['id'] for item in embedding_items})
-        avg_length = sum(len(item["input"]) for item in embedding_items) / total_items
-        logging.info(f"Number of unique IDs: {unique_ids}")
-        logging.info(f"Average input text length: {avg_length:.2f}")
+            # Log some quick stats
+            unique_ids = len({item['id'] for item in embedding_items})
+            avg_length = sum(len(item["input"]) for item in embedding_items) / total_items
+            logging.info(f"Number of unique IDs: {unique_ids}")
+            logging.info(f"Average input text length: {avg_length:.2f}")
 
-        embedding_result = await self.embedding_tool.embed_and_store_batch(items=embedding_items)
+            results["main"] = await self.embedding_tool.embed_and_store_batch(items=embedding_items)
+            logging.info(f"Main tender embedding completed: {results['main']['processed_count']}/{total_items} items processed")
 
-        logging.info(
-            f"Embedding completed. Processed "
-            f"{embedding_result['processed_count']}/{total_items} items."
-        )
-        if embedding_result["failed_items"]:
-            logging.warning(f"Failed to process {len(embedding_result['failed_items'])} items.")
+        # Process subject data
+        if subject_embedding_items and self.subject_embedding_tool:
+            total_subject_items = len(subject_embedding_items)
+            logging.info(f"Starting embedding process for {total_subject_items} subject chunks...")
+            
+            results["subjects"] = await self.subject_embedding_tool.embed_and_store_batch(items=subject_embedding_items)
+            logging.info(f"Subject embedding completed: {results['subjects']['processed_count']}/{total_subject_items} chunks processed")
+            
+            if results["subjects"]["failed_items"]:
+                logging.warning(f"Failed to process {len(results['subjects']['failed_items'])} subject chunks")
 
-        return embedding_result
+        return results
+    
         
     async def _process_for_elasticsearch(self, all_tenders: List[Tender]) -> Dict:
         """Process tenders for Elasticsearch lexical search"""
@@ -258,6 +342,11 @@ class TenderInsertService:
                 # Get ALL metadata fields directly - exactly like we do in Pinecone
                 tender_dict = tender.dict() if hasattr(tender, 'dict') else {}
                 
+                # Remove tender_subject from metadata
+                if 'tender_subject' in tender_dict:
+                    logging.info(f"Removing tender_subject from Elasticsearch metadata for tender {tender_id}")
+                    del tender_dict['tender_subject']
+                
                 # Make sure we have the initiation_date
                 initiation_date = tender_dict.get('initiation_date', '')
                 
@@ -271,7 +360,7 @@ class TenderInsertService:
                 }
                 
                 # Log the document to help with debugging
-                logging.debug(f"Preparing ES document for tender {tender_id}: {doc}")
+                logging.info(f"Preparing ES document for tender {tender_id}: {doc}")
                 
                 actions.append({
                     "_index": self.es_index_name,

@@ -75,6 +75,7 @@ transformers = "^4.52.4"
 google-genai = "^1.19.0"
 
 # For local development - regular PyTorch with platform support
+docx2python = "^3.5.0"
 [tool.poetry.group.dev.dependencies]
 torch = ">=2.6.0"
 torchvision = ">=0.21.0"

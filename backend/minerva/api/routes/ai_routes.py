@@ -425,6 +425,7 @@ async def send_project_message(
         )
 
         initial_response = await llm.generate_response([{"role": "user", "content": request.query}])
+        initial_response = initial_response.content
 
         retry_with_deepsearch = False
 
@@ -500,6 +501,7 @@ async def send_project_message(
             message_list.extend(messages)
 
             response = await llm.generate_response(message_list)
+            response = response.content
 
             if not llm_config.stream:
                 # Non-streaming response: return a complete response object
@@ -604,6 +606,7 @@ async def send_project_message(
                 )
 
                 initial_response = await llm.generate_response([{"role": "user", "content": response}])
+                initial_response = initial_response.content
 
                 if not isinstance(initial_response, dict):
                     initial_response = json_repair.repair_json(str(initial_response), return_objects=True, ensure_ascii=False)
@@ -656,6 +659,7 @@ async def send_project_message(
                 message_list.extend(message)
 
                 response = await llm.generate_response(message_list)
+                response = response.content
                 print(response)
                 dict_response = json_repair.repair_json(response, return_objects=True, ensure_ascii=False)
 

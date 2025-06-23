@@ -1,0 +1,71 @@
+TED GERMAN ORIGINAL LINKS ANALYSIS REPORT
+=======================================================
+
+Generated: 2025-06-23 19:52:56
+Country: Germany (DEU)
+Total tenders analyzed: 18
+Pages scraped: 1
+
+GERMAN SOURCE TYPE DISTRIBUTION:
+-----------------------------------
+unknown_platform_europa.eu    3 ( 16.7%)
+subreport                    3 ( 16.7%)
+unknown_platform_www.dtvp.de    2 ( 11.1%)
+evergabe_online              2 ( 11.1%)
+procurement_platform_bieterzugang.deutsche-evergabe.de    1 (  5.6%)
+potential_platform_bieterportal.noncd.db.de    1 (  5.6%)
+vergabe24                    1 (  5.6%)
+brandenburg_gov_vergabemarktplatz.brandenburg.de    1 (  5.6%)
+niedersachsen_vergabe        1 (  5.6%)
+thueringen_vergabe           1 (  5.6%)
+procurement_platform_vergabe.stadt-frankfurt.de    1 (  5.6%)
+TED E2NOTICE                 1 (  5.6%)
+
+GERMAN PLATFORM ANALYSIS:
+-------------------------
+Known German platforms:   12 ( 66.7%)
+TED E2NOTICE only:         1 (  5.6%)
+Unknown platforms:         5 ( 27.8%)
+
+GERMAN PLATFORM BREAKDOWN:
+---------------------------
+subreport               3 ( 16.7%)
+evergabe_online         2 ( 11.1%)
+procurement_platform_bieterzugang.deutsche-evergabe.de    1 (  5.6%)
+potential_platform_bieterportal.noncd.db.de    1 (  5.6%)
+vergabe24               1 (  5.6%)
+brandenburg_gov_vergabemarktplatz.brandenburg.de    1 (  5.6%)
+niedersachsen_vergabe    1 (  5.6%)
+thueringen_vergabe      1 (  5.6%)
+procurement_platform_vergabe.stadt-frankfurt.de    1 (  5.6%)
+
+WHERE LINKS WERE FOUND:
+-------------------------
+Vergabeunterlagen / Tender Documents       13 ( 72.2%)
+Vergabebedingungen / Tender Conditions      3 ( 16.7%)
+Weitere Informationen / Further Information    1 (  5.6%)
+
+TOP GERMAN ORGANIZATIONS WITH EXTERNAL PLATFORMS:
+--------------------------------------------------
+Stiftung Thüringer Schlösser und Gärten            unknown_platform_europa.eu
+Anstalt für Kommunale Datenverarbeitung in Bayern, procurement_platform_bieterzugang.deutsche-evergabe.de
+AOK NordWest                                       unknown_platform_www.dtvp.de
+Gemeindeverwaltungsverband Steinlach Wiesaz        subreport
+DB InfraGO AG – Geschäftsbereich Personenbahnhöfe  potential_platform_bieterportal.noncd.db.de
+Magistrat der Stadt Bad Hersfeld                   subreport
+Rhein-Lahn-Kreis Abfallwirtschaft                  subreport
+Landratsamt Karlsruhe, Amt für Gebäudemanagement,  vergabe24
+Stadt Wuppertal                                    unknown_platform_europa.eu
+HAW Hamburg, ITSC-Vergabestelle                    unknown_platform_europa.eu
+Stiftung Preußische Schlösser und Gärten Berlin-Br brandenburg_gov_vergabemarktplatz.brandenburg.de
+Stadt Lüchow (Wendland)                            niedersachsen_vergabe
+Thüringer Landesamt für Landwirtschaft und Ländlic evergabe_online
+Bundesanstalt für Immobilienaufgaben               evergabe_online
+Kommunale Immobilien Jena - Bereich Baumanagement  thueringen_vergabe
+Stadt Göttingen                                    unknown_platform_www.dtvp.de
+Stadt Frankfurt am Main, Stabsstelle Zukunft der s procurement_platform_vergabe.stadt-frankfurt.de
+
+REGIONAL PLATFORM USAGE (if detectable):
+----------------------------------------
+Niedersachsen           1 tenders
+Thueringen              1 tenders

@@ -2,6 +2,7 @@
 import os
 from anthropic import AsyncAnthropic
 from typing import List, AsyncGenerator, Union, Dict, Any, Optional
+from minerva.core.services.llm_providers.response import LLMResponse
 from dotenv import load_dotenv
 import json
 
@@ -30,7 +31,7 @@ class AnthropicLLM:
         self.tools = tools
         self.instructions = instructions or "When a tool is provided and relevant to the query, use it to provide accurate information."
 
-    async def generate_response(self, messages: List[Dict[str, str]]) -> Union[str, AsyncGenerator[Dict[str, Any], None]]:
+    async def generate_response(self, messages: List[Dict[str, str]]) -> Union[str, LLMResponse, AsyncGenerator[Dict[str, Any], None]]:
         params = {
             "model": self.model,
             "messages": messages,
@@ -45,6 +46,17 @@ class AnthropicLLM:
         
         if not self.stream:
             response = await self.client.messages.create(**params)
+            
+            # Extract usage information from Anthropic response
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                usage_info = {
+                    'prompt_tokens': getattr(response.usage, 'input_tokens', 0),
+                    'completion_tokens': getattr(response.usage, 'output_tokens', 0),
+                    'total_tokens': getattr(response.usage, 'input_tokens', 0) + getattr(response.usage, 'output_tokens', 0)
+                }
+            
+            # Extract content from response
             tool_response = None
             text_response = None
             for content_block in response.content:
@@ -57,7 +69,18 @@ class AnthropicLLM:
                     break
                 elif content_block.type == "text":
                     text_response = content_block.text
-            return tool_response if tool_response is not None else text_response if text_response is not None else ""
+            
+            # Determine final content and response type
+            if tool_response is not None:
+                return LLMResponse(
+                    json.dumps(tool_response),
+                    usage_info,
+                    "function_call"
+                )
+            elif text_response is not None:
+                return LLMResponse(text_response, usage_info, "text")
+            else:
+                return LLMResponse("", usage_info, "text")
             
         else:
             stream = self.client.messages.stream(**params)

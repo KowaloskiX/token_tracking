@@ -57,13 +57,13 @@ async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
 
         # Create configuration using the new pattern
         tender_insert_config = TenderInsertConfig.create_default(
-            pinecone_index="tenders",
+            pinecone_index="test-tenders5",
             pinecone_namespace="",
             embedding_model="text-embedding-3-large",
-            elasticsearch_index="tenders"
+            elasticsearch_index="test-tenders5"
         )
         
-        example_extractor = VergabePlatformsTenderExtractor()
+        example_extractor = TenderExtractor()
         # Create the service with the new configuration
         tender_service = TenderInsertService(
             config=tender_insert_config,
@@ -270,12 +270,9 @@ async def fetch_and_embed_historical_tenders(request: HistoricalExtractionReques
             elasticsearch_index="historical-tenders"
         )
         
-        historical_extractor = HistoricalTenderExtractor()
+        from minerva.tasks.services.historical_tender_service import HistoricalTenderInsertService
         
-        tender_service = TenderInsertService(
-            config=historical_config,
-            tender_source=historical_extractor
-        )
+        historical_service = HistoricalTenderInsertService(config=historical_config)
 
         inputs = {
             'start_date': request.start_date,
@@ -283,130 +280,31 @@ async def fetch_and_embed_historical_tenders(request: HistoricalExtractionReques
             'max_pages': request.max_pages
         }
 
-        result = await historical_extractor.execute(inputs)
+        result = await historical_service.process_historical_tenders(inputs)
         
-        historical_tenders_for_embedding = []
-        multi_part_count = 0
-        single_part_count = 0
-        
-        for tender in result["tenders"]:
-            if hasattr(tender, '__dict__'):
-                tender_dict = {
-                    "name": tender.name,
-                    "organization": tender.organization,
-                    "location": tender.location,
-                    "submission_deadline": tender.announcement_date,
-                    "initiation_date": tender.announcement_date,
-                    "details_url": tender.details_url,
-                    "content_type": tender.content_type,
-                    "source_type": tender.source_type,
-                    
-                    "total_parts": tender.total_parts,
-                    "parts_summary": tender.parts_summary,
-                    
-                    "completion_status": tender.completion_status,
-                    "total_offers": tender.total_offers,
-                    "sme_offers": tender.sme_offers,
-                    "lowest_price": tender.lowest_price,
-                    "highest_price": tender.highest_price,
-                    "winning_price": tender.winning_price,
-                    "winner_name": tender.winner_name,
-                    "winner_location": tender.winner_location,
-                    "winner_size": tender.winner_size,
-                    "contract_date": tender.contract_date,
-                    "contract_value": tender.contract_value,
-                    "realization_period": tender.realization_period,
-                    "full_content": tender.full_content,
-                    
-                    "parts": [
-                        {
-                            "part_number": part.part_number,
-                            "description": part.description,
-                            "cpv_code": part.cpv_code,
-                            "part_value": part.part_value,
-                            "completion_status": part.completion_status,
-                            "total_offers": part.total_offers,
-                            "sme_offers": part.sme_offers,
-                            "lowest_price": part.lowest_price,
-                            "highest_price": part.highest_price,
-                            "winning_price": part.winning_price,
-                            "winner_name": part.winner_name,
-                            "winner_location": part.winner_location,
-                            "winner_size": part.winner_size,
-                            "contract_date": part.contract_date,
-                            "contract_value": part.contract_value,
-                            "realization_period": part.realization_period
-                        }
-                        for part in (tender.parts or [])
-                    ] if tender.parts else []
-                }
-                
-                if tender.total_parts > 1:
-                    multi_part_count += 1
-                else:
-                    single_part_count += 1
-                    
-            else:
-                tender_dict = tender
-                if tender_dict.get('total_parts', 1) > 1:
-                    multi_part_count += 1
-                else:
-                    single_part_count += 1
-            
-            historical_tenders_for_embedding.append(tender_dict)
-
-        if historical_tenders_for_embedding:
-            embedding_config = EmbeddingConfig(
-                index_name=historical_config.pinecone_config.index_name,
-                namespace=historical_config.pinecone_config.namespace,
-                embedding_model=historical_config.pinecone_config.embedding_model,
-                batch_size=50
-            )
-            
-            from minerva.core.services.vectorstore.pinecone.upsert import UpsertTool
-            upsert_tool = UpsertTool(config=embedding_config)
-            
-            embedding_result = await upsert_tool.upsert_tenders_from_dict(historical_tenders_for_embedding)
-            
-            es_result = {"stored_count": len(historical_tenders_for_embedding)}
-            
-            return {
-                "result": {
-                    "embedding_result": embedding_result,
-                    "elasticsearch_result": es_result
-                },
-                "summary": {
-                    "historical_tenders_found": len(result["tenders"]),
-                    "single_part_tenders": single_part_count,
-                    "multi_part_tenders": multi_part_count,
-                    "pages_scraped": result["metadata"].pages_scraped,
-                    "pinecone_processed": embedding_result.get("processed_count", 0),
-                    "elasticsearch_processed": es_result.get("stored_count", 0),
-                    "date_range": f"{request.start_date} to {request.end_date}"
-                }
-            }
+        metadata = result.get("metadata")
+        if metadata:
+            total_tenders = metadata.total_tenders if hasattr(metadata, 'total_tenders') else 0
+            pages_scraped = metadata.pages_scraped if hasattr(metadata, 'pages_scraped') else 0
         else:
-            return {
-                "result": {
-                    "embedding_result": {"processed_count": 0},
-                    "elasticsearch_result": {"stored_count": 0}
-                },
-                "summary": {
-                    "historical_tenders_found": 0,
-                    "single_part_tenders": 0,
-                    "multi_part_tenders": 0,
-                    "pages_scraped": result["metadata"].pages_scraped,
-                    "pinecone_processed": 0,
-                    "elasticsearch_processed": 0,
-                    "date_range": f"{request.start_date} to {request.end_date}"
-                }
+            total_tenders = 0
+            pages_scraped = 0
+        
+        return {
+            "result": result,
+            "summary": {
+                "historical_tenders_found": total_tenders,
+                "pages_scraped": pages_scraped,
+                "pinecone_processed": result.get("embedding_result", {}).get("processed_count", 0),
+                "elasticsearch_processed": result.get("elasticsearch_result", {}).get("stored_count", 0),
+                "date_range": f"{request.start_date} to {request.end_date}"
             }
+        }
 
     except HTTPException as e:
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error extracting historical tenders: {str(e)}")
-
 
 @router.post("/query-historical")
 async def query_historical_multipart_tenders(search_request: SearchRequest):

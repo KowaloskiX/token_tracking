@@ -31,6 +31,7 @@ class HistoricalTenderPart:
     contract_value: Optional[str] = None
     realization_period: Optional[str] = None
 
+
 @dataclass
 class HistoricalTender:
     name: str
@@ -43,6 +44,11 @@ class HistoricalTender:
     
     total_parts: int = 1
     parts_summary: Optional[str] = None
+    
+    main_cpv_code: Optional[str] = None
+    additional_cpv_codes: Optional[List[str]] = None
+    
+    original_tender_url: Optional[str] = None
     
     completion_status: Optional[str] = None
     total_offers: Optional[int] = None
@@ -60,7 +66,6 @@ class HistoricalTender:
     
     parts: Optional[List[HistoricalTenderPart]] = None
 
-
 class HistoricalTenderExtractor:
     def __init__(self):
         self.base_url = "https://ezamowienia.gov.pl/mo-client-board/bzp/list"
@@ -75,38 +80,59 @@ class HistoricalTenderExtractor:
         return match.group(1).strip() if match else None
 
     def _parse_historical_tender_content(self, html_content: str) -> Dict:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        text_content = soup.get_text(separator="\n")
-        
-        result = {
-            'full_content': text_content,
-            'total_parts': 1,
-            'parts_summary': None,
-            'completion_status': None,
-            'total_offers': None,
-            'sme_offers': None,
-            'lowest_price': None,
-            'highest_price': None,
-            'winning_price': None,
-            'winner_name': None,
-            'winner_location': None,
-            'winner_size': None,
-            'contract_date': None,
-            'contract_value': None,
-            'realization_period': None,
-            'parts': []
-        }
-        
-        part_matches = re.findall(r'Część (\d+)', text_content)
-        if part_matches:
-            result['total_parts'] = len(set(part_matches))
-            parts_info = self._parse_multi_part_tender(text_content, result['total_parts'])
-            result.update(parts_info)
-        else:
-            single_part_info = self._parse_single_part_tender(text_content)
-            result.update(single_part_info)
-        
-        return result
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text_content = soup.get_text(separator="\n")
+            
+            result = {
+                'full_content': text_content,
+                'total_parts': 1,
+                'parts_summary': None,
+                'original_tender_url': None,  # Add this line
+                'completion_status': None,
+                'total_offers': None,
+                'sme_offers': None,
+                'lowest_price': None,
+                'highest_price': None,
+                'winning_price': None,
+                'winner_name': None,
+                'winner_location': None,
+                'winner_size': None,
+                'contract_date': None,
+                'contract_value': None,
+                'realization_period': None,
+                'parts': []
+            }
+            
+            # Extract original tender announcement URL - ADD THIS SECTION
+            original_url_patterns = [
+                r'Adres strony internetowej prowadzonego postępowania:\s*([^\s\n]+)',
+                r'Adres strony internetowej.*?postępowania:\s*([^\s\n]+)',
+                r'URL.*?postępowania:\s*([^\s\n]+)',
+            ]
+            
+            for pattern in original_url_patterns:
+                match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
+                if match:
+                    potential_url = match.group(1).strip()
+                    # Clean up the URL (remove any trailing punctuation)
+                    potential_url = re.sub(r'[.,;:]$', '', potential_url)
+                    # Validate it looks like a URL
+                    if potential_url.startswith(('http://', 'https://', 'www.')):
+                        result['original_tender_url'] = potential_url
+                        logging.info(f"Found original tender URL: {potential_url}")
+                        break
+            
+            # Rest of your existing parsing logic...
+            part_matches = re.findall(r'Część (\d+)', text_content)
+            if part_matches:
+                result['total_parts'] = len(set(part_matches))
+                parts_info = self._parse_multi_part_tender(text_content, result['total_parts'])
+                result.update(parts_info)
+            else:
+                single_part_info = self._parse_single_part_tender(text_content)
+                result.update(single_part_info)
+            
+            return result
 
     def _parse_multi_part_tender(self, text_content: str, total_parts: int) -> Dict:
         """Parse multi-part tender and aggregate information"""
@@ -169,6 +195,21 @@ class HistoricalTenderExtractor:
         
         total_offers = sum(all_total_offers) if all_total_offers else None
         sme_offers = sum(all_sme_offers) if all_sme_offers else None
+
+        additional_cpv_pattern = r'Dodatkowy kod CPV:\s*([^<\n]+)'
+        additional_matches = re.findall(additional_cpv_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        additional_cpv_codes = [match.strip() for match in additional_matches] if additional_matches else None
+
+        main_cpv_patterns = [
+            r'Główny kod CPV:\s*([^<\n]+)',
+            r'4\.5\.3\.\).*?Główny kod CPV:\s*([^<\n]+)',
+        ]
+        main_cpv_code = None
+        for pattern in main_cpv_patterns:
+            match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
+            if match:
+                main_cpv_code = match.group(1).strip()
+                break
         
         lowest_price = self._aggregate_price_range(all_lowest_prices, "lowest")
         highest_price = self._aggregate_price_range(all_highest_prices, "highest")
@@ -196,6 +237,8 @@ class HistoricalTenderExtractor:
         realization_period = self._aggregate_periods(all_realization_periods)
         
         return {
+            'main_cpv_code': main_cpv_code,
+            'additional_cpv_codes': additional_cpv_codes,
             'parts_summary': parts_summary,
             'completion_status': completion_status,
             'total_offers': total_offers,
@@ -316,6 +359,21 @@ class HistoricalTenderExtractor:
             if match:
                 result['total_offers'] = int(match.group(1))
                 break
+        cpv_patterns = [
+            r'Główny kod CPV:\s*([^<\n]+)',
+            r'4\.5\.3\.\).*?Główny kod CPV:\s*([^<\n]+)',
+            r'CPV:\s*([0-9\-]+[^<\n]*)',
+        ]
+        for pattern in cpv_patterns:
+            match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
+            if match:
+                result['main_cpv_code'] = match.group(1).strip()
+                break
+        
+        additional_cpv_pattern = r'Dodatkowy kod CPV:\s*([^<\n]+)'
+        additional_matches = re.findall(additional_cpv_pattern, text_content, re.IGNORECASE | re.DOTALL)
+        if additional_matches:
+            result['additional_cpv_codes'] = [match.strip() for match in additional_matches]
         
         sme_patterns = [
             r'Liczba otrzymanych od MŚP.*?:\s*(\d+)',
@@ -455,6 +513,28 @@ class HistoricalTenderExtractor:
                         continue
         
         return date_str
+    
+    def _extract_original_tender_url(self, html_content: str) -> Optional[str]:
+        """Extract original tender URL from the historical tender content"""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        patterns = [
+            r'href="(https://ezamowienia\.gov\.pl/mp-client/search/list/[^"]+)"',
+            r'href="(https://platformazakupowa\.pl/[^"]+)"',
+            r'(https://ezamowienia\.gov\.pl/mp-client/search/list/ocds-[^"\s]+)',
+            r'(https://platformazakupowa\.pl/[^"\s]+)',
+        ]
+        
+        text_content = soup.get_text()
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, html_content + " " + text_content, re.IGNORECASE)
+            if matches:
+                for match in matches:
+                    if 'ocds-' in match or 'platformazakupowa' in match:
+                        return match.strip()
+        
+        return None
 
     async def _extract_tender_details(self, context, details_url: str) -> Optional[Dict]:
         """Extract detailed information from a historical tender page"""
@@ -490,6 +570,11 @@ class HistoricalTenderExtractor:
             
             parsed_data = self._parse_historical_tender_content(html_content)
             
+            original_url = self._extract_original_tender_url(html_content)
+            if original_url:
+                parsed_data['original_tender_url'] = original_url
+                logging.info(f"Found original tender URL: {original_url}")
+            
             if parsed_data.get('contract_date'):
                 parsed_data['contract_date'] = self._standardize_date(parsed_data['contract_date'])
             
@@ -512,7 +597,7 @@ class HistoricalTenderExtractor:
         logging.info(f"Starting historical tender extraction from {start_date} to {end_date}")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=False)
             context = await browser.new_context()
             page = await context.new_page()
             
@@ -528,15 +613,127 @@ class HistoricalTenderExtractor:
                             raise e
                         await asyncio.sleep(random.uniform(2.0, 4.0))
                 
+                await page.wait_for_timeout(2000)
+                
+                notice_type_set = False
+                
                 try:
-                    notice_type_select = await page.query_selector("select[formcontrolname='noticeType']")
-                    if notice_type_select:
-                        await notice_type_select.select_option(value="TenderResultNotice")
-                        logging.info("Selected 'TenderResultNotice' filter")
+                    logging.info("Attempting to set notice type filter to 'TenderResultNotice' using Angular dropdown...")
+                    
+                    await page.wait_for_selector("app-select[formcontrolname='noticeType']", timeout=10000)
+                    
+                    dropdown_trigger = await page.query_selector("app-select[formcontrolname='noticeType'] .form-select")
+                    if not dropdown_trigger:
+                        dropdown_trigger = await page.query_selector("app-select[formcontrolname='noticeType'] select")
+                    
+                    if dropdown_trigger:
+                        await dropdown_trigger.click()
+                        await page.wait_for_timeout(500)
+                        
+                        tender_result_option = await page.wait_for_selector(
+                            "select[formcontrolname='noticeType'] option[value='TenderResultNotice']", 
+                            timeout=5000
+                        )
+                        if tender_result_option:
+                            await tender_result_option.click()
+                            await page.wait_for_timeout(500)
+                            
+                            notice_type_select = await page.query_selector("select[formcontrolname='noticeType']")
+                            if notice_type_select:
+                                selected_value = await notice_type_select.input_value()
+                                if selected_value == "TenderResultNotice":
+                                    logging.info("Successfully selected 'TenderResultNotice' filter using Angular dropdown")
+                                    notice_type_set = True
+                                else:
+                                    logging.warning(f"Angular dropdown selection verification failed. Selected: {selected_value}")
+                    
                 except Exception as e:
-                    logging.warning(f"Could not set notice type filter: {e}")
+                    logging.warning(f"Method 1 (Angular dropdown) for notice type selection failed: {e}")
+                
+                if not notice_type_set:
+                    try:
+                        logging.info("Trying direct select option approach...")
+                        
+                        notice_select_by_id = await page.query_selector("#app-select-0")
+                        if notice_select_by_id:
+                            await notice_select_by_id.select_option(value="TenderResultNotice")
+                            
+                            selected_value = await notice_select_by_id.input_value()
+                            if selected_value == "TenderResultNotice":
+                                logging.info("Successfully selected 'TenderResultNotice' with direct select method")
+                                notice_type_set = True
+                            else:
+                                logging.warning(f"Direct select method verification failed. Selected: {selected_value}")
+                    
+                    except Exception as e:
+                        logging.warning(f"Method 2 (direct select) for notice type selection failed: {e}")
+                
+                if not notice_type_set:
+                    try:
+                        logging.info("Trying JavaScript injection for notice type selection...")
+                        
+                        await page.evaluate("""
+                            const select = document.querySelector('select[formcontrolname="noticeType"]') || 
+                                        document.querySelector('#app-select-0');
+                            if (select) {
+                                select.value = 'TenderResultNotice';
+                                select.dispatchEvent(new Event('change', { bubbles: true }));
+                                select.dispatchEvent(new Event('input', { bubbles: true }));
+                                select.dispatchEvent(new Event('blur', { bubbles: true }));
+                            }
+                        """)
+                        
+                        await page.wait_for_timeout(500)
+                        
+                        notice_type_select = await page.query_selector("select[formcontrolname='noticeType']")
+                        if notice_type_select:
+                            selected_value = await notice_type_select.input_value()
+                            if selected_value == "TenderResultNotice":
+                                logging.info("Successfully selected 'TenderResultNotice' with JavaScript injection")
+                                notice_type_set = True
+                            else:
+                                logging.warning(f"JavaScript method verification failed. Selected: {selected_value}")
+                    
+                    except Exception as e:
+                        logging.warning(f"Method 3 (JavaScript) for notice type selection failed: {e}")
+                
+                if not notice_type_set:
+                    try:
+                        logging.info("Trying alternative Angular dropdown approach...")
+                        
+                        form_select_trigger = await page.query_selector("app-select[formcontrolname='noticeType'] .form-select")
+                        if form_select_trigger:
+                            trigger_text = await form_select_trigger.inner_text()
+                            logging.info(f"Found dropdown trigger with text: '{trigger_text}'")
+                            
+                            await form_select_trigger.click()
+                            await page.wait_for_timeout(1000)
+                            
+                            tender_result_option = await page.query_selector("option:has-text('Ogłoszenie o wyniku postępowania')")
+                            if tender_result_option:
+                                await tender_result_option.click()
+                                await page.wait_for_timeout(500)
+                                
+                                # Verify
+                                notice_type_select = await page.query_selector("select[formcontrolname='noticeType']")
+                                if notice_type_select:
+                                    selected_value = await notice_type_select.input_value()
+                                    if selected_value == "TenderResultNotice":
+                                        logging.info("Successfully selected 'TenderResultNotice' with alternative Angular approach")
+                                        notice_type_set = True
+                    
+                    except Exception as e:
+                        logging.warning(f"Method 4 (alternative Angular) for notice type selection failed: {e}")
+                
+                if not notice_type_set:
+                    logging.error("Failed to set notice type filter using all methods. Proceeding anyway, but results may include all notice types.")
+                else:
+                    logging.info("Notice type filter successfully set to 'Ogłoszenie o wyniku postępowania'")
+                
+                await page.wait_for_timeout(1000)
                 
                 start_date_set = False
+                logging.info(f"Setting start date to: {start_date}")
                 
                 try:
                     start_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateFrom'] input")
@@ -576,7 +773,7 @@ class HistoricalTenderExtractor:
                         logging.info("Trying JavaScript injection method for start date")
                         await page.evaluate(f"""
                             const input = document.querySelector('lib-date[formcontrolname="publicationDateFrom"] input') ||
-                                         document.querySelector('input[placeholder="od"]');
+                                        document.querySelector('input[placeholder="od"]');
                             if (input) {{
                                 input.value = '{start_date}';
                                 input.dispatchEvent(new Event('input', {{ bubbles: true }}));
@@ -592,12 +789,8 @@ class HistoricalTenderExtractor:
                     except Exception as e:
                         logging.warning(f"Start date Method 3 failed: {e}")
                 
-                if start_date_set:
-                    logging.info(f"Successfully set start date to {start_date}")
-                else:
-                    logging.error(f"Failed to set start date using all methods. Proceeding anyway...")
-
                 end_date_set = False
+                logging.info(f"Setting end date to: {end_date}")
                 
                 try:
                     end_date_input = await page.query_selector("lib-date[formcontrolname='publicationDateTo'] input")
@@ -637,7 +830,7 @@ class HistoricalTenderExtractor:
                         logging.info("Trying JavaScript injection method for end date")
                         await page.evaluate(f"""
                             const input = document.querySelector('lib-date[formcontrolname="publicationDateTo"] input') ||
-                                         document.querySelector('input[placeholder="do"]');
+                                        document.querySelector('input[placeholder="do"]');
                             if (input) {{
                                 input.value = '{end_date}';
                                 input.dispatchEvent(new Event('input', {{ bubbles: true }}));
@@ -653,12 +846,7 @@ class HistoricalTenderExtractor:
                     except Exception as e:
                         logging.warning(f"End date Method 3 failed: {e}")
                 
-                if end_date_set:
-                    logging.info(f"Successfully set end date to {end_date}")
-                else:
-                    logging.error(f"Failed to set end date using all methods. Proceeding anyway...")
-                
-                logging.info(f"Date setting summary: Start date {'✓' if start_date_set else '✗'}, End date {'✓' if end_date_set else '✗'}")
+                logging.info(f"Filter setting summary: Notice type {'✓' if notice_type_set else '✗'}, Start date {'✓' if start_date_set else '✗'}, End date {'✓' if end_date_set else '✗'}")
                 
                 await page.wait_for_timeout(1000)
                 
@@ -727,6 +915,11 @@ class HistoricalTenderExtractor:
                                     details_url=details_url,
                                     total_parts=detail_data.get('total_parts', 1),
                                     parts_summary=detail_data.get('parts_summary'),
+                                    
+                                    main_cpv_code=detail_data.get('main_cpv_code'),
+                                    additional_cpv_codes=detail_data.get('additional_cpv_codes'),
+                                    original_tender_url=detail_data.get('original_tender_url'),
+                                    
                                     completion_status=detail_data.get('completion_status'),
                                     total_offers=detail_data.get('total_offers'),
                                     sme_offers=detail_data.get('sme_offers'),
@@ -744,7 +937,8 @@ class HistoricalTenderExtractor:
                                 )
                                 
                                 historical_tenders.append(tender)
-                                logging.info(f"Extracted historical tender: {tender.name[:50]}... (Parts: {tender.total_parts})")
+                                url_info = f" | Original URL: {tender.original_tender_url}" if tender.original_tender_url else ""
+                                logging.info(f"Extracted historical tender: {tender.name[:50]}... (Parts: {tender.total_parts}){url_info}")
                             else:
                                 logging.warning(f"Could not extract details for tender: {tender_name[:50]}...")
                             

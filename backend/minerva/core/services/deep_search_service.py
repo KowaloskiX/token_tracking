@@ -242,7 +242,11 @@ async def extract_text_from_files(files: list[File]) -> list[dict[str, str]]:
 
             logger.debug(f"Extracting text from file: {file.filename}")
             # Run the synchronous text extraction in a thread to avoid blocking
-            file_text = await asyncio.to_thread(extractor.extract_text_as_string, temp_path)
+            #
+            if extension == ".docx":
+                file_text = await asyncio.to_thread(extractor.extract_text_as_string, temp_path, True)
+            else:
+                file_text = await asyncio.to_thread(extractor.extract_text_as_string, temp_path)
             logger.debug(f"Successfully extracted text from: {file.filename}")
 
             return {

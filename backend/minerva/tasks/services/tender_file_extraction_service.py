@@ -63,7 +63,7 @@ async def perform_file_extraction(
     current_user: Optional[User] = None,
     save_results: bool = False,
     check_existing_analysis: bool = False,
-    use_elasticsearch: bool = False
+    use_elasticsearch: bool = False,
 ) -> Dict[str, Any]:
 
     context: Optional[BrowserContext] = None
@@ -86,6 +86,7 @@ async def perform_file_extraction(
                 successful_files = []
                 for file in existing_analysis.get("uploaded_files", []):
                     if file.get("file_pinecone_config").get("query_config").get("index_name") != rag_index_name:
+                        logger.info(f"query config: \n {file.get("file_pinecone_config").get("query_config")} \n\n {rag_index_name}")
                         logger.info(f"[{tender_id_str}] Skipping files reuse {file.get('filename')} because it is not in the correct pinecone index.")
                         are_files_ready_to_reuse = False
                         break

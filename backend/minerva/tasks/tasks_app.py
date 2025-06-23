@@ -5,7 +5,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from minerva.config.logging_config import setup_logging
 from minerva.tasks.scraping_runner import main as scraping_main
-from minerva.tasks.analysis_runner import main as analysis_main
 from minerva.tasks.monitoring_runner import main as monitoring_main
 from minerva.tasks.cleanup_runner import main as cleanup_main
 from datetime import datetime, timedelta
@@ -64,7 +63,6 @@ def configure_scheduler(loop):
     # Use WORKER_INDEX, TOTAL_*_WORKERS, and WORKER_TYPE from environment
     worker_index = int(os.getenv("WORKER_INDEX", 0))
     total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 6))
-    total_analysis_workers = int(os.getenv("TOTAL_ANALYSIS_WORKERS", 5))
     total_cleanup_workers = int(os.getenv("TOTAL_CLEANUP_WORKERS", 1))
     worker_type = os.getenv("WORKER_TYPE", "scraping")  # Default to scraping if not set
 
@@ -76,13 +74,17 @@ def configure_scheduler(loop):
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )
-    elif worker_type == "analysis":
+    elif worker_type == "analysis_producer":
+        from minerva.tasks.analyses.analysis_task_producer import main as producer_main
         scheduler.add_job(
-            lambda: run_coroutine(analysis_main(worker_index, total_analysis_workers, get_today())),
-            trigger=CronTrigger(hour=22, minute=45, day_of_week='mon-fri', timezone="Europe/Warsaw"),
-            name=f"analysis_worker_{worker_index}",
+            lambda: run_coroutine(producer_main()),
+            trigger=CronTrigger(hour=22, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name="analysis_task_producer",
             replace_existing=True
         )
+    elif worker_type == "analysis":
+        # NEW: Analysis workers run continuously, no cron needed
+        logger.info("Analysis workers now run continuously via simple_analysis_worker")
     elif worker_type == "monitoring" and worker_index == 0:
         scheduler.add_job(
             lambda: run_coroutine(monitoring_main(0, 1, None)),

@@ -20,6 +20,7 @@ class TenderSearchRequest(BaseModel):
     company_description: Optional[str] = None
     tender_names_index_name: Optional[str] = "tenders"
     elasticsearch_index_name: Optional[str] = "tenders"
+    tender_subjects_index_name: Optional[str] = "tender-subjects"
     embedding_model: Optional[str] = "text-embedding-3-large"
     score_threshold: Optional[float] = 0.5
     top_k: Optional[int] = 30
@@ -103,6 +104,7 @@ async def search_tenders(
             company_description=company_description_to_use,
             tender_names_index_name=request.tender_names_index_name,
             elasticsearch_index_name=request.elasticsearch_index_name,
+            tender_subjects_index_name=request.tender_subjects_index_name,
             embedding_model=request.embedding_model,
             score_threshold=request.score_threshold,
             top_k=request.top_k,

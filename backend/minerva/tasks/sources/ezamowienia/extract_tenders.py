@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+import pprint
 import re
 import shutil
 from uuid import uuid4
@@ -10,11 +11,13 @@ import asyncio
 import random
 import httpx
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult
+from minerva.core.services.ai_pick_main_doc import ai_pick_main_doc
 from playwright.async_api import async_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 from minerva.core.utils.date_standardizer import DateStandardizer
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
 from bs4 import BeautifulSoup
+from bs4.element import Tag, NavigableString
 import urllib.parse
 # Import helper functions for BZP
 from minerva.tasks.sources.helpers import extract_bzp_plan_fields, scrape_bzp_budget_row
@@ -361,6 +364,299 @@ class TenderExtractor:
             await page.close()
             
         return processed_files
+    
+    def _extract_subject_from_html(self, html: str) -> Optional[str]:
+        """
+        Build one merged line that contains, in order
+
+            • "Krótki opis …" section text
+            • Główny kod CPV
+            • Dodatkowy kod CPV   (if present)
+
+        Missing pieces are skipped.  Returns None if *nothing* was found.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # helper ────────────────────────────────────────────────────────────
+        def grab(pattern: str) -> Optional[str]:
+            """
+            Find the first <h3> whose full visible text matches *pattern*
+            (case-insensitive, ignores intermediate tags), then collect:
+
+            • any text inside that same <h3> (e.g. <span> with the code)
+            • every node up to the next <h3> (for multi-line descriptions)
+
+            Returns the cleaned string or None.
+            """
+            header = soup.find(
+                lambda tag: tag.name == "h3"
+                and re.search(pattern, tag.get_text(" ", strip=True), re.I)
+            )
+            if not header:
+                return None
+
+            pieces: list[str] = []
+
+            # text inside the header itself (covers CPV that lives in <span>)
+            txt = header.get_text(" ", strip=True)
+            # we want ONLY the part after the label ("Krótki opis" has none)
+            # drop empty results (e.g. "Dodatkowy kod CPV:" with no inline code)
+            if txt:
+                pieces.append(txt)
+
+            # walk forward until the next <h3>
+            for node in header.next_siblings:
+                if isinstance(node, Tag) and node.name == "h3":
+                    break
+                text = (
+                    node.get_text(" ", strip=True)
+                    if isinstance(node, Tag)
+                    else node.strip()
+                )
+                if text:
+                    pieces.append(text)
+
+            return " ".join(pieces).strip() or None
+
+        # collect each block
+        subject       = grab(r"\bKrótki\s+opis\b")
+        cpv_main      = grab(r"Gł[óo]wny\s+kod\s+CPV")      # ó or o just in case
+        cpv_additional = grab(r"Dodatkowy\s+kod\s+CPV")
+
+        # merge while skipping missing parts
+        merged = " ".join(x for x in (subject, cpv_main, cpv_additional) if x).strip()
+        return merged or None
+
+    # -------------------------------------------
+    # 3. Helper: async loader that re-uses the current browser context
+    # -------------------------------------------
+
+    def _scrape_sections_5_1_and_5_1_1(self, html: str) -> str | None:
+        soup = BeautifulSoup(html, "lxml")
+
+        # ────────────────────────────────────────────── 5.1 (root only)
+        def collect_5_1() -> str:
+            anchor = soup.find(id=re.compile(r"^section5\.1_\d+$"))
+            if anchor is None:
+                return ""
+
+            texts = []
+            for el in anchor.parent.next_elements:
+                # STOP as soon as we reach the first sub-section 5.1.1
+                if isinstance(el, Tag) and el.get("id", "").startswith("section5.1.1_"):
+                    break
+                if isinstance(el, NavigableString):
+                    t = el.strip()
+                    if t:
+                        texts.append(t)
+            return " ".join(texts).strip()
+
+        # ────────────────────────────────────────────── 5.1.1 (three fields)
+        def collect_5_1_1() -> str:
+            blk = soup.find(id=re.compile(r"^section5\.1\.1_\d+$"))
+            if blk is None:
+                return ""
+
+            wanted = {
+                "business-term|name|BT-23":  "Charakter zamówienia",
+                "business-term|name|BT-262": "Główna klasyfikacja (cpv)",
+                "business-term|name|BT-263": "Dodatkowa klasyfikacja (cpv)",
+            }
+            lines = []
+
+            container = blk.find_parent("div", class_="subsection-content")
+            for div in container.find_all("div", recursive=False):
+                label = div.find("span", class_="label")
+                if not label:
+                    continue
+                key = label.get("data-labels-key")
+                if key not in wanted:
+                    continue
+
+                value = " ".join(
+                    node.get_text(" ", strip=True) if isinstance(node, Tag) else node.strip()
+                    for node in label.next_siblings
+                    if (isinstance(node, NavigableString) and node.strip()) or
+                    (isinstance(node, Tag) and node.get_text(strip=True))
+                )
+                lines.append(f"{wanted[key]} : {value}")
+
+            return "\n".join(lines)
+
+        part_5_1   = collect_5_1()
+        part_5_1_1 = collect_5_1_1()
+
+        return "\n\n".join(p for p in (part_5_1, part_5_1_1) if p) or None
+
+    async def _fetch_tender_subject(self, context, detail_url: str) -> str | None:
+        """Open the detail page, jump to the first announcement,
+        and return the 'Krótki opis …' text."""
+        detail_page = await context.new_page()
+        try:
+            # ── go to the detail list page ─────────────────────
+            await detail_page.goto(detail_url, wait_until="domcontentloaded", timeout=20000)
+            await detail_page.wait_for_selector("app-search-engine-tender-documents", timeout=15000)
+
+            # find first announcement link (same selector you use in downloads)
+            await detail_page.wait_for_timeout(2000)
+            link = await detail_page.query_selector("app-search-engine-tender-documents div.section h3 a")
+
+            if not link:
+                logging.warning(f"No link: {link}")
+                NOTICE_FRAG = "/mo-client-board/bzp/notice-details/"
+                        # ──────────────────────────────────────────────────────────────────
+                # existing code …
+                link = await detail_page.query_selector(
+                    "app-search-engine-tender-documents div.section h3 a")
+
+                if not link:
+                    # ------------------------------------------------------------------
+                    # 1) wait up to 5 s for ANY anchor whose href contains the fragment
+                    #    to appear in the DOM (outside or inside an iframe)
+                    # ------------------------------------------------------------------
+                    try:
+                        link = await detail_page.wait_for_selector(
+                            f'a[href*="{NOTICE_FRAG}"]',
+                            timeout=5_000
+                        )
+                    except PlaywrightTimeoutError:
+                        link = None
+
+                    # ------------------------------------------------------------------
+                    # 2) if the anchor is inside an  <iframe>  (rare but happens),
+                    #    look through all child frames
+                    # ------------------------------------------------------------------
+                    if link is None:
+                        for frame in detail_page.frames:
+                            try:
+                                link = await frame.query_selector(
+                                    f'a[href*="{NOTICE_FRAG}"]')
+                                if link:
+                                    break
+                            except Exception:
+                                pass   # ignore inaccessible frames
+
+                    # ------------------------------------------------------------------
+                    # 3) still nothing?  fall back to full-HTML regex scan as before
+                    # ------------------------------------------------------------------
+                    if link is None:
+                        raw_html = await detail_page.content()
+                        soup = BeautifulSoup(raw_html, "lxml")
+                        tag = soup.select_one(f'a[href*="{NOTICE_FRAG}"]') \
+                            or soup.find(
+                                "a",
+                                string=re.compile(r"\d{4}/S\s+\d{3}-\d{5,}")
+                            )
+                        if tag:
+                            href = tag["href"]
+                        else:
+                            logging.warning(
+                                f"{self.source_type}: no EU-notice link on {detail_url} FALLBACK TO FILE UPLOAD"
+                            )
+                            
+
+                            # FALLBACK TO FILE UPLOAD
+
+                            headers = await detail_page.query_selector_all('h2')
+                            for header in headers:
+                                header_text = (await header.inner_text()).strip()
+                                if "Pozostałe dokumenty postępowania" in header_text:
+                                    header_handle = header
+                                    next_sibling = await header_handle.evaluate_handle('node => node.parentElement.nextElementSibling')
+                                    if next_sibling:
+                                        links = await next_sibling.query_selector_all('a')
+                                        labels = await next_sibling.query_selector_all('h3')
+                                        # pprint.pprint(names)
+                                        file_entries = []
+                                        for label, link in zip(labels, links):
+                                            label_text = await label.inner_text()
+                                            href = await link.get_attribute('href')
+                                            if not href:
+                                                continue
+                                            name = (await link.inner_text()).strip()
+                                            file_entries.append((label_text, name))
+
+                                        choosen_file = await ai_pick_main_doc(file_entries)
+                                        logging.info(f"Choosen: {choosen_file.selected}")
+                                        
+                                        if choosen_file.selected is not None:
+                                            try:
+                                                # Get the link corresponding to the chosen file
+                                                extraction_service = FileExtractionService()
+                                                chosen_link = links[choosen_file.selected["index"]]
+                                                # Download the file using the existing method
+                                                file_results = await self._download_file_from_link(detail_page, chosen_link, extraction_service)
+                                                
+                                                # Try to decode and return content from first successful file
+                                                for file_content, filename, preview_chars, original_bytes, original_filename in file_results:
+                                                    try:
+                                                        decoded_content = file_content.decode('utf-8')
+                                                        logging.info(f"Content: {decoded_content[:5000]}")
+                                                        return decoded_content[:5000]
+                                                    except UnicodeDecodeError:
+                                                        logging.warning(f"Could not decode {filename} as UTF-8, trying next file if available")
+                                                        continue
+                                                    except Exception as e:
+                                                        logging.error(f"Error processing file {filename}: {e}")
+                                                        continue
+                                                
+                                                logging.warning("No files could be successfully decoded")
+                                                return None
+                                                
+                                            except PlaywrightTimeoutError as e:
+                                                logging.error(f"Timeout while downloading file: {e}")
+                                                return None
+                                            except Exception as e:
+                                                logging.error(f"Error during file download process: {e}")
+                                                return None
+                                        return None
+
+                    else:
+                        href = await link.get_attribute("href")
+                if href.startswith("/"):
+                    href = f"https://ezamowienia.gov.pl{href}"
+                ann_page = await context.new_page()
+                try:
+                    await ann_page.goto(href, wait_until="domcontentloaded", timeout=30_000)
+                    await ann_page.wait_for_selector("body", timeout=10000)
+                    await detail_page.wait_for_timeout(1000)
+
+                    html = await ann_page.content()
+
+                    # first try new scraper
+                    txt = self._scrape_sections_5_1_and_5_1_1(html)
+                    if txt:
+                        return txt
+                finally:
+                    await ann_page.close()
+
+                return None
+            href = await link.get_attribute("href")
+            if not href:
+                logging.warning(f"No href: {link}")
+                return None
+            if href.startswith("/"):
+                href = f"https://ezamowienia.gov.pl{href}"
+
+            # ── open the announcement itself ──────────────────
+            ann_page = await context.new_page()
+            try:
+                await ann_page.goto(href, wait_until="domcontentloaded", timeout=30000)
+                await ann_page.wait_for_selector("body", timeout=10000)
+                await detail_page.wait_for_timeout(1000)
+
+                html = await ann_page.content()
+                return self._extract_subject_from_html(html)
+            finally:
+                await ann_page.close()
+
+        except PlaywrightTimeoutError:
+            logging.warning(f"{self.source_type}: timeout while reading subject for {detail_url}")
+        except Exception as e:
+            logging.error(f"{self.source_type}: cannot get tender subject for {detail_url}: {e}")
+        finally:
+            await detail_page.close()
+        return None
 
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get('max_pages', 50)
@@ -439,16 +735,68 @@ class TenderExtractor:
                             logging.info(f"{self.source_type}: Encountered tender dated {iso_initiation_date} older than start_date {start_date}. Stopping extraction.")
                             found_older = True
                             break
+
+                        details_url = f"https://ezamowienia.gov.pl/mp-client/search/list/{await cells[1].inner_text()}"
+    #                 # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-2a41354a-d98b-11eb-b885-f28f91688073"
+        #         urls = [
+        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-7f606198-7c39-44bf-b073-9dbb83dffb7f"
+        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-208c72a2-c265-4218-9a11-80ec369b5c6c"
+        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-6e690f84-3965-4424-a901-0158e43fee8e",    
+        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-76cc5f3c-d294-4138-8f3d-a80d00f8998e",
+        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-49c3f2c7-65ca-46be-9c5f-52e4f67f879c",
+        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a1ae3b96-99f6-4687-b8aa-c1d47f1738c4", 
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-53ffee8b-35d2-427c-bea3-a8a507785efc",
+                    
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-0707797a-a74f-4167-b592-b6a60198edc2",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-dc148ec1-cde9-4c71-b7ee-91cadcd9cd5d",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-1d886427-dde0-4b6e-bf69-c3d77ca178d1",
+            # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-1753a030-32b6-4626-ad53-4b6474cc4b5f",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-e2023da6-c15e-4293-b023-b8ff48bd0a76",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-7243505d-583d-404c-8354-21e6055c5ccf",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a17f198c-9ffa-47ba-bf3f-8d5b5077a42e",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a6706d6c-092f-4b55-ade8-19bbb71d5567",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a2da15c5-33a9-44aa-af08-181e47cac0a6",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-36a4325a-aeb6-4e7a-bca9-4d2e84f23f6d",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-3875957c-d5f8-44e1-b1e2-05985b04ffd2",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-4063ce75-2b04-46a7-8b8b-11ba07856a7a",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-d0cb1559-f182-41eb-b626-e4a27e2215c4",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a80f7ed3-2999-4337-b3af-543a76bb1589",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a28bea89-b27f-41ed-8690-ab430e3dda5d",
+            # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-33c2a645-a9d1-4c37-a105-4739e9f8485f",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-f41f1505-b069-485e-b32d-be249f06c078",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-3cf724df-de23-44d6-8425-8d1a62102f94",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a78cd957-aa75-4a22-a5d4-cba939a97a07",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-23fe6312-d451-4ce3-840f-0f721a24c952",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-c7c5ac88-8f0d-461a-a84f-49d8ecacb38a",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-76cc5f3c-d294-4138-8f3d-a80d00f8998e",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-c3aa163b-4ed6-4238-a74d-f3a19ccd2c29",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-f824337c-6396-41ff-96a4-5fe33ab39b59",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-cb3bf044-a228-42d7-8ed4-40a30b67874a",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-0d9ef285-4df9-4573-99e7-f5f871f57bb9",
+        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-51ab35dd-244c-4890-9708-5e1888280a47"
+    #   ]
+                # for details_url in urls:
+                    # try:
+                        subject = await self._fetch_tender_subject(context, details_url)
+                        if not subject:
+                            subject = ""  # graceful fallback: listing title
                         tender_data = {
                             "name": await cells[0].inner_text(),
                             "organization": await cells[4].inner_text(),
                             "location": await cells[5].inner_text(),
                             "submission_deadline": DateStandardizer.standardize_deadline(await cells[7].inner_text()),
+                            #  "name": "Realizacja wywiadów wspomaganych komputerowo na potrzeby badania \"TRASY VELOMAŁOPOLSKA: profil, potrzeby i oczekiwania użytkowników, infrastruktura, wpływ na rozwój społeczno-gospodarczy\"",
+                            # "organization": "",
+                            # "location": "",
+                            # "submission_deadline": DateStandardizer.standardize_deadline("23 czerwca 2025, godz 09:00"),
                             "initiation_date": iso_initiation_date,
-                            "details_url": f"https://ezamowienia.gov.pl/mp-client/search/list/{await cells[1].inner_text()}",
+                            # "initiation_date": "2025-06-13",
+                            "details_url": details_url,
                             "content_type": "tender",
-                            "source_type": self.source_type
+                            "source_type": self.source_type,
+                            "tender_subject": subject,    
                         }
+                        # pprint.pprint(tender_data)
                         try:
                             tender = Tender(**tender_data)
                             tenders.append(tender)

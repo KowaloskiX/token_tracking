@@ -1,0 +1,79 @@
+TED ORIGINAL LINKS ANALYSIS REPORT
+==================================================
+
+Generated: 2025-06-23 15:52:42
+Total tenders analyzed: 832
+Pages scraped: 20
+
+SOURCE TYPE DISTRIBUTION:
+------------------------------
+platformazakupowa               257 ( 30.9%)
+unknown_platform_europa.eu      187 ( 22.5%)
+ezamowienia                     140 ( 16.8%)
+ezamawiajacy                    132 ( 15.9%)
+eb2b                             71 (  8.5%)
+smartpzp                         27 (  3.2%)
+pge                              10 (  1.2%)
+TED E2NOTICE                      2 (  0.2%)
+unknown_platform_op.europa.eu     1 (  0.1%)
+gov_platform_zamowienia.pila.lasy.gov.pl    1 (  0.1%)
+unknown_platform_amwsinevia.pl    1 (  0.1%)
+unknown_platform_powiat-mielecki.logintrade.net    1 (  0.1%)
+gov_platform_espd.uzp.gov.pl      1 (  0.1%)
+logintrade                        1 (  0.1%)
+
+DISCOVERY ANALYTICS:
+--------------------
+Known platforms:            638 ( 76.7%)
+Newly discovered:             0 (  0.0%)
+  - Procurement platforms:    0
+  - Potential platforms:      0
+  - Government platforms:     0
+  - Local government:         0
+  - Unknown platforms:        0
+TED E2NOTICE only:            2 (  0.2%)
+
+NEWLY DISCOVERED PLATFORMS:
+------------------------------
+europa.eu                                187 tenders (unknown_platform)
+    Sample URL: https://europa.eu/european-union/contact/institutions-bodies_en
+op.europa.eu                               1 tenders (unknown_platform)
+    Sample URL: https://op.europa.eu
+zamowienia.pila.lasy.gov.pl                1 tenders (gov_platform)
+    Sample URL: https://zamowienia.pila.lasy.gov.pl/pn/lasy/demand/213149/notice/public/details
+amwsinevia.pl                              1 tenders (unknown_platform)
+    Sample URL: https://amwsinevia.pl
+powiat-mielecki.logintrade.net             1 tenders (unknown_platform)
+    Sample URL: https://powiat-mielecki.logintrade.net/rejestracja/ustawowe.html
+espd.uzp.gov.pl                            1 tenders (gov_platform)
+    Sample URL: https://espd.uzp.gov.pl
+
+WHERE LINKS WERE FOUND:
+-------------------------
+General links                   611 ( 73.4%)
+General page scan               186 ( 22.4%)
+Warunki udzielenia zamówienia    25 (  3.0%)
+Dokumenty zamówienia              8 (  1.0%)
+
+TOP ORGANIZATIONS WITH EXTERNAL PLATFORMS:
+---------------------------------------------
+Skarb Państwa Państwowe Gospodarstwo Leśne Lasy Pa ezamowienia, gov, platformazakupowa, unknown
+Miejskie Przedsiębiorstwo Wodociągów i Kanalizacji eb2b, ezamowienia, unknown
+Regionalne Centrum Krwiodawstwa i Krwiolecznictwa  ezamawiajacy, unknown
+Szpital Wojewódzki im. Jana Pawła II w Bełchatowie ezamawiajacy, unknown
+Narodowy Instytut Onkologii im. Marii Skłodowskiej ezamawiajacy, ezamowienia
+Uniwersyteckie Centrum Kliniczne                   ezamawiajacy, smartpzp
+Miasto Nowy Dwór Mazowiecki                        ezamowienia, unknown
+Województwo Łódzkie                                ezamawiajacy, ezamowienia
+Miejskie Przedsiębiorstwo Oczyszczania w m. st. Wa ezamawiajacy, unknown
+Wojewódzki Szpital Specjalistyczny w Białej Podlas eb2b, unknown
+Uniwersytecki Szpital Kliniczny nr 1 im. prof. Tad ezamowienia, smartpzp
+Polska Agencja Żeglugi Powietrznej                 ezamawiajacy, smartpzp
+AMW SINEVIA Sp. z o.o.                             eb2b, unknown
+Samodzielny Publiczny Zakład Opieki Zdrowotnej w S ezamowienia, platformazakupowa
+Zakład Ubezpieczeń Społecznych                     ezamawiajacy, smartpzp
+Samodzielny Publiczny Wojewódzki Szpital Zespolony smartpzp, unknown
+Wojewódzki Szpital im. Zofii z Zamoyskich Tarnowsk smartpzp, unknown
+Samodzielny Publiczny Zakład Opieki Zdrowotnej Min platformazakupowa, unknown
+Przedsiębiorstwo Produkcyjno Usługowo Handlowe "RA ezamowienia
+Zakład Gospodarki Komunalnej w Szczebrzeszynie Sp. ezamowienia

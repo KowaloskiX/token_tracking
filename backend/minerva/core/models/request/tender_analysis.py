@@ -14,6 +14,7 @@ class TenderSearchResponse(BaseModel):
     analysis_results: List[TenderAnalysisResult]
     initial_ai_filter_id: Optional[str] = None
     description_filter_id: Optional[str] = None
+    analysis_stats: Optional[dict] = None
 
 
 class BatchAnalysisResult(BaseModel):

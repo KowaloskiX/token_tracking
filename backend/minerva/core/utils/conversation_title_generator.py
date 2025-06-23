@@ -17,7 +17,7 @@ async def generate_and_update_conversation_title(conversation_id, prompt):
         {"role": "user", "content": f"Conversation content: '{prompt}' \nRespond just with the concise 2-3 word title for it:"}
     ])
     
-    title = title_response.strip().replace('"', '').replace("'", '')
+    title = title_response.content.strip().replace('"', '').replace("'", '')
     
     db['conversations'].update_one(
         {"_id": ObjectId(conversation_id)},

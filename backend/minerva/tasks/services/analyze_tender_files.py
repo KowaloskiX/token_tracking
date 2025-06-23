@@ -1,6 +1,7 @@
 import pprint
 import re
 from uuid import uuid4
+from bson import ObjectId
 from minerva.core.services.vectorstore.helpers import MAX_TOKENS, count_tokens, safe_chunk_text
 from minerva.api.routes.retrieval_routes import sanitize_id
 from minerva.core.models.file import FilePineconeConfig
@@ -411,20 +412,27 @@ class RAGManager:
         if not text or not text.strip():
             logger.info(f"{tender_context} No text content extracted from {filename}")
             return FilePineconeConfig(
-                query_config=QueryConfig(self.index_name, self.namespace, self.embedding_model),
-                pinecone_unique_id_prefix=filename_unique_prefix,
+                query_config=QueryConfig(
+                    index_name=self.index_name,
+                    namespace=self.namespace,
+                    embedding_model=self.embedding_model
+                ),
+                pinecone_unique_id_prefix=filename_unique_prefix
             )
-
+                
         logger.info(f"{tender_context} Processing {filename} - {len(text)} characters extracted")
 
-        # ─────────────── action generator ──────────────
         async def gen_actions():
             chunk_index_global = 0
             batch_for_pinecone = []
-
+            total_tokens_for_embedding = 0
+        
             for chunk in safe_chunk_text(text, self.chunker, self.embedding_model):
                 if not chunk or not chunk.strip():
                     continue
+
+                tokens = count_tokens(chunk, self.embedding_model)
+                total_tokens_for_embedding += tokens
                 if count_tokens(chunk, self.embedding_model) > MAX_TOKENS:
                     logger.error("Chunk %s from %s over token limit", chunk_index_global, filename)
                     chunk_index_global += 1
@@ -460,10 +468,18 @@ class RAGManager:
                 chunk_index_global += 1
 
                 if len(batch_for_pinecone) >= self.EMBED_BATCH_SIZE:
+                    # Track embedding cost before calling embed_and_store_batch
+                    batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
+                    await self._track_embedding_batch(batch_tokens)
+                    
                     await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
                     batch_for_pinecone.clear()
-
+                    
             if batch_for_pinecone:
+                # Track embedding cost for final batch
+                batch_tokens = sum(count_tokens(item["input"], self.embedding_model) for item in batch_for_pinecone)
+                await self._track_embedding_batch(batch_tokens)
+                
                 await self.embedding_tool.embed_and_store_batch(batch_for_pinecone)
 
         # Always process Elasticsearch if enabled
@@ -482,11 +498,10 @@ class RAGManager:
             # If Elasticsearch is disabled, still need to process the generator to handle Pinecone uploads
             async for _ in gen_actions():
                 pass
-
         text = None
         gc.collect(); malloc_trim()
-
         log_mem(f"{self.tender_pinecone_id} upload:after:{filename}")
+    
 
         return FilePineconeConfig(
             query_config=QueryConfig(
@@ -498,6 +513,17 @@ class RAGManager:
             elasticsearch_indexed=self.use_elasticsearch,
         )
 
+    async def _track_embedding_batch(self, token_count: int):
+        """Track embedding costs for a batch of embeddings"""
+        try:
+            from minerva.core.services.llm_logic import track_embedding_call
+            await track_embedding_call(
+                model_name=self.embedding_model,
+                input_tokens=token_count
+            )
+        except Exception as e:
+            logger.debug(f"Error tracking embedding costs: {str(e)}")
+            pass
         
     @staticmethod
     async def ai_filter_tenders(
@@ -577,8 +603,137 @@ class RAGManager:
 
         try:
             response = await ask_llm_logic(request_data)
-            
-            # Add robust JSON parsing with error handling
+            try:
+                parsed_output = json.loads(response.llm_response)
+            except json.JSONDecodeError as json_error:
+                logger.warning(f"Initial JSON parsing failed for ai_filter_tenders: {str(json_error)}")
+                
+                # Try to sanitize the response by fixing common Unicode escape issues
+                sanitized_response = response.llm_response
+                
+                # Fix incomplete Unicode escapes by removing malformed \u sequences
+                sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
+                
+                # Try parsing again
+                try:
+                    parsed_output = json.loads(sanitized_response)
+                    logger.info(f"Successfully parsed JSON after sanitization for ai_filter_tenders")
+                except json.JSONDecodeError as second_error:
+                    logger.error(f"JSON parsing failed even after sanitization for ai_filter_tenders: {str(second_error)}")
+                    # Return a fallback response structure
+                    parsed_output = {"matches": []}
+
+            # Post-process to ensure 'id' is present (fallback if OpenAI omits it)
+            tender_lookup = {match["id"]: match for match in tender_matches}
+            for match in parsed_output["matches"]:
+                if "id" not in match or not match["id"]:
+                    original_match = tender_lookup.get(match.get("id", ""), {})
+                    match["id"] = original_match.get("id", match.get("id", "unknown"))
+                    if match["id"] == "unknown":
+                        logger.warning(f"Could not find ID for tender: {match['name']}")
+
+            # Memory log after AI tender filtering
+            log_mem(f"ai_filter_tenders:end:{run_id or 'single'}")
+            return TenderProfileMatches(**parsed_output)
+        
+        except Exception as e:
+            logger.error(f"Error filtering tenders with AI: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to filter tenders: {str(e)}")
+        
+    @staticmethod
+    async def ai_filter_tenders_with_subject(        
+        tender_analysis: TenderAnalysis,
+        tender_matches: list[dict],
+        current_user: Optional[User] = None,
+        run_id: Optional[str] = None
+    ) -> TenderProfileMatches:
+        """
+        Same job as ai_filter_tenders, but every tender item *must* contain
+        `subject_match.text`.  That chunk is forwarded to the LLM so it can make
+        decisions based on the detailed paragraph, not only the headline fields.
+        """
+        log_mem(f"ai_filter_tenders_with_subject:start:{run_id or 'single'}")
+
+        # Flatten <TENDER> so the LLM sees the paragraph right next to the meta.
+        # (Avoids pushing a nested dict to the model.)
+        prepared = []
+        for t in tender_matches:
+            text = t.get("subject_match", {}).get("text", "")
+            prepared.append(
+                {
+                    "id": t["id"],
+                    "name": t["name"],
+                    "organization": t["organization"],
+                    "location": t.get("location", ""),
+                    "semantic_chunk": text,
+                }
+            )
+
+        system_message = (
+            "You are a well-balanced system that identifies public tenders that "
+            "best match the company profile and offer. Only return relevant tenders."
+        )
+
+        user_message = (
+            "Look at the company profile in <COMPANY_PROFILE> and pick only public "
+            "tenders from <PUBLIC_TENDERS_LIST> that match the company profile.\n"
+            "Those tenders could have names not directly connected to company profile, so verify their relevance mainly based on 'semantic_chunk' which is text fragment from tender description"
+            " but those were name is for sure not relevant should be rejected."
+            f"<COMPANY_PROFILE>\n\"{tender_analysis.company_description}\"\n</COMPANY_PROFILE>\n"
+            f"<PUBLIC_TENDERS_LIST>{json.dumps(prepared)}\n</PUBLIC_TENDERS_LIST>\n"
+            "The output JSON must strictly follow this schema:\n"
+            "{\n"
+            "   \"matches\": [\n"
+            "      {\"id\": \"…\", \"name\": \"…\", \"organization\": \"…\"}, …\n"
+            "   ]\n"
+            "}\n"
+        )
+
+        ai_filter_model = "o4-mini"
+        provider, max_tokens = get_model_config(ai_filter_model)
+
+        request_data = LLMSearchRequest(
+            query=user_message,
+            vector_store=None,
+            llm={
+                "provider": provider,
+                "model": ai_filter_model,
+                "temperature": 0,
+                "system_message": system_message,
+                "stream": False,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "tender_matches_response",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "matches": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "name": {"type": "string"},
+                                            "organization": {"type": "string"}
+                                        },
+                                        "required": ["id", "name", "organization"],
+                                        "additionalProperties": False
+                                    }
+                                }
+                            },
+                            "required": ["matches"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
+            }
+        )
+
+        try:
+            response = await ask_llm_logic(request_data)
+             # Add robust JSON parsing with error handling
             try:
                 parsed_output = json.loads(response.llm_response)
             except json.JSONDecodeError as json_error:
@@ -610,14 +765,12 @@ class RAGManager:
 
             if current_user and hasattr(response, "usage") and response.usage:
                 await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
-
-            # Memory log after AI tender filtering
-            log_mem(f"ai_filter_tenders:end:{run_id or 'single'}")
+            # …
+            log_mem(f"ai_filter_tenders_with_subject:end:{run_id or 'single'}")
             return TenderProfileMatches(**parsed_output)
-        
-        except Exception as e:
-            logger.error(f"Error filtering tenders with AI using ask_llm_logic: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to filter tenders: {str(e)}")
+        except Exception as exc:
+            logger.error("Error in ai_filter_tenders_with_subject", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"AI tender filtering failed: {exc}")
 
     @staticmethod
     async def ai_review_filter_results(
@@ -969,7 +1122,7 @@ class RAGManager:
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "criteria": {"type": "string", "description": "Exact text of the criterion question."},
+                                "criteria": {"type": "string", "description": "EXACT text of the criterion question."},
                                 "analysis": {
                                     "type": "object",
                                     "description": "Detailed analysis regarding whether the criterion is met.",
@@ -1264,9 +1417,10 @@ class RAGManager:
 
 
     async def generate_tender_description(self) -> str:
+        """Enhanced version with cost tracking"""
         # Memory log before generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description:start")
-        # Create thread and add initial message
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:start")
+        
         prompt = (
                     f"Summarize exactly what this tender is about in {self.language} (public tender is zamówienie publiczne in polish).."
                     "Focus on the scope, main deliverables like products and services (with parameters if present), be concise and on point."
@@ -1281,7 +1435,6 @@ class RAGManager:
         
         request_data = LLMRAGRequest(
             query=prompt,
-            # rag_query="Podaj wszystkie produkty/usługi i opis tego co jest przedmiotem zamówienia.",
             rag_query="Podaj opis tego co jest przedmiotem zamówienia.",
             vector_store={
                 "index_name": self.index_name,
@@ -1303,7 +1456,7 @@ class RAGManager:
         description = re.sub(r'【.*?】', '', response.llm_response)
 
         # Memory log after generating description
-        log_mem(f"{self.tender_pinecone_id} generate_tender_description:end")
+        log_mem(f"{self.tender_pinecone_id} generate_tender_description_with_cost_tracking:end")
 
         # Clean up and return
         return description.strip()
@@ -1338,6 +1491,7 @@ class RAGManager:
 
         # INSTRUCTIONS:
         1. Review each tender's description carefully.
+            - if you detect in description something like it was not enough data to create description => evaluate tender based on metadata only
         2. Return ONLY relevant tenders.
         3. Completely exclude tenders that violate any filtering rules
 
@@ -1357,7 +1511,8 @@ class RAGManager:
         """
         # print(f"filtering with description using prompt: {prompt}")           
         # Use model configuration helper
-        filter_model = "gpt-4.1"
+        # filter_model = "gpt-4.1"
+        filter_model = "o4-mini"
         filter_provider, filter_max_tokens = get_model_config(filter_model)
         # Use high complexity for detailed filtering task
         filter_optimized_tokens = get_optimal_max_tokens(filter_model, "high")
@@ -1370,7 +1525,7 @@ class RAGManager:
                 "provider": filter_provider,
                 "model": filter_model,
                 "temperature": 0,
-                "max_tokens": filter_optimized_tokens,
+                # "max_tokens": filter_optimized_tokens,
                 "system_message": system_prompt,
                 "stream": False,
                 "response_format": {

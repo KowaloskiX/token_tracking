@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from uuid import uuid4
 from minerva.tasks.sources.helpers import assign_order_numbers
 from minerva.core.helpers.s3_upload import delete_files_from_s3
 from minerva.core.helpers.vercel_upload import delete_files_from_vercel_blob
@@ -86,6 +87,52 @@ DEFAULT_CRITERIA = [
         "weight": 2
     },
 ]
+
+def _get_projection_for_results(include_criteria_for_filtering: bool) -> dict:
+    """
+    Get the appropriate projection for tender analysis results based on filtering needs.
+    
+    Args:
+        include_criteria_for_filtering: Whether to include minimal criteria data for filtering
+        
+    Returns:
+        dict: MongoDB projection specification
+    """
+    if include_criteria_for_filtering:
+        # Use inclusion-only projection to include all necessary fields plus minimal criteria data
+        return {
+            "_id": 1,
+            "analysis_id": 1,
+            "tender_metadata": 1,
+            "tender_score": 1,
+            "tender_url": 1,
+            "status": 1,
+            "created_at": 1,
+            "updated_at": 1,
+            "opened": 1,
+            "last_opened_at": 1,
+            "initiation_date": 1,
+            "submission_deadline": 1,
+            "qualified": 1,
+            "voivodeship": 1,
+            "source": 1,
+            "order": 1,
+            # Include minimal criteria data for filtering
+            "criteria_analysis.criteria": 1,
+            "criteria_analysis.analysis.criteria_met": 1,
+        }
+    else:
+        # Original projection - exclude heavy data
+        return {
+            "criteria_analysis": 0,
+            "criteria_analysis_archive": 0,
+            "company_match_explanation": 0,
+            "tender_description": 0,
+            "uploaded_files": 0,
+            "file_extraction_status": 0,
+            "pinecone_config": 0,
+            "parsed_deadline": 0  # Remove temporary field if it exists
+        }
 
 class TenderAnalysisResultSummary(BaseModel):
     id: PyObjectId = Field(alias="_id")
@@ -209,9 +256,8 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
         if not analysis_doc:
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
-        # Use the new filter format
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-10"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-06-13"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -234,7 +280,6 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
                     else:
                         crit.weight = 3
                 
-                # Make sure instruction field is preserved if it exists
                 if not hasattr(crit, 'instruction'):
                     crit.instruction = None
                     
@@ -242,7 +287,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_analysis.criteria = updated_criteria
         
         criteria_definitions = tender_analysis.criteria
-
+        
         result = await analyze_relevant_tenders_with_our_rag(
             analysis_id=request.analysis_id,
             current_user=current_user,
@@ -255,21 +300,16 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             rag_index_name="test-files-rag",
             criteria_definitions=criteria_definitions
         )
-        
-        # Assign order numbers to any new tender analysis results
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
 
         return {
             "status": "Tender analysis completed",
             "result": result,
         }
-    except HTTPException as e:
-        raise e
     except Exception as e:
         logger.error(f"Error running tender search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running tender search: {str(e)}")
-
-
+    
 @router.post("/run_all_tender_analyses", response_model=Dict[str, Any])
 async def run_all_analyses():
     try:
@@ -332,7 +372,7 @@ async def create_tender_analysis(
             "updated_at": datetime.utcnow(),
             "active": True,
             "assigned_users": [str(current_user.id)],  # Owner is automatically assigned
-            "email_recipients": [str(current_user.id)]  # Owner is automatically in email recipients
+            "email_recipients": []  # Empty by default - users must explicitly opt in to email notifications
         }
 
         tender_analysis = TenderAnalysis(**tender_analysis_data)
@@ -560,9 +600,21 @@ async def get_tender_analysis_results(
     limit: int = 10,
     org_id: Optional[str] = None,
     include_historical: bool = False,
+    include_criteria_for_filtering: bool = False,  # NEW parameter
     current_user: User = Depends(get_current_user)
 ):
-    """Get paginated results for a specific tender analysis with future submission deadlines only (unless include_historical=True)"""
+    """
+    Get paginated tender analysis results for a specific analysis
+    
+    Args:
+        analysis_id: The analysis ID to fetch results for
+        page: Page number (1-based)
+        limit: Number of results per page
+        org_id: Optional organization ID for filtering
+        include_historical: Include historical results (past deadlines)
+        include_criteria_for_filtering: Include minimal criteria data for client-side filtering
+        current_user: Current authenticated user
+    """
     try:
         logger.info(f"Fetching results for analysis {analysis_id} by user {current_user.id}, include_historical={include_historical}")
         
@@ -603,15 +655,7 @@ async def get_tender_analysis_results(
                 },
                 # Apply projection to exclude heavy fields
                 {
-                    "$project": {
-                        "criteria_analysis": 0,
-                        "criteria_analysis_archive": 0,
-                        "company_match_explanation": 0,
-                        "tender_description": 0,
-                        "uploaded_files": 0,
-                        "file_extraction_status": 0,
-                        "pinecone_config": 0,
-                    }
+                    "$project": _get_projection_for_results(include_criteria_for_filtering)
                 },
                 # Sort by creation date
                 {"$sort": {"created_at": -1}},
@@ -705,16 +749,7 @@ async def get_tender_analysis_results(
                 },
                 # Remove the temporary parsed_deadline field and apply projection
                 {
-                    "$project": {
-                        "criteria_analysis": 0,
-                        "criteria_analysis_archive": 0,
-                        "company_match_explanation": 0,
-                        "tender_description": 0,
-                        "uploaded_files": 0,
-                        "file_extraction_status": 0,
-                        "pinecone_config": 0,
-                        "parsed_deadline": 0  # Remove the temporary field
-                    }
+                    "$project": _get_projection_for_results(include_criteria_for_filtering)
                 },
                 # Sort by creation date
                 {"$sort": {"created_at": -1}},
@@ -892,6 +927,7 @@ async def test_extractors():
     )
     
     to_test = [
+        ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/478848/szacowanie-wartosci-zamowienia-opracowanie-graficzne-na-podstawie-przekazanego-wzoru-wykonanie-oraz-dostarczenie-3-szt-tablic-informacyjnych")
         # ("bazakonkurencyjnosci", "https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/ogloszenia/205364"),
         # ("egospodarka", "https://www.przetargi.egospodarka.pl/100012793_Przedmiotem-Zamowienia-sa-uslugi-krajowego-transportu-drogowego-w-zakresie-przewozu-osob-taksowka-pracownikow-i-innych-osob-wskazanych-przez-Zamawiajacego-oraz-rzeczy-na-warunkach-odroczonej-platnosci-w-grani_2025.html"),
         # ("epropublico_main", "https://e-propublico.pl/Ogloszenia/Details/d7f144e7-2693-442f-bd07-6ffb7995a063"),
@@ -915,8 +951,9 @@ async def test_extractors():
         # ("logintrade", "https://cognor.logintrade.net/zapytania_email,1622476,11c7f6295b96623975753762b3690457.html"),
         # ("logintrade", "https://wodnik.logintrade.net/zapytania_email,26299,3680e8e70b3306a6a18479170f61c48f.html"),
 
-("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/overview?1")
+# ("dtvp_like", "https://vergabeportal-bw.de/Satellite/public/company/project/CXRAYY6YH67/de/overview?1")
 # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/478304/przedmiotem")
+# ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/478598/centrum-przesiadkowe-przy-dworcu-kolejowym-w-myszkowie-w-ramach-zadania-inwestycyjnego-pn-rewitalizacja-centrum-myszkowa-centrum-przesiadkowe-etap-3")
 
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/471684/remont-pustostanow-lokali-mieszkalnych-czesc-nr-1-marszalkowska-34-50-m-23-adk-2-czesc-nr-2-krucza-6-14-m-5-adk-2-w-podziale-na-2-czesci"),
         # ("eb2b", "https://platforma.eb2b.com.pl/open-preview-auction.html/473338/opracowanie-dokumentacji-projektowo-kosztorysowej-na-remont-budynku-rozdzielnicy-agregatorowni-zlokalizowanej-na-terenie-stacji-pomp-rzecznych-przy-ul-czerniakowskiej-124-dzielnica-srodmiescie-1"),

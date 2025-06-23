@@ -40,6 +40,8 @@ RUN sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list.d/debian.sourc
     antiword \
     odt2txt \
     unrar \
+    libreoffice \
+    libreoffice-writer \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy the virtual environment from the builder stage

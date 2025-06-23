@@ -27,6 +27,15 @@ class AIFilteringMode(Enum):
     TRIPLE_RUN = "triple_run"  # Run each batch 3 times and merge
     REVIEW_CORRECTION = "review_correction"  # Initial filter + review pass
 
+def select_ai_filter(batch):
+    """
+    Pick correct low-level AI filter for a *homogeneous* batch.
+    Assumes caller has already split plain vs subject batches.
+    """
+    if batch and all("subject_match" in t for t in batch):
+        return RAGManager.ai_filter_tenders_with_subject
+    return RAGManager.ai_filter_tenders
+
 async def filter_batch_with_ai_triple_run(
     tender_analysis: TenderAnalysis,
     batch: List[dict],
@@ -40,7 +49,8 @@ async def filter_batch_with_ai_triple_run(
     # Run filtering 3 times concurrently
     tasks = []
     for run_num in range(3):
-        task = RAGManager.ai_filter_tenders(
+        ai_filter_fn = select_ai_filter(batch)
+        task = ai_filter_fn(
             tender_analysis, 
             batch, 
             current_user, 
@@ -105,7 +115,8 @@ async def filter_batch_with_ai_triple_run(
         logger.error(f"Error in triple-run AI filtering: {str(e)}")
         # Fallback to single run
         try:
-            fallback_result = await RAGManager.ai_filter_tenders(
+            ai_filter_fn = select_ai_filter(batch)
+            fallback_result = await ai_filter_fn(
                 tender_analysis, batch, current_user, run_id="fallback"
             )
             return fallback_result.matches if fallback_result and fallback_result.matches else []
@@ -202,7 +213,8 @@ async def filter_batch_with_ai_review_correction(
         logger.error(f"Error in review-correction filtering: {str(e)}")
         # Fallback to standard filtering
         try:
-            fallback_result = await RAGManager.ai_filter_tenders(
+            ai_filter_fn = select_ai_filter(batch)
+            fallback_result = await ai_filter_fn(
                 tender_analysis, batch, current_user, run_id="fallback"
             )
             return fallback_result.matches if fallback_result and fallback_result.matches else []
@@ -219,7 +231,8 @@ async def filter_batch_with_ai_standard(
     Standard AI filtering (original approach).
     """
     try:
-        filtered_batch = await RAGManager.ai_filter_tenders(
+        ai_filter_fn = select_ai_filter(batch)
+        filtered_batch = await ai_filter_fn(
             tender_analysis, batch, current_user
         )
         return filtered_batch.matches if filtered_batch and filtered_batch.matches else []
@@ -248,6 +261,7 @@ async def perform_ai_filtering(
         analysis_id: Analysis ID to associate with filtered results
         current_user: Optional user making the request
         ai_batch_size: Batch size for AI processing
+        save_results: Whether to save filter results to database
         search_id: Optional ID of saved search results used
         filtering_mode: Mode for AI filtering (STANDARD, TRIPLE_RUN, REVIEW_CORRECTION)
         
@@ -274,34 +288,51 @@ async def perform_ai_filtering(
     else:  # STANDARD
         filter_function = filter_batch_with_ai_standard
 
+    plain_matches   = [t for t in all_tender_matches if "subject_match" not in t]
+    subject_matches = [t for t in all_tender_matches if "subject_match" in t]
+
+    categories = [("plain", plain_matches), ("subject", subject_matches)]
+
     all_filtered_tenders = []
-    
-    if len(all_tender_matches) > ai_batch_size:
-        batches = [all_tender_matches[i:i + ai_batch_size]
-                  for i in range(0, len(all_tender_matches), ai_batch_size)]
 
-        logger.info(f"Splitting {len(all_tender_matches)} tenders into {len(batches)} batches for AI filtering")
+    for cat_name, tender_pool in categories:
+        if not tender_pool:
+            continue
 
-        # Adjust semaphore based on filtering mode (triple_run uses more resources)
-        semaphore_limit = 3 if filtering_mode == AIFilteringMode.TRIPLE_RUN else 6
-        ai_semaphore = asyncio.Semaphore(semaphore_limit)
+        logger.info(f"{cat_name.capitalize()} path: {len(tender_pool)} tenders")
 
-        async def process_batch_with_semaphore(batch):
-            async with ai_semaphore:
-                return await filter_function(tender_analysis, batch, current_user)
+        # For subject matches in REVIEW_CORRECTION mode, use standard filtering
+        current_filter_function = filter_batch_with_ai_standard if (cat_name == "subject" and filtering_mode == AIFilteringMode.REVIEW_CORRECTION) else filter_function
+        logger.info(f"Using {current_filter_function.__name__} for {cat_name} category")
+        if len(tender_pool) > ai_batch_size:
+            batches = [
+                tender_pool[i:i + ai_batch_size]
+                for i in range(0, len(tender_pool), ai_batch_size)
+            ]
+            logger.info(f"{cat_name}: {len(batches)} batches")
+            logger.info(f"Splitting {len(tender_pool)} tenders into {len(batches)} batches for AI filtering")
 
-        filtered_batches = await asyncio.gather(
-            *(process_batch_with_semaphore(batch) for batch in batches)
-        )
+            semaphore_limit = 3 if filtering_mode == AIFilteringMode.TRIPLE_RUN else 6
+            ai_semaphore = asyncio.Semaphore(semaphore_limit)
 
-        for batch_results in filtered_batches:
+            async def process_batch_with_semaphore(batch):
+                async with ai_semaphore:
+                    return await current_filter_function(tender_analysis, batch, current_user)
+
+            filtered_batches = await asyncio.gather(
+                *(process_batch_with_semaphore(b) for b in batches)
+            )
+            for batch_results in filtered_batches:
+                all_filtered_tenders.extend(batch_results)
+            logger.info(f"Processed {len(batches)} batches for {cat_name} category")
+            logger.info(f"AI filtering ({filtering_mode.value}) reduced {len(tender_pool)} tenders to {len(all_filtered_tenders)} relevant tenders in {cat_name} category")
+        else:
+            logger.info(f"Processing {len(tender_pool)} tenders in single batch for {cat_name} category")
+            batch_results = await current_filter_function(tender_analysis, tender_pool, current_user)
             all_filtered_tenders.extend(batch_results)
-
-        logger.info(f"AI filtering ({filtering_mode.value}) reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")
-    else:
-        filtered_results = await filter_function(tender_analysis, all_tender_matches, current_user)
-        all_filtered_tenders = filtered_results
-        logger.info(f"AI filtering ({filtering_mode.value}) reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")
+            logger.info(f"AI filtering ({filtering_mode.value}) reduced {len(tender_pool)} tenders to {len(batch_results)} relevant tenders in {cat_name} category")
+    
+    logger.info(f"AI filtering ({filtering_mode.value}) reduced {len(all_tender_matches)} tenders to {len(all_filtered_tenders)} relevant tenders")
 
     # Identify and save filtered out tenders
     ai_filtered_out_tenders = []

@@ -147,6 +147,15 @@ class UpsertTool:
         if tender_dict.get("location"):
             content_parts.append(f"Location: {tender_dict['location']}")
         
+        if tender_dict.get("main_cpv_code"):
+            content_parts.append(f"Main CPV: {tender_dict['main_cpv_code']}")
+        
+        if tender_dict.get("additional_cpv_codes"):
+            if isinstance(tender_dict["additional_cpv_codes"], list):
+                content_parts.append(f"Additional CPV: {', '.join(tender_dict['additional_cpv_codes'])}")
+            else:
+                content_parts.append(f"Additional CPV: {tender_dict['additional_cpv_codes']}")
+        
         total_parts = tender_dict.get("total_parts", 1)
         if total_parts > 1:
             content_parts.append(f"Multi-part tender with {total_parts} parts")
@@ -198,7 +207,7 @@ class UpsertTool:
             "full_content",
             "parts",
             "content_type",
-            "details_url",
+            "details_url", 
             "source_type",
             "_content_type",
             "_details_url",
@@ -219,6 +228,14 @@ class UpsertTool:
                         metadata[k] = v[:1000] + "..." if len(v) > 1000 else v
                     elif isinstance(v, list):
                         if k == "parts" and v:
+                            parts_cpv_codes = []
+                            for part in v:
+                                if isinstance(part, dict) and part.get('cpv_code'):
+                                    parts_cpv_codes.append(part['cpv_code'])
+                            
+                            if parts_cpv_codes:
+                                metadata["parts_cpv_codes"] = parts_cpv_codes[:5]
+                            
                             parts_summary = f"{len(v)} parts: " + ", ".join([
                                 f"Part {p.get('part_number', i+1)}: {p.get('description', 'No desc')[:50]}"
                                 for i, p in enumerate(v[:3])
@@ -226,6 +243,8 @@ class UpsertTool:
                             if len(v) > 3:
                                 parts_summary += f" and {len(v)-3} more"
                             metadata["parts_info"] = parts_summary
+                        elif k == "additional_cpv_codes" and v:
+                            metadata[k] = ", ".join(v) if isinstance(v, list) else str(v)
                         else:
                             metadata[k] = str(v)[:500] + "..." if len(str(v)) > 500 else str(v)
                     else:

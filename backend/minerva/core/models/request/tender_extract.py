@@ -10,6 +10,7 @@ class Tender(BaseModel):
     initiation_date: str
     content_type: str = "tender"
     source_type: str = "ezamowienia"
+    tender_subject: Optional[str] = None    
 
 class ExtractorMetadata(BaseModel):
     total_tenders: int

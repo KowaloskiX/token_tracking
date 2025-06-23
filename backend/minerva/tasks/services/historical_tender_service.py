@@ -63,6 +63,11 @@ class HistoricalTenderInsertService:
             "total_parts": tender.total_parts,
             "parts_summary": tender.parts_summary,
             
+            "main_cpv_code": tender.main_cpv_code,
+            "additional_cpv_codes": tender.additional_cpv_codes,
+            
+            "original_tender_url": tender.original_tender_url,
+            
             "completion_status": tender.completion_status,
             "total_offers": tender.total_offers,
             "sme_offers": tender.sme_offers,
@@ -87,6 +92,12 @@ class HistoricalTenderInsertService:
             f"Organization: {tender.organization}",
             f"Location: {tender.location}"
         ]
+        
+        if tender.main_cpv_code:
+            content_parts.append(f"Main CPV: {tender.main_cpv_code}")
+        
+        if tender.additional_cpv_codes:
+            content_parts.append(f"Additional CPV: {', '.join(tender.additional_cpv_codes)}")
         
         if tender.total_parts > 1:
             content_parts.append(f"Multi-part tender with {tender.total_parts} parts")
@@ -131,9 +142,9 @@ class HistoricalTenderInsertService:
         """Process embeddings for historical tenders"""
         try:
             embedding_config = EmbeddingConfig(
-                index_name=self.config.pinecone_index,
-                namespace=self.config.pinecone_namespace,
-                embedding_model=self.config.embedding_model,
+                index_name=self.config.pinecone_config.index_name,
+                namespace=self.config.pinecone_config.namespace,
+                embedding_model=self.config.pinecone_config.embedding_model,
                 batch_size=50
             )
             

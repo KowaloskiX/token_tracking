@@ -1,36 +1,6 @@
 version: '3.8'
 
 services:
-  # API Service (Deployed on Droplet #1)
-  api:
-    image: ${REGISTRY}/${API_IMAGE_NAME}:${GITHUB_SHA}
-    command: uvicorn minerva.api.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      - STRIPE_MONTHLY_PRICE_ID=${STRIPE_MONTHLY_PRICE_ID}
-      - STRIPE_ANNUAL_PRICE_ID=${STRIPE_ANNUAL_PRICE_ID}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CUDA_VISIBLE_DEVICES=""
-      - TORCH_DEVICE=cpu
-      - TZ=Europe/Warsaw
-    networks:
-      - tasks_network
-    restart: always
 
   # Log initialization for task workers (Deployed on Droplet #2)
   log-init:
@@ -47,6 +17,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -54,6 +25,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -75,6 +48,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -82,6 +56,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -103,6 +79,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -110,6 +87,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -131,6 +110,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -138,6 +118,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -160,6 +142,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -167,6 +150,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -189,6 +174,7 @@ services:
       - log-init
     volumes:
       - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -196,6 +182,8 @@ services:
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -211,146 +199,34 @@ services:
       - tasks_network
     restart: always
 
-  # Analysis Workers (Deployed on Droplet #2)
-  analysis-worker-0:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=0
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
-
-  analysis-worker-1:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=1
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
-
-  analysis-worker-2:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=2
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
-
-  analysis-worker-3:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=3
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
-
-  analysis-worker-4:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=4
-      - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
-      - WORKER_TYPE=analysis
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-    networks:
-      - tasks_network
-    restart: always
+  # OLD Analysis Workers - REPLACED BY DYNAMIC WORKERS ABOVE
+  # analysis-worker-0:
+  #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+  #   depends_on:
+  #     - log-init
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   environment:
+  #     - MONGODB_URI=${MONGODB_URI}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - PINECONE_API_KEY=${PINECONE_API_KEY}
+  #     - RESEND_API_KEY=${RESEND_API_KEY}
+  #     - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  #     - AWS_REGION=${AWS_REGION}
+  #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY}
+  #     - TZ=Europe/Warsaw
+  #     - WORKER_INDEX=0
+  #     - TOTAL_ANALYSIS_WORKERS=${TOTAL_ANALYSIS_WORKERS}
+  #     - WORKER_TYPE=analysis
+  #     - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+  #     - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+  #   networks:
+  #     - tasks_network
+  #   restart: always
 
   # analysis-worker-5:
   #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
@@ -437,6 +313,225 @@ services:
       - tasks_network
     restart: always
 
+  # Redis for Analysis Task Queue
+  redis-analysis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - tasks_network
+    restart: always
+
+  # Dynamic Analysis Workers (Replace old analysis workers)
+  analysis-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-0
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-1:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-1
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-2:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-2
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-3:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-3
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+  analysis-worker-4:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-4
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
+
+  # Analysis Task Producer (runs once daily via scheduler)
+  analysis-task-producer:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+      - TZ=Europe/Warsaw
+      - WORKER_TYPE=analysis_producer
+      - WORKER_INDEX=0
+    networks:
+      - tasks_network
+    restart: always
+
+  # Analysis Monitor (handles emails)
+  analysis-monitor:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_monitor
+    depends_on:
+      - redis-analysis
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - TZ=Europe/Warsaw
+    networks:
+      - tasks_network
+    restart: always
+
   # Tender Analysis Scheduler Workers (Deployed on Droplet #2)
   # tender-analysis-worker-0:
   #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
@@ -455,6 +550,7 @@ services:
   #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
   #     - AWS_REGION=${AWS_REGION}
   #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY}
   #     - TZ=Europe/Warsaw
   #     - WORKER_INDEX=0
   #     - WORKER_TYPE=tender_analysis_schedudler

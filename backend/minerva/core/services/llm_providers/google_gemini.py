@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
-
+import logging
+from minerva.core.services.llm_providers.response import LLMResponse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Shared client -------------------------------------------------------------
@@ -18,7 +23,7 @@ _shared_genai_client: genai.Client | None = None
 
 
 def _ensure_client() -> genai.Client:
-    """Return a singleton ``genai.Client`` instance (Developer API or Vertex AI)."""
+    """Return a singleton ``genai.Client`` instance (Developer API or Vertex AI)."""
     global _shared_genai_client
     if _shared_genai_client is None:
         _shared_genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -87,6 +92,7 @@ def _translate_response_format(response_format: Dict[str, Any]) -> Dict[str, Any
     
     # If it's already in Google format or unknown format, return as is
     return response_format
+
 # ---------------------------------------------------------------------------
 # Main wrapper --------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -120,8 +126,8 @@ class GeminiLLM:
 
     async def generate_response(
         self, messages: List[Dict[str, str]]
-    ) -> Union[str, AsyncGenerator[Dict[str, Any], None]]:
-        """Generate a response (sync or streaming) with proper config handling."""
+    ) -> Union[str, LLMResponse, AsyncGenerator[Dict[str, Any], None]]:
+        """Generate a response (sync or streaming) with proper config handling and usage tracking."""
 
         # Convert chat messages → Gemini ``Content`` objects.
         contents: List[types.Content] = []
@@ -161,7 +167,31 @@ class GeminiLLM:
                 contents=contents,
                 config=gen_config
             )
-            return self._extract_first_candidate(response)
+            
+            # Extract usage information from Gemini response
+            usage_info = None
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage_info = {
+                    'prompt_tokens': getattr(response.usage_metadata, 'prompt_token_count', 0),
+                    'completion_tokens': getattr(response.usage_metadata, 'candidates_token_count', 0),
+                    'total_tokens': getattr(response.usage_metadata, 'total_token_count', 0)
+                }
+            
+            # Extract content from response
+            content = self._extract_first_candidate(response)
+            
+            # Return LLMResponse wrapper with usage info for cost tracking
+            if isinstance(content, str):
+                return LLMResponse(content, usage_info, "text")
+            elif isinstance(content, dict) and content.get("type") == "function_call":
+                # Convert function call dict to JSON string
+                return LLMResponse(
+                    json.dumps(content),
+                    usage_info,
+                    "function_call"
+                )
+            else:
+                return LLMResponse(str(content), usage_info, "text")
 
         # Streaming
         stream_iter = await self.client.aio.models.generate_content_stream(
@@ -189,6 +219,7 @@ class GeminiLLM:
     # ------------------------------------------------------------------
     @staticmethod
     def _extract_first_candidate(resp: Any) -> Union[str, Dict[str, Any]]:  # noqa: ANN401
+        """Extract content from the first candidate in the response."""
         if not resp or not getattr(resp, "candidates", None):
             return ""
         first = resp.candidates[0]
@@ -208,6 +239,7 @@ class GeminiLLM:
     # ------------------------------------------------------------------
     @classmethod
     async def aclose_shared_client(cls) -> None:
+        """Close the shared Gemini client."""
         global _shared_genai_client
         if _shared_genai_client is not None:
             close = getattr(_shared_genai_client, "close_async", None)

@@ -1,5 +1,6 @@
 # chatbot/services/llm/openai_llm.py
 from typing import List, AsyncGenerator, Union, Dict, Any, Optional
+from minerva.core.services.llm_providers.response import LLMResponse
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import json
@@ -33,7 +34,7 @@ class OpenAILLM:
         self.instructions = instructions
         self.response_format = response_format
 
-    async def generate_response(self, messages: List[Dict[str, str]]) -> Union[str, AsyncGenerator[Dict[str, Any], None]]:
+    async def generate_response(self, messages: List[Dict[str, str]]) -> Union[str, LLMResponse, AsyncGenerator[Dict[str, Any], None]]:
         # Prepend system message if instructions are provided
         if self.instructions:
             messages = [{"role": "system", "content": self.instructions}] + messages
@@ -62,16 +63,30 @@ class OpenAILLM:
         if not self.stream:
             response = await self.openai.chat.completions.create(**params)
             choice = response.choices[0]
+            
+            # Extract usage information
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                usage_info = {
+                    'prompt_tokens': response.usage.prompt_tokens,
+                    'completion_tokens': response.usage.completion_tokens,
+                    'total_tokens': response.usage.total_tokens
+                }
+            
             if choice.message.content:
-                return choice.message.content
+                return LLMResponse(choice.message.content, usage_info)
             elif choice.message.tool_calls:
                 tool_call = choice.message.tool_calls[0]
-                return {
-                    "type": "function_call",
-                    "name": tool_call.function.name,
-                    "arguments": tool_call.function.arguments
-                }
-            return ""
+                return LLMResponse(
+                    json.dumps({
+                        "type": "function_call",
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }),
+                    usage_info,
+                    "function_call"
+                )
+            return LLMResponse("", usage_info)
         
         else:
             stream = await self.openai.chat.completions.create(**params)

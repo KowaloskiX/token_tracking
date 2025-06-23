@@ -161,14 +161,64 @@ class PlatformaZakupowaTenderExtractor:
                         # Extract requirements
                         requirements_div = soup.select_one("div#requirements")
                         if requirements_div:
+                            details_content.append("=== Wymagania i specyfikacja ===")
                             details_content.append(requirements_div.get_text(strip=True))
                             details_content.append("\n")
                         
-                        # Extract evaluation criteria
-                        criteria_div = soup.select_one("div.col-md-12.requirements")
-                        if criteria_div:
-                            details_content.append(criteria_div.get_text(strip=True))
+                        # Extract Subject of the request content
+                        # Look for the table that contains the subject details (after "Subject of the request" header)
+                        subject_table = soup.select_one("table.table.on-table.table-hover:not(.table-criterium)")
+                        if subject_table:
+                            details_content.append("=== Przedmiot zamówienia ===")
+                            # Extract table headers
+                            headers = subject_table.select("thead th")
+                            if headers:
+                                header_texts = [header.get_text(strip=True) for header in headers]
+                                details_content.append("Headers: " + " | ".join(header_texts))
+                                details_content.append("\n")
+                            
+                            # Extract table rows
+                            rows = subject_table.select("tbody tr")
+                            for row in rows:
+                                cells = row.select("td")
+                                if cells:
+                                    row_texts = []
+                                    for cell in cells:
+                                        cell_text = cell.get_text(strip=True)
+                                        # Skip empty cells or cells with just form elements
+                                        if cell_text and not cell_text.isspace():
+                                            row_texts.append(cell_text)
+                                    if row_texts:
+                                        details_content.append(" | ".join(row_texts))
+                            details_content.append("\n")
                         
+                        # Extract Criteria and formal conditions content
+                        criteria_table = soup.select_one("table.table-criterium")
+                        if criteria_table:
+                            details_content.append("=== Kryteria i warunki formalne ===")
+                            # Extract table headers
+                            headers = criteria_table.select("thead th")
+                            if headers:
+                                header_texts = [header.get_text(strip=True) for header in headers]
+                                details_content.append("Headers: " + " | ".join(header_texts))
+                                details_content.append("\n")
+                            
+                            # Extract criteria rows
+                            rows = criteria_table.select("tbody tr")
+                            for row in rows:
+                                cells = row.select("td")
+                                if cells and len(cells) >= 4:  # Ensure we have the main columns
+                                    # Extract: No., Name, Weight, Description
+                                    criteria_data = []
+                                    for i, cell in enumerate(cells[:4]):  # First 4 columns contain the main info
+                                        cell_text = cell.get_text(strip=True)
+                                        if cell_text and not cell_text.isspace():
+                                            criteria_data.append(cell_text)
+                                    
+                                    if criteria_data:
+                                        details_content.append(" | ".join(criteria_data))
+                            details_content.append("\n")
+
                         # Save tender details as text file
                         if details_content:
                             details_filename = f"tender_{tender_id}_details.txt"

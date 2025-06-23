@@ -69,13 +69,13 @@ class EzamawiajacyTenderExtractor:
         """
         try:
             login_url = "https://oneplace.marketplanet.pl/poczatek?p_p_id=com_liferay_login_web_portlet_LoginPortlet&p_p_lifecycle=0&p_p_state=maximized&p_p_mode=view&_com_liferay_login_web_portlet_LoginPortlet_mvcRenderCommandName=%2Flogin%2Flogin&saveLastPath=false&"
-            await self._goto_with_retry(page, login_url, wait_until='networkidle', timeout=15000, purpose="login")
+            await self._goto_with_retry(page, login_url, wait_until='domcontentloaded', timeout=15000, purpose="login")
             await self.accept_cookies(page)
             # Fill in the login form fields.
             await page.fill("input#_com_liferay_login_web_portlet_LoginPortlet_login", username)
             await page.fill("input#_com_liferay_login_web_portlet_LoginPortlet_password", password)
             await page.click("button.btn-primary")  # The login button ("Zaloguj")
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("domcontentloaded")
             logging.info(f"{self.source_type}: Successfully logged in as {username}")
         except Exception as e:
             logging.error(f"{self.source_type}: Login failed: {str(e)}")
@@ -94,7 +94,7 @@ class EzamawiajacyTenderExtractor:
         page = await context.new_page()
         try:
             logging.info(f"{self.source_type}: Navigating to tender detail page: {detail_url}")
-            await self._goto_with_retry(page, detail_url, wait_until="networkidle", timeout=15000, purpose="tender detail")
+            await self._goto_with_retry(page, detail_url, wait_until="domcontentloaded", timeout=15000, purpose="tender detail")
             await page.wait_for_timeout(1000)
             # Look for the button "Przechodzę do formularza ofertowego"
             button = await page.query_selector("button.loading-button")
@@ -102,7 +102,7 @@ class EzamawiajacyTenderExtractor:
             if button:
                 button_text = await button.inner_text()
                 if "Przechodzę do formularza ofertowego" in button_text:
-                    async with page.expect_navigation(wait_until="networkidle", timeout=15000):
+                    async with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
                         await button.click()
                     new_url = page.url
                     if "ezamawiajacy.pl" not in new_url:
@@ -218,7 +218,7 @@ class EzamawiajacyTenderExtractor:
                     list_url = f"{self.base_list_url}&_opUserNoticesPortlet_cur={current_page}"
                     try:
                         logging.info(f"{self.source_type}: Navigating to listing page: {list_url}")
-                        await self._goto_with_retry(list_page, list_url, wait_until="networkidle", timeout=15000, purpose="listing page")
+                        await self._goto_with_retry(list_page, list_url, wait_until="domcontentloaded", timeout=15000, purpose="listing page")
                         await list_page.wait_for_timeout(1000)
                     except Exception as e:
                         logging.error(f"{self.source_type}: Failed to load listing page {list_url}: {str(e)}")
