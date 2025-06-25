@@ -25,8 +25,8 @@ import {
 import { format } from "date-fns";
 import { AlertCircle, Archive, ArrowUpDown, Calendar as CalendarIcon, CheckCircle, ChevronDown, Filter, ListCheck, Loader2, MoreVertical, Percent, RefreshCw, Search, Sparkles, Trash, Clock, Plus, X } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import TenderSourceIcon from "./TenderSourceIcon"; // Assuming TenderSourceIcon is needed/reused
-import { TenderAnalysisResult } from "@/types/tenders"; // Import the type
+import TenderSourceIcon from "./TenderSourceIcon";
+import { TenderAnalysisResult } from "@/types/tenders";
 import { useTendersTranslations } from "@/hooks/useTranslations";
 
 type VoivodeshipKey = keyof Filters['voivodeship'];
@@ -53,8 +53,8 @@ export interface Filters {
     "Wielkopolskie": boolean;
     "Zachodniopomorskie": boolean;
   };
-  source: Record<string, boolean>; // Added source filter
-  criteria: Record<string, boolean>; // NEW: criteria filter - true = show only met, false = show only not met, undefined = show all
+  source: Record<string, boolean>;
+  criteria: Record<string, boolean>;
 }
 
 interface TenderFiltersProps {
@@ -71,8 +71,8 @@ interface TenderFiltersProps {
     direction: 'asc' | 'desc';
   } | null;
   handleSort: (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => void;
-  availableSources: string[]; // Pass available sources from parent
-  availableCriteria: string[]; // NEW: Pass available criteria from parent
+  availableSources: string[];
+  availableCriteria: string[];
 }
 
 export const TenderFilters: React.FC<TenderFiltersProps> = ({
@@ -90,37 +90,28 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   availableCriteria,
 }) => {
   const [showVoivodeships, setShowVoivodeships] = useState(false);
-  const [showSources, setShowSources] = useState(false); // State for source filter expansion
-  const [showCriteria, setShowCriteria] = useState(false); // NEW: State for criteria filter expansion
-  const [showStatus, setShowStatus] = useState(true); // State for status filter expansion, expanded by default
+  const [showSources, setShowSources] = useState(false);
+  const [showCriteria, setShowCriteria] = useState(false);
+  const [showStatus, setShowStatus] = useState(true);
   const t = useTendersTranslations();
 
-  // Initialize / sync source filters when availableSources changes, but avoid
-  // triggering a state update if nothing actually changed to prevent unwanted
-  // side-effects such as pagination reset.
   useEffect(() => {
     setFilters(prev => {
-      // Build the desired source filter object based on availableSources
       const desired: Record<string, boolean> = {};
       availableSources.forEach(src => {
         desired[src] = prev.source?.[src] ?? true;
       });
 
-      // Build the desired criteria filter object based on availableCriteria
       const desiredCriteria: Record<string, boolean> = {};
       availableCriteria.forEach(criteria => {
-        desiredCriteria[criteria] = prev.criteria?.[criteria] ?? false; // Default to false (unselected)
+        desiredCriteria[criteria] = prev.criteria?.[criteria] ?? false;
       });
 
-      // Remove any sources that are no longer available
       Object.keys(prev.source || {}).forEach(src => {
         if (!availableSources.includes(src)) {
-          // keep consistency by omitting disappeared sources
-          // (they will be absent from `desired`)
         }
       });
 
-      // Fast comparison – if keys and their boolean values are identical, do not update
       const prevKeys = Object.keys(prev.source || {});
       const desiredKeys = Object.keys(desired);
       const sourceChanged = !(
@@ -128,11 +119,10 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
         prevKeys.every(key => desired[key] === prev.source[key])
       );
 
-      // Check if criteria filters need updating
       const criteriaChanged = JSON.stringify(prev.criteria) !== JSON.stringify(desiredCriteria);
 
       if (!sourceChanged && !criteriaChanged) {
-        return prev; // No meaningful change
+        return prev;
       }
 
       return { 
@@ -143,7 +133,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
     });
   }, [availableSources, availableCriteria, setFilters]);
 
-  // Updated to handle the new 'inBoard' status
   const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived' | 'inBoard') => {
     setFilters(prev => ({
       ...prev,
@@ -192,7 +181,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
     return Object.values(filters.voivodeship).every(Boolean);
   };
 
-  // --- Source Filter Logic ---
   const toggleSourceFilter = (source: string) => {
     setFilters(prev => ({
       ...prev,
@@ -215,12 +203,9 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   };
 
   const areAllSourcesSelected = () => {
-    // Ensure filters.source exists and has keys before checking values
     return filters.source && Object.keys(filters.source).length > 0 && Object.values(filters.source).every(Boolean);
   };
-  // ---------------------------
 
-  // --- NEW: Criteria Filter Logic ---
   const toggleCriteriaFilter = (criteriaName: string) => {
     setFilters(prev => ({
       ...prev,
@@ -245,7 +230,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   const areAllCriteriaSelected = () => {
     return filters.criteria && Object.keys(filters.criteria).length > 0 && Object.values(filters.criteria).every(Boolean);
   };
-  // ---------------------------
 
   const hasActiveFilters = filters.onlyQualified ||
                            !Object.values(filters.status).every(Boolean) ||
@@ -268,6 +252,12 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
       default:
         return field;
     }
+  };
+
+  const clearDate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedDate(undefined);
   };
 
   return (
@@ -293,28 +283,27 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
       <div className="flex items-center gap-2 w-full sm:w-auto">
         <Popover>
           <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                "bg-white/20 shadow min-w-40 justify-start text-left",
-                selectedDate && "text-primary"
-              )}
-              size="sm"
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {selectedDate ? format(selectedDate, "dd.MM.yyyy") : t('tenders.filters.selectDate')}
+            <div className="relative">
+              <Button
+                variant="outline"
+                className={cn(
+                  "bg-white/20 shadow min-w-40 justify-start text-left",
+                  selectedDate && "text-primary"
+                )}
+                size="sm"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedDate ? format(selectedDate, "dd.MM.yyyy") : t('tenders.filters.selectDate')}
+              </Button>
               {selectedDate && (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedDate(undefined);
-                  }}
-                  className="ml-auto"
+                  onClick={clearDate}
+                  className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-muted-foreground/20 hover:bg-muted-foreground/40 flex items-center justify-center z-10"
                 >
-                  <X className="h-4 w-4 text-muted-foreground" />
+                  <X className="h-3 w-3 text-muted-foreground" />
                 </button>
               )}
-            </Button>
+            </div>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
             <div className="p-2 border-b">
@@ -359,8 +348,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                     <span className="ml-1 h-2 w-2 rounded-full bg-primary-hover" />}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72"> {/* Increased width from w-64 to w-72 */}
-            {/* Status section */}
+          <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault();
@@ -407,7 +395,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                   >
                     <span className="truncate pr-6 pl-6">{t('tenders.status.archived')}</span>
                   </DropdownMenuCheckboxItem>
-                  {/* NEW: In Board Filter Option */}
                   <DropdownMenuCheckboxItem
                     checked={filters.status.inBoard}
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('inBoard'); }}
@@ -419,9 +406,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                 <DropdownMenuSeparator />
               </>
             )}
-            {/* --------------------- */}
 
-             {/* Source Section */}
              <DropdownMenuItem
                onSelect={(e) => {
                  e.preventDefault();
@@ -469,9 +454,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                  <DropdownMenuSeparator />
                </>
              )}
-             {/* --------------------- */}
 
-             {/* NEW: Criteria Filter Section */}
              {availableCriteria.length > 0 && (
                <>
                  <DropdownMenuItem
@@ -532,9 +515,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                  )}
                </>
              )}
-             {/* --------------------- */}
 
-            {/* Voivodeship section */}
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault();
@@ -607,7 +588,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
               {getSortLabel('created_at')} {sortConfig?.field === 'created_at' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
             </DropdownMenuItem>
              <DropdownMenuItem onClick={() => handleSort('initiation_date')} className="flex items-center">
-               <Clock className="mr-2 h-4 w-4" /> {/* Changed icon for consistency */}
+               <Clock className="mr-2 h-4 w-4" /> 
                {getSortLabel('initiation_date')} {sortConfig?.field === 'initiation_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
              </DropdownMenuItem>
           </DropdownMenuContent>

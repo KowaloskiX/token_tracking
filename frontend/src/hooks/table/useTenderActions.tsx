@@ -1,0 +1,255 @@
+import { useCallback, useRef, startTransition } from 'react';
+import { useRouter } from "next/navigation";
+import { TenderAnalysisResult } from "@/types/tenders";
+import { useTender } from "@/context/TenderContext";
+
+interface UseTenderActionsProps {
+  drawerRef: React.RefObject<{ setVisibility: (value: boolean) => void }>;
+  selectedAnalysis: any;
+  currentPage: number;
+  setSelectedResult: (result: TenderAnalysisResult | null) => void;
+  setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
+  setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
+  getTenderBoards: (tenderId: string) => string[];
+  fetchTenderResultById: (resultId: string) => Promise<TenderAnalysisResult | null>;
+  isUpdatedAfterOpened: (result: TenderAnalysisResult) => boolean;
+}
+
+export const useTenderActions = ({
+  drawerRef,
+  selectedAnalysis,
+  currentPage,
+  setSelectedResult,
+  setAllResults,
+  setCurrentTenderBoardStatus,
+  getTenderBoards,
+  fetchTenderResultById,
+  isUpdatedAfterOpened
+}: UseTenderActionsProps) => {
+  const router = useRouter();
+  const {
+    deleteTenderResult,
+    markAsOpened,
+    markAsUnopened,
+    updateTenderStatus,
+    selectedResult
+  } = useTender();
+
+  const justMarkedAsUnreadRef = useRef<string | null>(null);
+  const operationInProgressRef = useRef<Set<string>>(new Set());
+  const lastClickTimeRef = useRef<number>(0);
+
+  const handleRowClick = useCallback(async (result: TenderAnalysisResult, event?: React.MouseEvent) => {
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTimeRef.current;
+    
+    if (timeSinceLastClick < 300) {
+      return;
+    }
+    lastClickTimeRef.current = now;
+
+    if (operationInProgressRef.current.has(result._id!)) {
+      return;
+    }
+
+    if (event?.ctrlKey || event?.metaKey) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("page", currentPage.toString());
+      params.set("tenderId", result._id!);
+      const url = `${window.location.origin}/dashboard/tenders/${selectedAnalysis?._id}?${params.toString()}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    operationInProgressRef.current.add(result._id!);
+
+    try {
+      const tenderBoards = getTenderBoards(result._id!);
+      const boardStatus = tenderBoards.length
+        ? tenderBoards.length === 1
+          ? tenderBoards[0]
+          : `${tenderBoards[0].length > 10
+            ? tenderBoards[0].slice(0, 10) + '…'
+            : tenderBoards[0]}+${tenderBoards.length - 1}`
+        : null;
+
+      setCurrentTenderBoardStatus(boardStatus);
+
+      setSelectedResult(result);
+      drawerRef.current?.setVisibility(true);
+
+      startTransition(() => {
+        setTimeout(() => {
+          const params = new URLSearchParams(window.location.search);
+          params.set("page", currentPage.toString());
+          params.set("tenderId", result._id!);
+          router.replace(`?${params.toString()}`, { scroll: false });
+        }, 0);
+      });
+
+      const promises: Promise<any>[] = [];
+
+      const hasUpdate = isUpdatedAfterOpened(result);
+      if ((!result.opened_at || hasUpdate) && justMarkedAsUnreadRef.current !== result._id) {
+        const openedAt = new Date().toISOString();
+        setAllResults(prev =>
+          prev.map(item =>
+            item._id === result._id
+              ? { ...item, opened_at: openedAt }
+              : item
+          )
+        );
+        
+        markAsOpened(result._id!).catch(err => {
+          console.error('[TendersList] Failed to mark as opened:', err);
+        });
+      }
+
+      if (!result.criteria_analysis || !Array.isArray(result.criteria_analysis) || result.criteria_analysis.length === 0) {
+        promises.push(
+          fetchTenderResultById(result._id!).then(fullResult => {
+            if (fullResult) {
+              setAllResults(prev =>
+                prev.map(item =>
+                  item._id === result._id
+                    ? { 
+                        ...item, 
+                        ...fullResult,
+                        opened_at: item.opened_at && item.opened_at !== fullResult.opened_at 
+                          ? item.opened_at 
+                          : fullResult.opened_at
+                      }
+                    : item
+                )
+              );
+              const updatedFullResult = {
+                ...fullResult,
+                opened_at: fullResult.opened_at || result.opened_at
+              };
+              setSelectedResult(updatedFullResult);
+            }
+          }).catch(err => {
+            console.error("[TendersList] Error fetching data in background:", err);
+          })
+        );
+      }
+
+      if (promises.length > 0) {
+        await Promise.allSettled(promises);
+      }
+
+    } finally {
+      operationInProgressRef.current.delete(result._id!);
+    }
+  }, [
+    currentPage,
+    selectedAnalysis?._id,
+    getTenderBoards,
+    setCurrentTenderBoardStatus,
+    setSelectedResult,
+    drawerRef,
+    router,
+    fetchTenderResultById,
+    setAllResults,
+    markAsOpened,
+    isUpdatedAfterOpened
+  ]);
+
+  const handleUnopened = useCallback(async (result: TenderAnalysisResult) => {
+    if (operationInProgressRef.current.has(result._id!)) {
+      return;
+    }
+
+    if (result.opened_at && result.opened_at !== "") {
+      operationInProgressRef.current.add(result._id!);
+      
+      try {
+        justMarkedAsUnreadRef.current = result._id!;
+        
+        setSelectedResult(null);
+        drawerRef.current?.setVisibility(false);
+        
+        const params = new URLSearchParams(window.location.search);
+        params.delete("tenderId");
+        router.replace(`?${params.toString()}`, { scroll: false });
+
+        setAllResults(prev =>
+          prev.map(item =>
+            item._id === result._id
+              ? { ...item, opened_at: "" }
+              : item
+          )
+        );
+
+        markAsUnopened(result._id!).catch(err => {
+          console.error('Failed to mark as unopened:', err);
+        });
+
+        setTimeout(() => {
+          justMarkedAsUnreadRef.current = null;
+        }, 1000);
+
+      } catch (err) {
+        console.error('Failed to mark as unopened:', err);
+      } finally {
+        operationInProgressRef.current.delete(result._id!);
+      }
+    } else {
+      closeDrawer();
+    }
+  }, [setSelectedResult, drawerRef, router, setAllResults, markAsUnopened]);
+
+  const handleDelete = useCallback(async (event: React.MouseEvent, resultId: string) => {
+    event.stopPropagation();
+    if (!resultId) return;
+    try {
+      drawerRef.current?.setVisibility(false);
+
+      setAllResults(prev =>
+        prev.filter((tender) => tender._id !== resultId)
+      );
+      if (selectedResult?._id === resultId) {
+        closeDrawer();
+      }
+      await deleteTenderResult(resultId);
+    } catch (error) {
+      console.error('Error deleting result:', error);
+    }
+  }, [drawerRef, setAllResults, selectedResult, deleteTenderResult]);
+
+  const handleStatusChange = useCallback(async (resultId: string, newStatus: 'inactive' | 'active' | 'archived') => {
+    try {
+      await updateTenderStatus(resultId, newStatus);
+      setAllResults((prevResults) =>
+        prevResults.map((tender) =>
+          tender._id === resultId
+            ? { ...tender, status: newStatus }
+            : tender
+        )
+      );
+    } catch (error) {
+      console.error("Failed to update status:", error);
+    }
+  }, [updateTenderStatus, setAllResults]);
+
+  const closeDrawer = useCallback(() => {
+    setSelectedResult(null);
+    drawerRef.current?.setVisibility(false);
+
+    startTransition(() => {
+      setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        params.delete("tenderId");
+        router.replace(`?${params.toString()}`, { scroll: false });
+      }, 0);
+    });
+  }, [setSelectedResult, drawerRef, router]);
+
+  return {
+    handleRowClick,
+    handleUnopened,
+    handleDelete,
+    handleStatusChange,
+    closeDrawer
+  };
+};
