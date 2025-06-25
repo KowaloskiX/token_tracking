@@ -15,6 +15,13 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@/components/ui/popover";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { AlertCircle, Archive, ArrowUpDown, Calendar as CalendarIcon, CheckCircle, ChevronDown, Filter, ListCheck, Loader2, MoreVertical, Percent, RefreshCw, Search, Sparkles, Trash, Clock, Plus, X } from 'lucide-react';
 import { cn } from "@/lib/utils";
@@ -47,6 +54,7 @@ export interface Filters {
     "Zachodniopomorskie": boolean;
   };
   source: Record<string, boolean>; // Added source filter
+  criteria: Record<string, boolean>; // NEW: criteria filter - true = show only met, false = show only not met, undefined = show all
 }
 
 interface TenderFiltersProps {
@@ -64,6 +72,7 @@ interface TenderFiltersProps {
   } | null;
   handleSort: (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => void;
   availableSources: string[]; // Pass available sources from parent
+  availableCriteria: string[]; // NEW: Pass available criteria from parent
 }
 
 export const TenderFilters: React.FC<TenderFiltersProps> = ({
@@ -78,9 +87,11 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   sortConfig,
   handleSort,
   availableSources,
+  availableCriteria,
 }) => {
   const [showVoivodeships, setShowVoivodeships] = useState(false);
   const [showSources, setShowSources] = useState(false); // State for source filter expansion
+  const [showCriteria, setShowCriteria] = useState(false); // NEW: State for criteria filter expansion
   const [showStatus, setShowStatus] = useState(true); // State for status filter expansion, expanded by default
   const t = useTendersTranslations();
 
@@ -95,6 +106,12 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
         desired[src] = prev.source?.[src] ?? true;
       });
 
+      // Build the desired criteria filter object based on availableCriteria
+      const desiredCriteria: Record<string, boolean> = {};
+      availableCriteria.forEach(criteria => {
+        desiredCriteria[criteria] = prev.criteria?.[criteria] ?? false; // Default to false (unselected)
+      });
+
       // Remove any sources that are no longer available
       Object.keys(prev.source || {}).forEach(src => {
         if (!availableSources.includes(src)) {
@@ -106,16 +123,25 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
       // Fast comparison – if keys and their boolean values are identical, do not update
       const prevKeys = Object.keys(prev.source || {});
       const desiredKeys = Object.keys(desired);
-      if (
+      const sourceChanged = !(
         prevKeys.length === desiredKeys.length &&
         prevKeys.every(key => desired[key] === prev.source[key])
-      ) {
+      );
+
+      // Check if criteria filters need updating
+      const criteriaChanged = JSON.stringify(prev.criteria) !== JSON.stringify(desiredCriteria);
+
+      if (!sourceChanged && !criteriaChanged) {
         return prev; // No meaningful change
       }
 
-      return { ...prev, source: desired };
+      return { 
+        ...prev, 
+        source: desired,
+        criteria: desiredCriteria
+      };
     });
-  }, [availableSources, setFilters]);
+  }, [availableSources, availableCriteria, setFilters]);
 
   // Updated to handle the new 'inBoard' status
   const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived' | 'inBoard') => {
@@ -194,10 +220,38 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   };
   // ---------------------------
 
+  // --- NEW: Criteria Filter Logic ---
+  const toggleCriteriaFilter = (criteriaName: string) => {
+    setFilters(prev => ({
+      ...prev,
+      criteria: {
+        ...prev.criteria,
+        [criteriaName]: !prev.criteria[criteriaName]
+      }
+    }));
+  };
+
+  const toggleAllCriteria = (setToValue: boolean) => {
+    const newCriteria = { ...filters.criteria };
+    Object.keys(newCriteria).forEach(key => {
+      newCriteria[key] = setToValue;
+    });
+    setFilters(prev => ({
+      ...prev,
+      criteria: newCriteria
+    }));
+  };
+
+  const areAllCriteriaSelected = () => {
+    return filters.criteria && Object.keys(filters.criteria).length > 0 && Object.values(filters.criteria).every(Boolean);
+  };
+  // ---------------------------
+
   const hasActiveFilters = filters.onlyQualified ||
                            !Object.values(filters.status).every(Boolean) ||
                            !Object.values(filters.voivodeship).every(Boolean) ||
-                           (filters.source && Object.keys(filters.source).length > 0 && !Object.values(filters.source).every(Boolean)); // Check source filter
+                           (filters.source && Object.keys(filters.source).length > 0 && !Object.values(filters.source).every(Boolean)) ||
+                           (filters.criteria && Object.keys(filters.criteria).length > 0 && Object.values(filters.criteria).some(Boolean)); // NEW: Check if any criteria are selected
 
   const getSortLabel = (field: string) => {
     switch (field) {
@@ -367,7 +421,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
             )}
             {/* --------------------- */}
 
-             {/* Source Section - New */}
+             {/* Source Section */}
              <DropdownMenuItem
                onSelect={(e) => {
                  e.preventDefault();
@@ -413,6 +467,69 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                    ))}
                  </div>
                  <DropdownMenuSeparator />
+               </>
+             )}
+             {/* --------------------- */}
+
+             {/* NEW: Criteria Filter Section */}
+             {availableCriteria.length > 0 && (
+               <>
+                 <DropdownMenuItem
+                   onSelect={(e) => {
+                     e.preventDefault();
+                     setShowCriteria(!showCriteria);
+                   }}
+                   className="flex justify-between items-center cursor-pointer px-2"
+                 >
+                   <span className="text-xs text-muted-foreground">{t('tenders.filters.criteriaFilter')}</span>
+                   <ChevronDown className={`h-4 w-4 transition-transform ${showCriteria ? 'rotate-180' : ''}`} />
+                 </DropdownMenuItem>
+
+                 {showCriteria && (
+                   <>
+                     <DropdownMenuItem
+                       onSelect={(e) => {
+                         e.preventDefault();
+                         toggleAllCriteria(!areAllCriteriaSelected());
+                       }}
+                       className="flex justify-between items-center cursor-pointer py-1 my-1 bg-secondary/40 px-2"
+                     >
+                       <div className="truncate text-xs font-medium">
+                         {areAllCriteriaSelected() ? t('tenders.filters.deselectAll') : t('tenders.filters.selectAll')}
+                       </div>
+                     </DropdownMenuItem>
+
+                     <div className="max-h-[200px] overflow-y-auto border-t border-t-muted/20 pt-1">
+                       {availableCriteria.map(criteriaName => (
+                         <DropdownMenuCheckboxItem
+                           key={criteriaName}
+                           checked={filters.criteria[criteriaName] ?? false}
+                           onSelect={(e) => {
+                             e.preventDefault();
+                             toggleCriteriaFilter(criteriaName);
+                           }}
+                           className="px-2 flex items-center"
+                         >
+                           <TooltipProvider delayDuration={0}>
+                             <Tooltip>
+                               <TooltipTrigger asChild>
+                                 <div className="w-full pl-6 pr-6">
+                                   <span className="block truncate text-sm leading-tight">
+                                     {criteriaName}
+                                   </span>
+                                 </div>
+                               </TooltipTrigger>
+                               <TooltipContent side="left" className="max-w-[300px]" sideOffset={5}>
+                                 <p className="text-xs break-words">{criteriaName}</p>
+                               </TooltipContent>
+                             </Tooltip>
+                           </TooltipProvider>
+                         </DropdownMenuCheckboxItem>
+                       ))}
+                     </div>
+                     <DropdownMenuSeparator />
+                   </>
+                 )}
                </>
              )}
              {/* --------------------- */}

@@ -14,6 +14,10 @@
       "selectSources": "Wybierz źródła...",
       "selectedSources": "Wybrano {count, plural, one {# źródło} few {# źródła} other {# źródeł}}",
       "criteriaLabel": "Kryteria analizy",
+      "criterionTitle": "Tytuł kryterium",
+      "criterionTitlePlaceholder": "np. Wartość kontraktu",
+      "criterionQuestion": "Pytanie do analizy",
+      "criterionQuestionPlaceholder": "np. Jaka jest wartość kontraktu i jak porównuje się do naszego budżetu?",
       "criterionDescription": "Opis kryterium",
       "emptyCriteriaError": "Nie można stworzyć wyszukiwarki bez kryteriów. Dodaj przynajmniej jedno kryterium.",
       "addCriterion": "+ Dodaj nowe kryterium",
@@ -73,6 +77,10 @@
       "selectSources": "Wybierz źródła...",
       "selectedSources": "Wybrano {count, plural, one {# źródło} few {# źródła} other {# źródeł}}",
       "criteriaLabel": "Kryteria analizy",
+      "criterionTitle": "Tytuł kryterium",
+      "criterionTitlePlaceholder": "np. Wartość kontraktu",
+      "criterionQuestion": "Pytanie do analizy",
+      "criterionQuestionPlaceholder": "np. Jaka jest wartość kontraktu i jak porównuje się do naszego budżetu?",
       "emptyCriteriaError": "Nie można stworzyć wyszukiwarki bez kryteriów. Dodaj przynajmniej jedno kryterium.",
       "maxCriteriaError": "Możesz dodać maks. 20 kryteriów",
       "addCriterion": "+ Dodaj nowe kryterium",
@@ -201,7 +209,8 @@
       "sortByLastUpdate": "Ostatnia aktualizacja",
       "sortByCreationDate": "Data utworzenia",
       "sortByPublicationDate": "Data publikacji",
-      "noTenders": "Brak przetargów spełniających wybrane kryteria filtrowania."
+      "noTenders": "Brak przetargów spełniających wybrane kryteria filtrowania.",
+      "criteriaFilter": "Kryteria"
     },
     "sidebar": {
       "search": "Wyszukuj",

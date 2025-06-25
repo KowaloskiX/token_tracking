@@ -211,9 +211,44 @@ export const SOURCE_CONFIG = {
 
 export const CRITERIA_CONFIG = [
   {
-    id: 'value',
-    name: "Czy jest wymagane wadium?",
-    description: "Czy jest wymagane wadium?"
+    id: 'contract_value',
+    name: "Contract Value",
+    description: "What is the contract value and how does it compare to our budget and profitability expectations?"
+  },
+  {
+    id: 'location',
+    name: "Location",
+    description: "Where is the project located and what are the implications for distance, execution feasibility, and transportation costs?"
+  },
+  {
+    id: 'security_deposit',
+    name: "Security Deposit",
+    description: "Is a security deposit (wadium) required? What is the amount, form, and our ability to provide it?"
+  },
+  {
+    id: 'product_specification',
+    name: "Product & Services Specification",
+    description: "What is the detailed scope of work, required technology, materials, and how well does it match our capabilities?"
+  },
+  {
+    id: 'execution_deadline',
+    name: "Execution Timeline",
+    description: "What is the project execution timeline and does it align with our capacity and schedule?"
+  },
+  {
+    id: 'experience',
+    name: "Required Experience",
+    description: "What experience, references, and qualifications are required and do we meet these requirements?"
+  },
+  {
+    id: 'warranty_quality',
+    name: "Warranty & Quality Standards",
+    description: "What warranty period, quality certificates, and standards are required and can we comply?"
+  },
+  {
+    id: 'other_factors',
+    name: "Additional Requirements",
+    description: "What are the payment terms, legal requirements, and other factors that might affect our participation?"
   }
 ];
 

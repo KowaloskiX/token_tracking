@@ -14,6 +14,10 @@
       "selectSources": "Select sources...",
       "selectedSources": "Selected {count, plural, one {# source} other {# sources}}",
       "criteriaLabel": "Analysis criteria",
+      "criterionTitle": "Criterion title",
+      "criterionTitlePlaceholder": "e.g. Contract Value",
+      "criterionQuestion": "Question for analysis",
+      "criterionQuestionPlaceholder": "e.g. What is the contract value and how does it compare to our budget?",
       "criterionDescription": "Criterion description",
       "emptyCriteriaError": "You cannot create a search without criteria. Add at least one criterion.",
       "addCriterion": "+ Add new criterion",
@@ -73,6 +77,10 @@
       "selectSources": "Select sources...",
       "selectedSources": "Selected {count, plural, one {# source} other {# sources}}",
       "criteriaLabel": "Analysis criteria",
+      "criterionTitle": "Criterion title",
+      "criterionTitlePlaceholder": "e.g. Contract Value",
+      "criterionQuestion": "Question for analysis",
+      "criterionQuestionPlaceholder": "e.g. What is the contract value and how does it compare to our budget?",
       "emptyCriteriaError": "You cannot create a search without criteria. Add at least one criterion.",
       "maxCriteriaError": "You can add up to 20 criteria",
       "addCriterion": "+ Add new criterion",
@@ -201,7 +209,8 @@
       "sortByLastUpdate": "Last update",
       "sortByCreationDate": "Creation date",
       "sortByPublicationDate": "Publication date",
-      "noTenders": "No tenders matching the selected filtering criteria."
+      "noTenders": "No tenders matching the selected filtering criteria.",
+      "criteriaFilter": "Criteria"
     },
     "sidebar": {
       "search": "Search",

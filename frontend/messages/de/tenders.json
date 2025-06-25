@@ -14,6 +14,10 @@
       "selectSources": "Quellen auswählen...",
       "selectedSources": "{count, plural, one {# Quelle} other {# Quellen}} ausgewählt",
       "criteriaLabel": "Analysekriterien",
+      "criterionTitle": "Kriterientitel",
+      "criterionTitlePlaceholder": "z.B. Vertragswert",
+      "criterionQuestion": "Frage zur Analyse",
+      "criterionQuestionPlaceholder": "z.B. Wie hoch ist der Vertragswert und wie vergleicht er sich mit unserem Budget?",
       "criterionDescription": "Kriterienbeschreibung",
       "emptyCriteriaError": "Sie können keine Suche ohne Kriterien erstellen. Fügen Sie mindestens ein Kriterium hinzu.",
       "addCriterion": "+ Neues Kriterium hinzufügen",
@@ -73,6 +77,10 @@
       "selectSources": "Quellen auswählen...",
       "selectedSources": "{count, plural, one {# Quelle} other {# Quellen}} ausgewählt",
       "criteriaLabel": "Analysekriterien",
+      "criterionTitle": "Kriterientitel",
+      "criterionTitlePlaceholder": "z.B. Vertragswert",
+      "criterionQuestion": "Frage zur Analyse",
+      "criterionQuestionPlaceholder": "z.B. Wie hoch ist der Vertragswert und wie vergleicht er sich mit unserem Budget?",
       "emptyCriteriaError": "Sie können keine Suche ohne Kriterien erstellen. Fügen Sie mindestens ein Kriterium hinzu.",
       "maxCriteriaError": "Sie können maximal 20 Kriterien hinzufügen",
       "addCriterion": "+ Neues Kriterium hinzufügen",
@@ -201,7 +209,8 @@
       "sortByLastUpdate": "Letzte Aktualisierung",
       "sortByCreationDate": "Erstellungsdatum",
       "sortByPublicationDate": "Veröffentlichungsdatum",
-      "noTenders": "Keine Ausschreibungen entsprechen den ausgewählten Filterkriterien."
+      "noTenders": "Keine Ausschreibungen entsprechen den ausgewählten Filterkriterien.",
+      "criteriaFilter": "Kriterien"
     },
     "sidebar": {
       "search": "Suchen",

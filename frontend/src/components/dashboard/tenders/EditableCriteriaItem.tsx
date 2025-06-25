@@ -268,7 +268,7 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
     const citations: Citation[] = criteriaItem.citations || [];
 
     return (
-        <div className="flex flex-col w-full">
+        <div className="flex flex-col w-full">          
           {isEditing ? (
             <>
               <Textarea

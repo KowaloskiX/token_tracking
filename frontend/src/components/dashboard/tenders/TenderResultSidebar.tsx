@@ -710,7 +710,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                     ) : (
                         <>
                         {updatedResult && (
-                            <div className="p-4 sm:p-6 pb-24 overflow-y-auto overflow-x-hidden scrollbar-hide flex-grow space-y-4 sm:space-y-6">
+                            <div className="p-4 sm:p-6 pb-24 overflow-y-auto overflow-x-hidden scrollbar-brown-visible flex-grow space-y-4 sm:space-y-6">
                                 <>
                                     <div className='border-b pb-4'>
                                         <div className="flex flex-wrap sm:flex-nowrap justify-between gap-4 sm:gap-8 mb-4">

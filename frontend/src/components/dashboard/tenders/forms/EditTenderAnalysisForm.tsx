@@ -11,8 +11,25 @@ import {
   UserPlus,
   Loader2,
   KeyIcon,
-  Mail
+  Mail,
+  GripVertical
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import {CSS} from '@dnd-kit/utilities';
 import { 
   HoverCard,
   HoverCardTrigger,
@@ -69,8 +86,8 @@ import { QuestionMarkIcon } from "@radix-ui/react-icons";
 import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 const criteriaSchema = z.object({
-  name: z.string().min(1, "Criterion is required"),
-  description: z.string(),
+  name: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Question is required"),
   weight: z.number().min(1).max(5),
   is_disqualifying: z.boolean().default(false),
   exclude_from_score: z.boolean().default(false),
@@ -105,6 +122,360 @@ interface Props {
   showShareButton?: boolean;
 }
 
+interface SortableCriteriaItemProps {
+  field: any;
+  index: number;
+  form: any;
+  expandedSections: Record<string, boolean>;
+  toggleSection: (index: number) => void;
+  remove: (index: number) => void;
+  newCriteriaRef: React.RefObject<HTMLInputElement>;
+  lastAddedIndex: number | null;
+  t: any;
+  tCommon: any;
+}
+
+function SortableCriteriaItem({
+  field,
+  index,
+  form,
+  expandedSections,
+  toggleSection,
+  remove,
+  newCriteriaRef,
+  lastAddedIndex,
+  t,
+  tCommon
+}: SortableCriteriaItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({id: field.id});
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    backdropFilter: isDragging ? 'blur(2px)' : 'none',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`relative space-y-4 border bg-white/10 p-4 rounded-lg shadow-sm border-secondary-border ${
+        isDragging ? 'z-50' : ''
+      }`}
+    >
+      <div className="absolute top-2 right-2 flex gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => remove(index)}
+          className="text-red-600 hover:text-red-700 p-1"
+          size="sm"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <FormField
+        control={form.control}
+        name={`criteria.${index}.name`}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="flex items-center gap-2">
+              <Type className="h-4 w-4 text-primary" />
+              {t('tenders.edit.criterionTitle')}
+            </FormLabel>
+            <FormControl>
+              <Input
+                placeholder={t('tenders.edit.criterionTitlePlaceholder')}
+                {...field}
+                ref={index === lastAddedIndex ? newCriteriaRef : null}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name={`criteria.${index}.description`}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              {t('tenders.edit.criterionQuestion')}
+            </FormLabel>
+            <FormControl>
+              <Textarea
+                placeholder={t('tenders.edit.criterionQuestionPlaceholder')}
+                className="min-h-[80px]"
+                {...field}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <div className={`transition-all duration-300 ease-in-out ${!form.watch(`criteria.${index}.exclude_from_score`) ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+        <FormField
+          control={form.control}
+          name={`criteria.${index}.weight`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('tenders.edit.weightLabel')}</FormLabel>
+              <div className="flex gap-4 items-center">
+                <Slider
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={[field.value]}
+                  onValueChange={(val) => field.onChange(val[0])}
+                  className="flex-1"
+                />
+                <span className="w-8 text-center font-medium">
+                  {field.value}
+                </span>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <FormField
+          control={form.control}
+          name={`criteria.${index}.is_disqualifying`}
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 bg-white/10 shadow-sm">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>
+                  {t('tenders.edit.disqualifying')}
+                </FormLabel>
+                <FormDescription className="text-xs">
+                  {t('tenders.edit.disqualifyingDescription')}
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name={`criteria.${index}.exclude_from_score`}
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 bg-white/10 shadow-sm">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>
+                  {t('tenders.edit.excludeFromScore')}
+                </FormLabel>
+                <FormDescription className="text-xs">
+                  {t('tenders.edit.excludeFromScoreDescription')}
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+      </div>
+      
+      <div className="mt-5 pt-4 border-t border-border">
+        <div className="flex items-center justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => toggleSection(index)}
+            className="text-muted-foreground hover:text-foreground flex items-center gap-2"
+          >
+            {expandedSections[index] ? (
+              <>
+                <X className="h-4 w-4" />
+                {t('tenders.edit.hideOptional')}
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 text-primary-hover" />
+                {t('tenders.edit.showOptional')}
+              </>
+            )}
+          </Button>
+        </div>
+
+        {expandedSections[index] && (
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                  <Sparkles className="h-4 w-4 text-primary-hover" />
+                  {t('tenders.edit.instructionLabel')}
+                  <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
+                </FormLabel>
+                <HoverCard>
+                  <HoverCardTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                      <HelpCircle className="h-3.5 w-3.5" />
+                    </Button>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
+                    <p>{t('tenders.edit.instructionTooltip')}</p>
+                  </HoverCardContent>
+                </HoverCard>
+              </div>
+
+              <FormField
+                control={form.control}
+                name={`criteria.${index}.instruction`}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <div className="relative">
+                        <Textarea
+                          placeholder={t('tenders.edit.instructionPlaceholder')}
+                          className="min-h-[90px] pl-9 text-sm resize-y bg-secondary border-input shadow-inner"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                        <Lightbulb className="absolute left-3 top-3 h-4 w-4 text-chart-4" />
+                      </div>
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                  {t('tenders.edit.keywordsLabel')}
+                  <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
+                </FormLabel>
+                <HoverCard>
+                  <HoverCardTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
+                      <HelpCircle className="h-3.5 w-3.5" />
+                    </Button>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
+                    <p>{t('tenders.edit.keywordsTooltip')}</p>
+                  </HoverCardContent>
+                </HoverCard>
+              </div>
+
+              <FormField
+                control={form.control}
+                name={`criteria.${index}.keywords`}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Textarea
+                        placeholder={t('tenders.edit.keywordsPlaceholder')}
+                        className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
+                        {...field}
+                        value={field.value || ''}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                  {t('tenders.edit.subcriteriaLabel')}
+                  <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
+                </FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const currentSubcriteria = form.getValues(`criteria.${index}.subcriteria`) || [];
+                    form.setValue(`criteria.${index}.subcriteria`, [
+                      ...currentSubcriteria,
+                      ""
+                    ]);
+                  }}
+                >
+                  {t('tenders.edit.addSubquery')}
+                </Button>
+              </div>
+
+              {form.watch(`criteria.${index}.subcriteria`)?.map((_: any, subIndex: number) => (
+                <div key={subIndex} className="space-y-2 p-3 border rounded-md bg-white/5">
+                  <div className="flex justify-between items-start">
+                    <FormField
+                      control={form.control}
+                      name={`criteria.${index}.subcriteria.${subIndex}`}
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormControl>
+                            <Input
+                              placeholder={t('tenders.edit.instructionPlaceholder')}
+                              className="text-sm"
+                              {...field}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="ml-2"
+                      onClick={() => {
+                        const currentSubcriteria = form.getValues(`criteria.${index}.subcriteria`) || [];
+                        form.setValue(
+                          `criteria.${index}.subcriteria`,
+                          currentSubcriteria.filter((_: any, i: number) => i !== subIndex)
+                        );
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, onShareToggle, showShareButton = false }: Props) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const { assignUsers } = useTender();
@@ -121,6 +492,14 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
   // Translation hooks
   const t = useTendersTranslations();
   const tCommon = useCommonTranslations();
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Guard assigned_users to never be undefined
   const assignedUsers: string[] = Array.isArray(analysis.assigned_users) ? analysis.assigned_users : [];
@@ -172,10 +551,23 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, move } = useFieldArray({
     control: form.control,
     name: "criteria",
   });
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const {active, over} = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = fields.findIndex(field => field.id === active.id);
+      const newIndex = fields.findIndex(field => field.id === over.id);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        move(oldIndex, newIndex);
+      }
+    }
+  };
   
   const newCriteriaRef = useRef<HTMLInputElement | null>(null);
   const [lastAddedIndex, setLastAddedIndex] = useState<number | null>(null);
@@ -244,10 +636,12 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
       setIsShareLoading(false);
     }
   };
- const [selectedUsers, setSelectedUsers] = useState<string[]>(assignedUsers);
- const [selectedEmailRecipients, setSelectedEmailRecipients] = useState<string[]>(
-   analysis.email_recipients || analysis.assigned_users || []
- );
+  
+  const [selectedUsers, setSelectedUsers] = useState<string[]>(assignedUsers);
+  const [selectedEmailRecipients, setSelectedEmailRecipients] = useState<string[]>(
+    analysis.email_recipients || analysis.assigned_users || []
+  );
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="relative">
@@ -262,7 +656,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
         value={selectedEmailRecipients.join(",")}
       />
 
-        {showShareButton && (
+    {showShareButton && (
   <div className="mb-4 space-y-2">
      <Button
       type="button"
@@ -707,288 +1101,34 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
               </FormLabel>
             </div>
 
-            <div className="space-y-6">
-              {fields.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="relative space-y-4 border bg-white/10 p-4 rounded-lg shadow-sm border-secondary-border"
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => remove(index)}
-                    className="absolute top-2 right-2 text-black-600"
-                    size="sm"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-
-                  <FormField
-                    control={form.control}
-                    name={`criteria.${index}.name`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-primary" />
-                          {t('tenders.edit.instructionLabel')}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t('tenders.edit.instructionPlaceholder')}
-                            value={field.value}
-                            onChange={(e) => {
-                              field.onChange(e);
-                              form.setValue(
-                                `criteria.${index}.description`,
-                                e.target.value
-                              );
-                            }}
-                            ref={index === lastAddedIndex ? newCriteriaRef : null}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className={`transition-all duration-300 ease-in-out ${!form.watch(`criteria.${index}.exclude_from_score`) ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                    <FormField
-                      control={form.control}
-                      name={`criteria.${index}.weight`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('tenders.edit.weightLabel')}</FormLabel>
-                          <div className="flex gap-4 items-center">
-                            <Slider
-                              min={1}
-                              max={5}
-                              step={1}
-                              value={[field.value]}
-                              onValueChange={(val) => field.onChange(val[0])}
-                              className="flex-1"
-                            />
-                            <span className="w-8 text-center font-medium">
-                              {field.value}
-                            </span>
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={fields.map(field => field.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-6">
+                  {fields.map((field, index) => (
+                    <SortableCriteriaItem
+                      key={field.id}
+                      field={field}
+                      index={index}
+                      form={form}
+                      expandedSections={expandedSections}
+                      toggleSection={toggleSection}
+                      remove={remove}
+                      newCriteriaRef={newCriteriaRef}
+                      lastAddedIndex={lastAddedIndex}
+                      t={t}
+                      tCommon={tCommon}
                     />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <FormField
-                      control={form.control}
-                      name={`criteria.${index}.is_disqualifying`}
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 bg-white/10 shadow-sm">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <div className="space-y-1 leading-none">
-                            <FormLabel>
-                              {t('tenders.edit.disqualifying')}
-                            </FormLabel>
-                            <FormDescription className="text-xs">
-                              {t('tenders.edit.disqualifyingDescription')}
-                            </FormDescription>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name={`criteria.${index}.exclude_from_score`}
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 bg-white/10 shadow-sm">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <div className="space-y-1 leading-none">
-                            <FormLabel>
-                              {t('tenders.edit.excludeFromScore')}
-                            </FormLabel>
-                            <FormDescription className="text-xs">
-                              {t('tenders.edit.excludeFromScoreDescription')}
-                            </FormDescription>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div className="mt-5 pt-4 border-t border-border">
-                    <div className="flex items-center justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleSection(index)}
-                        className="text-muted-foreground hover:text-foreground flex items-center gap-2"
-                      >
-                        {expandedSections[index] ? (
-                          <>
-                            <X className="h-4 w-4" />
-                            {t('tenders.edit.hideOptional')}
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4 text-primary-hover" />
-                            {t('tenders.edit.showOptional')}
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    {expandedSections[index] && (
-                      <div className="space-y-4 mt-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                              <Sparkles className="h-4 w-4 text-primary-hover" />
-                              {t('tenders.edit.instructionLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
-                            </FormLabel>
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
-                                  <HelpCircle className="h-3.5 w-3.5" />
-                                </Button>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                                <p>{t('tenders.edit.instructionTooltip')}</p>
-                              </HoverCardContent>
-                            </HoverCard>
-                          </div>
-
-                          <FormField
-                            control={form.control}
-                            name={`criteria.${index}.instruction`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Textarea
-                                      placeholder={t('tenders.edit.instructionPlaceholder')}
-                                      className="min-h-[90px] pl-9 text-sm resize-y bg-secondary border-input shadow-inner"
-                                      {...field}
-                                      value={field.value || ''}
-                                    />
-                                    <Lightbulb className="absolute left-3 top-3 h-4 w-4 text-chart-4" />
-                                  </div>
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                              {t('tenders.edit.keywordsLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
-                            </FormLabel>
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-secondary">
-                                  <HelpCircle className="h-3.5 w-3.5" />
-                                </Button>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="w-80 text-sm bg-background border-border text-body-text">
-                                <p>{t('tenders.edit.keywordsTooltip')}</p>
-                              </HoverCardContent>
-                            </HoverCard>
-                          </div>
-
-                          <FormField
-                            control={form.control}
-                            name={`criteria.${index}.keywords`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <Textarea
-                                    placeholder={t('tenders.edit.keywordsPlaceholder')}
-                                    className="min-h-[60px] text-sm resize-y bg-secondary border-input shadow-inner"
-                                    {...field}
-                                    value={field.value || ''}
-                                  />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <FormLabel className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-                              {t('tenders.edit.subcriteriaLabel')}
-                              <Badge variant="outline" className="ml-1 font-normal text-xs py-0 border-secondary-border text-body-text">{tCommon('optional')}</Badge>
-                            </FormLabel>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const currentSubcriteria = form.getValues(`criteria.${index}.subcriteria`) || [];
-                                form.setValue(`criteria.${index}.subcriteria`, [
-                                  ...currentSubcriteria,
-                                  ""
-                                ]);
-                              }}
-                            >
-                              {t('tenders.edit.addSubquery')}
-                            </Button>
-                          </div>
-
-                          {form.watch(`criteria.${index}.subcriteria`)?.map((_, subIndex) => (
-                            <div key={subIndex} className="space-y-2 p-3 border rounded-md bg-white/5">
-                              <div className="flex justify-between items-start">
-                                <FormField
-                                  control={form.control}
-                                  name={`criteria.${index}.subcriteria.${subIndex}`}
-                                  render={({ field }) => (
-                                    <FormItem className="flex-1">
-                                      <FormControl>
-                                        <Input
-                                          placeholder={t('tenders.edit.instructionPlaceholder')}
-                                          className="text-sm"
-                                          {...field}
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="ml-2"
-                                  onClick={() => {
-                                    const currentSubcriteria = form.getValues(`criteria.${index}.subcriteria`) || [];
-                                    form.setValue(
-                                      `criteria.${index}.subcriteria`,
-                                      currentSubcriteria.filter((_, i) => i !== subIndex)
-                                    );
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </SortableContext>
+            </DndContext>
 
               {fields.length === 0 && (
                 <p className="mt-2 text-sm text-red-600">
@@ -1022,7 +1162,6 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
           <Button type="submit" className="w-full bg-primary hover:bg-primary-hover shadow text-white" disabled={isLoading}>
             {isLoading ? t('tenders.edit.saving') : t('tenders.edit.saveChanges')}
           </Button>
-        </div>
       </form>
     </Form>
   );

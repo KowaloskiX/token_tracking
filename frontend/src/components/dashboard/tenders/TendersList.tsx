@@ -117,6 +117,9 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
   const requestedPage = parseInt(searchParams.get("page") ?? "1", 10) || 1;
   const requestedTenderId = searchParams.get("tenderId") || null;
   const hasAutoOpenedRef = useRef(false);
+  const justMarkedAsUnreadRef = useRef<string | null>(null);
+  const operationInProgressRef = useRef<Set<string>>(new Set());
+  const lastClickTimeRef = useRef<number>(0);
 
   const initialPageRef = useRef<number>(requestedPage);
   // and store whether we've applied it:
@@ -180,6 +183,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       "Zachodniopomorskie": true
     },
     source: {},
+    criteria: {}, // NEW: Initialize criteria filter
   });
   const [showKanbanDialog, setShowKanbanDialog] = useState(false);
   const [tableWidth, setTableWidth] = useState(0);
@@ -367,7 +371,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       const token = localStorage.getItem("token") || "";
       const historicalParam = includeHistorical ? "&include_historical=true" : "";
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}`,
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}&include_criteria_for_filtering=true`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -471,6 +475,8 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
       return {
         ...localTender,
         status: updatedTender.status,
+        // Also merge opened_at field from context if it's been updated there
+        opened_at: updatedTender.opened_at !== undefined ? updatedTender.opened_at : localTender.opened_at,
       };
     }
     return localTender;
@@ -501,7 +507,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     if (result.location?.voivodeship && result.location.voivodeship !== "UNKNOWN") {
       let voivodeshipFormatted = result.location.voivodeship;
 
-      if (voivodeshipFormatted === voivodeshipFormatted.toUpperCase()) {
+      if (voivodeshipFormatted === voivodeshipFormatted.toLowerCase()) {
         voivodeshipFormatted =
           voivodeshipFormatted.charAt(0).toUpperCase() +
           voivodeshipFormatted.slice(1).toLowerCase();
@@ -570,6 +576,35 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
 
     if (result.source && filters.source && !filters.source[result.source]) {
       return false;
+    }
+
+    // NEW: Criteria filtering logic
+    if (filters.criteria && Object.keys(filters.criteria).length > 0) {
+      // Check if any criteria are actually selected for filtering
+      const selectedCriteria = Object.entries(filters.criteria).filter(([_, isSelected]) => isSelected);
+      
+      if (selectedCriteria.length > 0) {
+        const hasFailingCriteria = selectedCriteria.some(([criteriaName, isSelected]) => {
+          // Find the criteria analysis result for this criteria
+          const criteriaResult = result.criteria_analysis?.find(ca => ca.criteria === criteriaName);
+          
+          if (!criteriaResult) {
+            // If the criteria is not found in the analysis but we're filtering by it, exclude the result
+            return true;
+          }
+          
+          const isMet = criteriaResult.analysis?.criteria_met === true;
+          
+          // Return true if the criteria is NOT met (i.e., this result should be excluded)
+          // When a criteria is selected (checked), we only show tenders where that criteria is met
+          return !isMet;
+        });
+        
+        if (hasFailingCriteria) {
+          return false;
+        }
+      }
+      // If no criteria are selected, don't filter by criteria (show all)
     }
 
     return true;
@@ -772,98 +807,172 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     router.push("/dashboard/tenders/management");
   };
 
-  const handleRowClick = async (result: TenderAnalysisResult) => {
-    // Store current page before opening drawer
-    if (currentPage > 1) {
-      setLastKnownPage(currentPage);
+  const isUpdatedAfterOpened = useCallback((result: TenderAnalysisResult) => {
+    if (!result.updated_at || !result.opened_at) return false;
+    const updatedTime = new Date(result.updated_at).getTime();
+    const openedTime = new Date(result.opened_at).getTime();
+    return updatedTime > openedTime;
+  }, []);
+
+  const handleRowClick = useCallback(async (result: TenderAnalysisResult, event?: React.MouseEvent) => {
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTimeRef.current;
+    
+    // Debounce rapid clicks (prevent multiple operations within 300ms)
+    if (timeSinceLastClick < 300) {
+      return;
     }
-    const tenderBoards = getTenderBoards(result._id!);
-    const boardStatus = tenderBoards.length
-      ? tenderBoards.length === 1
-        ? tenderBoards[0]
-        : `${tenderBoards[0].length > 10
-          ? tenderBoards[0].slice(0, 10) + '…'
-          : tenderBoards[0]}+${tenderBoards.length - 1}`
-      : null;
+    lastClickTimeRef.current = now;
 
-    setCurrentTenderBoardStatus(boardStatus); // passing status up
-    console.log("[TendersList] Row clicked, setting selected result:", {
-      tenderId: result._id,
-      hasCriteria: !!result.criteria_analysis?.length,
-      hasDescription: !!result.tender_description
-    });
+    // Prevent multiple operations on the same tender
+    if (operationInProgressRef.current.has(result._id!)) {
+      return;
+    }
 
-    // FIRST set the selected result with basic data and open drawer immediately
-    setSelectedResult(result);
-    console.log("[TendersList] Opening drawer for tender:", result._id);
-    drawerRef.current?.setVisibility(true);
+    // If Ctrl/Cmd key is pressed, open in new tab
+    if (event?.ctrlKey || event?.metaKey) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("page", currentPage.toString());
+      params.set("tenderId", result._id!);
+      const url = `${window.location.origin}/dashboard/tenders/${selectedAnalysis?._id}?${params.toString()}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
 
-    // ← FIXED: Defer URL update to avoid DOM conflicts
-    startTransition(() => {
-      setTimeout(() => {
-        const params = new URLSearchParams(window.location.search);
-        params.set("page", currentPage.toString());
-        params.set("tenderId", result._id!);
-        router.replace(`?${params.toString()}`, { scroll: false });
-      }, 0);
-    });
+    // Mark operation as in progress
+    operationInProgressRef.current.add(result._id!);
 
-    // THEN fetch the full data in the background
     try {
-      console.log("[TendersList] Fetching full data in background for:", result._id);
+      // Store current page before opening drawer
+      if (currentPage > 1) {
+        setLastKnownPage(currentPage);
+      }
 
-      const fullResult = await fetchTenderResultById(result._id!);
+      const tenderBoards = getTenderBoards(result._id!);
+      const boardStatus = tenderBoards.length
+        ? tenderBoards.length === 1
+          ? tenderBoards[0]
+          : `${tenderBoards[0].length > 10
+            ? tenderBoards[0].slice(0, 10) + '…'
+            : tenderBoards[0]}+${tenderBoards.length - 1}`
+        : null;
 
-      console.log("[TendersList] Background fetch completed:", {
-        success: !!fullResult,
-        hasFullData: !!fullResult?.criteria_analysis && Array.isArray(fullResult.criteria_analysis) && fullResult.criteria_analysis.length > 0
+      setCurrentTenderBoardStatus(boardStatus);
+
+      // Set the selected result and open drawer immediately
+      setSelectedResult(result);
+      drawerRef.current?.setVisibility(true);
+
+      // Update URL
+      startTransition(() => {
+        setTimeout(() => {
+          const params = new URLSearchParams(window.location.search);
+          params.set("page", currentPage.toString());
+          params.set("tenderId", result._id!);
+          router.replace(`?${params.toString()}`, { scroll: false });
+        }, 0);
       });
 
-      if (fullResult) {
-        // Update with the full data in the allResults list
+      // Handle marking as opened and fetching full data concurrently
+      const promises: Promise<any>[] = [];
+
+      // Mark as opened if needed (but not if we just marked it as unread)
+      const hasUpdate = isUpdatedAfterOpened(result);
+      if ((!result.opened_at || hasUpdate) && justMarkedAsUnreadRef.current !== result._id) {
+        // Update state immediately (optimistic update)
+        const openedAt = new Date().toISOString();
         setAllResults(prev =>
           prev.map(item =>
             item._id === result._id
-              ? { ...item, ...fullResult }
+              ? { ...item, opened_at: openedAt }
               : item
           )
         );
-
-        // Update the selected result with complete data
-        setSelectedResult(fullResult);
+        
+        // Fire off backend update asynchronously - don't wait for it
+        markAsOpened(result._id!).catch(err => {
+          console.error('[TendersList] Failed to mark as opened:', err);
+        });
       }
-    } catch (err) {
-      console.error("[TendersList] Error fetching data in background:", err);
-    }
 
-    // Mark as opened if needed
-    const hasUpdate = isUpdatedAfterOpened(result);
-    if (!result.opened_at || hasUpdate) {
-      try {
-        console.log("[TendersList] Marking tender as opened:", result._id);
-        await markAsOpened(result._id!);
-
-        setAllResults(prev =>
-          prev.map(item =>
-            item._id === result._id
-              ? { ...item, opened_at: new Date().toISOString() }
-              : item
-          )
+      // Fetch full data if needed
+      if (!result.criteria_analysis || !Array.isArray(result.criteria_analysis) || result.criteria_analysis.length === 0) {
+        promises.push(
+          fetchTenderResultById(result._id!).then(fullResult => {
+            if (fullResult) {
+              setAllResults(prev =>
+                prev.map(item =>
+                  item._id === result._id
+                    ? { 
+                        ...item, 
+                        ...fullResult,
+                        // Preserve optimistic opened_at if it was set more recently
+                        opened_at: item.opened_at && item.opened_at !== fullResult.opened_at 
+                          ? item.opened_at 
+                          : fullResult.opened_at
+                      }
+                    : item
+                )
+              );
+              // Also preserve opened_at when setting selected result
+              const updatedFullResult = {
+                ...fullResult,
+                opened_at: fullResult.opened_at || result.opened_at
+              };
+              setSelectedResult(updatedFullResult);
+            }
+          }).catch(err => {
+            console.error("[TendersList] Error fetching data in background:", err);
+          })
         );
-
-        result.opened_at = new Date().toISOString();
-        console.log("[TendersList] Tender marked as opened successfully:", result._id);
-      } catch (err) {
-        console.error('[TendersList] Failed to mark as opened:', err);
       }
+
+      // Wait for data fetching operations to complete (but not mark as opened since it's async)
+      if (promises.length > 0) {
+        await Promise.allSettled(promises);
+      }
+
+    } finally {
+      // Always remove operation from progress set
+      operationInProgressRef.current.delete(result._id!);
     }
-  };
+  }, [
+    currentPage,
+    selectedAnalysis?._id,
+    getTenderBoards,
+    setCurrentTenderBoardStatus,
+    setSelectedResult,
+    drawerRef,
+    router,
+    fetchTenderResultById,
+    setAllResults,
+    markAsOpened,
+    isUpdatedAfterOpened
+  ]);
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
-    if (result.opened_at && result.opened_at !== "") {
-      try {
-        await markAsUnopened(result._id!);
+    // Prevent multiple operations on the same tender
+    if (operationInProgressRef.current.has(result._id!)) {
+      return;
+    }
 
+    if (result.opened_at && result.opened_at !== "") {
+      operationInProgressRef.current.add(result._id!);
+      
+      try {
+        // Set flag to prevent immediate re-opening
+        justMarkedAsUnreadRef.current = result._id!;
+        
+        // Clear selection and close drawer immediately
+        setSelectedResult(null);
+        drawerRef.current?.setVisibility(false);
+        
+        // Update URL
+        const params = new URLSearchParams(window.location.search);
+        params.delete("tenderId");
+        router.replace(`?${params.toString()}`, { scroll: false });
+
+        // Update the results state immediately (optimistic update)
         setAllResults(prev =>
           prev.map(item =>
             item._id === result._id
@@ -872,12 +981,24 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
           )
         );
 
-        result.opened_at = "";
+        // Mark as unopened via API asynchronously
+        markAsUnopened(result._id!).catch(err => {
+          console.error('Failed to mark as unopened:', err);
+        });
+
+        // Clear the flag after a delay
+        setTimeout(() => {
+          justMarkedAsUnreadRef.current = null;
+        }, 1000);
+
       } catch (err) {
         console.error('Failed to mark as unopened:', err);
+      } finally {
+        operationInProgressRef.current.delete(result._id!);
       }
+    } else {
+      closeDrawer();
     }
-    closeDrawer();
   };
 
   const handleDelete = async (event: React.MouseEvent, resultId: any) => {
@@ -896,15 +1017,6 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     } catch (error) {
       console.error('Error deleting result:', error);
     }
-  };
-
-
-
-  const isUpdatedAfterOpened = (result: TenderAnalysisResult) => {
-    if (!result.updated_at || !result.opened_at) return false;
-    const updatedTime = new Date(result.updated_at).getTime();
-    const openedTime = new Date(result.opened_at).getTime();
-    return updatedTime > openedTime;
   };
 
   const formatDate = (dateStr: string) => {
@@ -956,6 +1068,66 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     const d = String(date.getDate()).padStart(2, '0');
     const m = String(date.getMonth() + 1).padStart(2, '0');
     return `${d}.${m}`;
+  };
+
+  const extractHour = (dateStr: string) => {
+    if (!dateStr || dateStr.includes('NaN')) return '-';
+
+    let date: Date;
+    if (dateStr.includes('-')) {
+      const isoStr = dateStr.includes(' ') ? dateStr.replace(' ', 'T') : dateStr;
+      date = new Date(isoStr);
+    } else if (dateStr.includes('/')) {
+      // Remove timezone info in parentheses if present
+      const cleanDateStr = dateStr.replace(/\([^)]*\)/g, '').trim();
+      
+      // Try direct parsing first
+      date = new Date(cleanDateStr);
+      
+      // If that fails, try manual parsing
+      if (isNaN(date.getTime())) {
+        const parts = cleanDateStr.split('/');
+        if (parts.length === 3) {
+          // Check if there's time information
+          const timePart = parts[2].includes(' ') ? parts[2].split(' ')[1] : null;
+          if (timePart) {
+            let day, month, year;
+            if (parseInt(parts[0]) > 12) {
+              day = parseInt(parts[0]);
+              month = parseInt(parts[1]);
+              year = parseInt(parts[2].split(' ')[0]);
+            } else {
+              month = parseInt(parts[0]);
+              day = parseInt(parts[1]);
+              year = parseInt(parts[2].split(' ')[0]);
+            }
+            
+            const [hour, minute] = timePart.split(':').map(Number);
+            date = new Date(year, month - 1, day, hour, minute);
+          } else {
+            return '-'; // No time information
+          }
+        } else {
+          return '-';
+        }
+      }
+    } else {
+      return '-'; // No time information in other formats
+    }
+
+    if (isNaN(date.getTime())) return '-';
+    
+    // Check if the date actually has time information (not just 00:00)
+    if (date.getHours() === 0 && date.getMinutes() === 0) {
+      // Check if the original string actually contained time info
+      if (!dateStr.includes(':') && !dateStr.includes('T')) {
+        return '-';
+      }
+    }
+    
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
   };
 
   const formatDateTime = (dateTimeStr: string) => {
@@ -1119,6 +1291,14 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
     });
     return Array.from(sources);
   }, [allResults]);
+
+  // NEW: Extract available criteria from the selectedAnalysis
+  const availableCriteria = useMemo(() => {
+    if (!selectedAnalysis?.criteria || selectedAnalysis.criteria.length === 0) {
+      return [];
+    }
+    return selectedAnalysis.criteria.map(c => c.name);
+  }, [selectedAnalysis?.criteria]);
 
   // Set the page only after data is loaded and validated
   useEffect(() => {
@@ -1443,6 +1623,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
             sortConfig={sortConfig}
             handleSort={handleSort}
             availableSources={availableSources}
+            availableCriteria={availableCriteria}
           />
         </CardHeader>
         <CardContent className="overflow-x-auto" ref={tableContainerRef}>
@@ -1450,29 +1631,31 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
             <Table className="w-full table-fixed">
               <TableHeader className="bg-white/20 shadow">
                 <TableRow>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[5%]")}>{t('tenders.list.source')}</TableHead>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[45%]" : "w-[25%]")}>{t('tenders.list.order')}</TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[8%]" : "w-[4%]")}></TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[40%]" : "w-[25%]")}>{t('tenders.list.order')}</TableHead>
                   {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">{t('tenders.details.client')}</TableHead>}
                   {tableWidth >= 700 && (
-                    <TableHead className="text-xs w-[20%]">
-                      <div className="flex justify-between items-center pr-4">
-                        <p>{t('tenders.details.publicationDate')}</p>
-                        <p>{t('tenders.details.submissionDeadline')}</p>
-                      </div>
-                    </TableHead>
+                    <>
+                      <TableHead className="text-xs w-[8%]">{t('tenders.details.publicationDate')}</TableHead>
+                      <TableHead className="text-xs w-[8%]"></TableHead>
+                      <TableHead className="text-xs w-[10%]">{t('tenders.details.submissionDeadline')}</TableHead>
+                    </>
                   )}
                   {tableWidth < 700 && (
-                    <TableHead className="text-xs w-[20%]">{t('tenders.details.submissionDeadline')}</TableHead>
+                    <>
+                      <TableHead className="text-xs w-[12%]">{t('tenders.details.publicationDate')}</TableHead>
+                      <TableHead className="text-xs w-[20%]">{t('tenders.details.submissionDeadline')}</TableHead>
+                    </>
                   )}
                   {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">{t('tenders.list.boardStatus')}</TableHead>}
                   <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>{t('tenders.list.relevance')}</TableHead>
-                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[5%]" : "w-[5%]")}></TableHead>
+                  <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[3%]" : "w-[3%]")}></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={tableWidth >= 700 ? 7 : 5} className="h-[500px]">
+                    <TableCell colSpan={tableWidth >= 700 ? 9 : 6} className="h-[500px]">
                       <div className="flex flex-col w-full h-full items-center justify-center space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
                         <p className="text-sm text-muted-foreground">
@@ -1494,7 +1677,7 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                   </TableRow>
                 ) : currentResults.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={tableWidth >= 700 ? 7 : 5} className="text-center text-muted-foreground py-20">
+                    <TableCell colSpan={tableWidth >= 700 ? 9 : 6} className="text-center text-muted-foreground py-20">
                       {allResults.length > 0 ?
                         t('tenders.list.noTenders') :
                         selectedAnalysis ?
@@ -1526,13 +1709,15 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                               : hasUpdate
                                 ? "bg-orange-700/5"
                                 : "bg-background"),
-                          !result.opened_at && selectedResult?._id !== result._id
-                            ? "!border-l-2 !border-l-green-600/70 shadow-sm"
-                            : hasUpdate && result.opened_at && selectedResult?._id !== result._id
-                              ? "!border-l-2 !border-l-orange-600"
-                              : ""
+                          selectedResult?._id === result._id
+                            ? "!border-l-2 !border-l-primary shadow-sm"
+                            : !result.opened_at && selectedResult?._id !== result._id
+                              ? "!border-l-2 !border-l-green-600/70 shadow-sm"
+                              : hasUpdate && result.opened_at && selectedResult?._id !== result._id
+                                ? "!border-l-2 !border-l-orange-600"
+                                : ""
                         )}
-                        onClick={() => handleRowClick(result)}
+                        onClick={(e) => handleRowClick(result, e)}
                       >
                         <TableCell className="relative font-medium">
                           {!result.opened_at && (
@@ -1568,100 +1753,74 @@ const TendersList: React.FC<TendersListProps> = ({ drawerRef, allResults, setAll
                           <TableCell>{truncateText(result.tender_metadata.organization, 25)}</TableCell>
                         )}
                         {tableWidth >= 700 && (
-                          <TableCell>
-                            <div className="flex flex-col w-full">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
-                                  {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
-                                </span>
-
-                                <div className="w-24 sm:w-28 bg-secondary-hover rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full ${!result.tender_metadata.submission_deadline ||
-                                      result.tender_metadata.submission_deadline.includes('NaN') ? "bg-gray-400" :
-                                      daysRemaining < 0 ? "bg-gray-400" :
-                                        daysRemaining <= 3 ? "bg-red-600 opacity-70" :
-                                          daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
-                                            daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
-                                              "bg-green-600 opacity-70"
-                                      }`}
-                                    style={{
-                                      width: `${!result.tender_metadata.submission_deadline ||
-                                        result.tender_metadata.submission_deadline.includes('NaN') ? "100" :
-                                        calculateProgressPercentage(result.created_at, result.tender_metadata.submission_deadline)
-                                        }%`
-                                    }}
-                                  ></div>
-                                </div>
-
-                                <div className="flex items-center">
-                                  <span className="text-xs text-gray-500 whitespace-nowrap min-w-[45px]">
-                                    {!result.tender_metadata.submission_deadline ||
-                                      result.tender_metadata.submission_deadline.includes('NaN') ?
-                                      "-" : formatDate(result.tender_metadata.submission_deadline)}
-                                  </span>
-                                  <Badge className="ml-1 text-xs px-1 py-0" variant="outline">
-                                    <span className={`text-xs ${!result.tender_metadata.submission_deadline ||
-                                      result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
-                                      daysRemaining < 0 ? "text-gray-600 opacity-70" :
-                                        daysRemaining <= 3 ? "text-red-600 opacity-70" :
-                                          daysRemaining <= 10 ? "text-amber-600 opacity-70" :
-                                            daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
-                                              "text-green-600 opacity-70"
-                                      }`}>
-                                      {!result.tender_metadata.submission_deadline ||
-                                        result.tender_metadata.submission_deadline.includes('NaN') ||
-                                        isNaN(daysRemaining) ?
-                                        '-' :
-                                        daysRemaining < 0 ?
-                                          t('tenders.details.finished').substring(0, 4) + '.' :
-                                          daysRemaining === 0 ?
-                                            t('tenders.details.today') :
-                                            daysRemaining === 1 ?
-                                              '1d' :
-                                              `${daysRemaining}d`}
-                                    </span>
-                                  </Badge>
-                                </div>
+                          <>
+                            <TableCell>
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
+                              </span>
+                            </TableCell>
+                            <TableCell className="px-2">
+                              <div className="w-full bg-secondary-hover rounded-full h-2 -ml-5">
+                                <div
+                                  className={`h-2 rounded-full ${!result.tender_metadata.submission_deadline ||
+                                    result.tender_metadata.submission_deadline.includes('NaN') ? "bg-gray-400" :
+                                    daysRemaining < 0 ? "bg-gray-400" :
+                                      daysRemaining <= 3 ? "bg-red-600 opacity-70" :
+                                        daysRemaining <= 10 ? "bg-amber-600 opacity-70" :
+                                          daysRemaining <= 21 ? "bg-yellow-600 opacity-70" :
+                                            "bg-green-600 opacity-70"
+                                    }`}
+                                  style={{
+                                    width: `${!result.tender_metadata.submission_deadline ||
+                                      result.tender_metadata.submission_deadline.includes('NaN') ? "100" :
+                                      calculateProgressPercentage(result.created_at, result.tender_metadata.submission_deadline)
+                                      }%`
+                                  }}
+                                ></div>
                               </div>
-                            </div>
-                          </TableCell>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500 whitespace-nowrap">
+                                  {!result.tender_metadata.submission_deadline ||
+                                    result.tender_metadata.submission_deadline.includes('NaN') ?
+                                    "-" : formatDate(result.tender_metadata.submission_deadline)}
+                                </span>
+                                <span className="text-xs text-foreground/50 font-medium">
+                                  {extractHour(result.tender_metadata.submission_deadline)}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </>
                         )}
                         {tableWidth < 700 && (
-                          <TableCell>
-                            <div className="flex items-center justify-start">
-                              <Badge className="text-xs px-2 py-1" variant="outline">
-                                <span className={`text-xs font-medium ${!result.tender_metadata.submission_deadline ||
-                                  result.tender_metadata.submission_deadline.includes('NaN') ? "text-gray-600 opacity-70" :
-                                  daysRemaining < 0 ? "text-gray-600 opacity-70" :
-                                    daysRemaining <= 3 ? "text-red-600 opacity-70" :
-                                      daysRemaining <= 10 ? "text-amber-600 opacity-70" :
-                                        daysRemaining <= 21 ? "text-yellow-600 opacity-70" :
-                                          "text-green-600 opacity-70"
-                                  }`}>
+                          <>
+                            <TableCell>
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline).split('.').slice(0, 2).join('.')}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500 whitespace-nowrap">
                                   {!result.tender_metadata.submission_deadline ||
-                                    result.tender_metadata.submission_deadline.includes('NaN') ||
-                                    isNaN(daysRemaining) ?
-                                    '-' :
-                                    daysRemaining < 0 ?
-                                      t('tenders.details.finished') :
-                                      daysRemaining === 0 ?
-                                        t('tenders.details.today') :
-                                        daysRemaining === 1 ?
-                                          `1 ${t('tenders.details.day')}` :
-                                          `${daysRemaining} ${t('tenders.details.days')}`}
+                                    result.tender_metadata.submission_deadline.includes('NaN') ?
+                                    "-" : formatDate(result.tender_metadata.submission_deadline)}
                                 </span>
-                              </Badge>
-                            </div>
-                          </TableCell>
+                                <span className="text-xs text-foreground/50 font-medium">
+                                  {extractHour(result.tender_metadata.submission_deadline)}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </>
                         )}
                         {tableWidth >= 700 && <TableCell>{getBoardBadge(result)}</TableCell>}
                         <TableCell><ScoreIndicator score={result.tender_score} /></TableCell>
-                        <TableCell className="p-0">
+                        <TableCell className={cn("p-1", tableWidth < 700 && "p-0")}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
-                                <MoreVertical className="h-4 w-4" />
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => e.stopPropagation()}>
+                                <MoreVertical className="h-3 w-3" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">

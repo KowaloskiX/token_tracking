@@ -272,7 +272,7 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
             : "";
 
         const response = await fetch(
-          `${serverUrl}/tender-analysis/${analysisId}/results?page=${page}&limit=${limit}${orgIdParam}`,
+          `${serverUrl}/tender-analysis/${analysisId}/results?page=${page}&limit=${limit}${orgIdParam}&include_criteria_for_filtering=true`,
           {
             headers: getAuthHeaders(),
           }
@@ -318,43 +318,67 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
 
   const markAsOpened = useCallback(async (resultId: string) => {
     try {
-      setIsLoading(true);
       const response = await fetch(`${serverUrl}/tender-result/${resultId}/mark_opened`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
       });
-      if (!response.ok) throw new Error('Failed to mark tender result as opened');
-      setState(prev => ({
-        ...prev,
-        results: prev.results.map(r =>
-          r._id === resultId ? { ...r, opened_at: new Date().toISOString() } : r
-        ),
-      }));
+      if (!response.ok) {
+        throw new Error(`API call failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      
+      // Update the local state with the actual opened_at timestamp from backend
+      setState(prev => {
+        const updatedResults = prev.results.map(r =>
+          r._id === resultId ? { ...r, opened_at: data.opened_at } : r
+        );
+        const updatedSelectedResult = prev.selectedResult?._id === resultId
+          ? { ...prev.selectedResult, opened_at: data.opened_at }
+          : prev.selectedResult;
+        return {
+          ...prev,
+          results: updatedResults,
+          selectedResult: updatedSelectedResult,
+        };
+      });
+      
+      return data;
     } catch (err) {
-      handleError(err);
-    } finally {
-      setIsLoading(false);
+      console.error('Error marking as opened:', err);
+      throw err;
     }
   }, []);
 
   const markAsUnopened = useCallback(async (resultId: string) => {
     try {
-      setIsLoading(true);
       const response = await fetch(`${serverUrl}/tender-result/${resultId}/mark_unopened`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
       });
-      if (!response.ok) throw new Error('Failed to mark tender result as unopened');
-      setState(prev => ({
-        ...prev,
-        results: prev.results.map(r =>
+      if (!response.ok) {
+        throw new Error(`API call failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      
+      // Update the local state to remove opened_at
+      setState(prev => {
+        const updatedResults = prev.results.map(r =>
           r._id === resultId ? { ...r, opened_at: "" } : r
-        ),
-      }));
+        );
+        const updatedSelectedResult = prev.selectedResult?._id === resultId
+          ? { ...prev.selectedResult, opened_at: "" }
+          : prev.selectedResult;
+        return {
+          ...prev,
+          results: updatedResults,
+          selectedResult: updatedSelectedResult,
+        };
+      });
+      
+      return data;
     } catch (err) {
-      handleError(err);
-    } finally {
-      setIsLoading(false);
+      console.error('Error marking as unopened:', err);
+      throw err;
     }
   }, []);
   
@@ -426,8 +450,10 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
 
       // Adjust the route to match your actual "all results" endpoint
       // e.g. GET /tender-analysis/<analysis_id>/results/all
+      // Include criteria for filtering to enable client-side filtering
+      const separator = orgIdParam ? '&' : '?';
       const resp = await fetch(
-        `${serverUrl}/tender-analysis/${analysisId}/results/all${orgIdParam}`,
+        `${serverUrl}/tender-analysis/${analysisId}/results/all${orgIdParam}${separator}include_criteria_for_filtering=true`,
         {
           headers: getAuthHeaders(),
         }

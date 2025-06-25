@@ -63,8 +63,8 @@ import { Slider } from "@/components/ui/slider";
 import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 
 const criteriaSchema = z.object({
-  name: z.string().min(1, "Criterion is required"),
-  description: z.string(),
+  name: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Question is required"),
   weight: z.number().min(1).max(5),
   is_disqualifying: z.boolean().default(false),
   exclude_from_score: z.boolean().default(false),
@@ -419,18 +419,35 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-primary" />
-                        Criterion description
+                        <Type className="h-4 w-4 text-primary" />
+                        {t('tenders.create.criterionTitle')}
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="e.g. what is the contract value?"
-                          value={field.value}
-                          onChange={(e) => {
-                            field.onChange(e);
-                            form.setValue(`criteria.${index}.description`, e.target.value);
-                          }}
+                          placeholder={t('tenders.create.criterionTitlePlaceholder')}
+                          {...field}
                           ref={index === lastAddedIndex ? newCriteriaRef : null}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name={`criteria.${index}.description`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        {t('tenders.create.criterionQuestion')}
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={t('tenders.create.criterionQuestionPlaceholder')}
+                          className="min-h-[80px]"
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
