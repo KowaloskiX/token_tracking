@@ -32,6 +32,8 @@ import { useTenderSorting } from "@/hooks/table/useTenderSorting";
 import { usePaginationEffects } from "@/hooks/table/usePaginationEffects";
 import { useTenderInitialization } from "@/hooks/table/useTenderInitialization";
 import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
+import { useTableLayout } from "@/hooks/table/useTableLayout";
+import { SortableField } from "@/types/table";
 
 const LOCAL_ITEMS_PER_PAGE = 10;
 
@@ -124,6 +126,15 @@ const TendersList: React.FC<TendersListProps> = ({
     fetchKanbanBoards,
     getTenderBoards
   } = useKanbanBoards();
+
+  const {
+    currentLayout,
+    visibleColumns,
+    updateColumnWidth,
+    updateColumnVisibility,
+    addCriteriaColumn,
+    removeCriteriaColumn,
+  } = useTableLayout({ selectedAnalysis });
 
   const updateCurrentPage = useCallback((newPage: number, isUserTriggered = false) => {
     setCurrentPage(newPage);
@@ -523,33 +534,42 @@ const TendersList: React.FC<TendersListProps> = ({
             handleSort={handleSort}
             availableSources={availableSources}
             availableCriteria={availableCriteria}
+            selectedAnalysis={selectedAnalysis}
+            tableColumns={currentLayout?.columns}
+            onColumnVisibilityChange={updateColumnVisibility}
+            onAddCriteriaColumn={addCriteriaColumn}
+            onRemoveCriteriaColumn={removeCriteriaColumn}
           />
         </CardHeader>
-        <CardContent className="overflow-x-auto" ref={tableContainerRef}>
-          <TenderTable
-            results={currentResults}
-            selectedResult={selectedResult}
-            tableWidth={tableWidth}
-            isLoading={isLoading}
-            totalFetched={totalFetched}
-            totalTendersCount={totalTendersCount}
-            allResults={allResults}
-            selectedAnalysis={selectedAnalysis}
-            getTenderBoards={getTenderBoards}
-            boardsLoading={boardsLoading}
-            isUpdatedAfterOpened={isUpdatedAfterOpened}
-            calculateDaysRemaining={calculateDaysRemaining}
-            calculateProgressPercentage={calculateProgressPercentage}
-            formatDate={formatDate}
-            extractHour={extractHour}
-            formatDateTime={formatDateTime}
-            truncateText={truncateText}
-            onRowClick={handleRowClick}
-            onStatusChange={handleStatusChange}
-            onUnopened={handleUnopened}
-            onDelete={handleDelete}
-            onAddToKanban={handleAddToKanban}
-          />
+        <CardContent className="overflow-x-auto" ref={tableContainerRef} >
+        <TenderTable
+          results={currentResults}
+          selectedResult={selectedResult}
+          tableWidth={tableWidth}
+          isLoading={isLoading}
+          totalFetched={totalFetched}
+          totalTendersCount={totalTendersCount}
+          allResults={allResults}
+          selectedAnalysis={selectedAnalysis}
+          getTenderBoards={getTenderBoards}
+          boardsLoading={boardsLoading}
+          isUpdatedAfterOpened={isUpdatedAfterOpened}
+          calculateDaysRemaining={calculateDaysRemaining}
+          calculateProgressPercentage={calculateProgressPercentage}
+          formatDate={formatDate}
+          extractHour={extractHour}
+          formatDateTime={formatDateTime}
+          truncateText={truncateText}
+          onRowClick={handleRowClick}
+          onStatusChange={handleStatusChange}
+          onUnopened={handleUnopened}
+          onDelete={handleDelete}
+          onAddToKanban={handleAddToKanban}
+          visibleColumns={visibleColumns}
+          onColumnResize={updateColumnWidth}
+          onSort={handleSort}
+          sortConfig={sortConfig}
+        />
           <TendersPagination
             totalPages={totalPages}
             currentPage={currentPage}
