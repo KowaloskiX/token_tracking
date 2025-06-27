@@ -1,6 +1,3 @@
-// src/components/dashboard/tenders/table/TenderTable.tsx
-// Simplest approach: Just add resize functionality to your original table
-
 import React from 'react';
 import {
   Table,
@@ -39,12 +36,6 @@ interface TenderTableProps {
   onUnopened: (result: TenderAnalysisResult) => Promise<void>;
   onDelete: (event: React.MouseEvent, resultId: string) => Promise<void>;
   onAddToKanban: (result: TenderAnalysisResult) => void;
-  
-  // Optional props 
-  visibleColumns?: any[];
-  onColumnResize?: (columnId: string, width: number) => void;
-  onSort?: (field: any) => void;
-  sortConfig?: any;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -75,59 +66,28 @@ export const TenderTable: React.FC<TenderTableProps> = ({
 
   return (
     <div className="rounded-md border shadow-sm overflow-hidden">
-      {/* 
-        Key changes from your original:
-        1. table-fixed -> table-auto (let Tailwind handle sizing)
-        2. Add resize-x to headers for built-in CSS resize
-        3. Use responsive Tailwind classes instead of conditional rendering
-      */}
-      <Table className="w-full table-auto">
+      <Table className="w-full table-fixed">
         <TableHeader className="bg-white/20 shadow">
           <TableRow>
-            <TableHead className={cn("text-xs resize-x overflow-hidden", tableWidth < 700 ? "w-[8%]" : "w-[4%]")}>
-              {/* Empty header for source icons */}
-            </TableHead>
-            
-            <TableHead className={cn("text-xs resize-x overflow-hidden", tableWidth < 700 ? "w-[40%]" : "w-[25%]")}>
-              {t('tenders.list.order')}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[15%] hidden lg:table-cell">
-              {t('tenders.details.client')}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[8%] hidden lg:table-cell">
-              {t('tenders.details.publicationDate')}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[8%] hidden lg:table-cell">
-              {/* Empty header for progress bar */}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[10%] hidden lg:table-cell">
-              {t('tenders.details.submissionDeadline')}
-            </TableHead>
-            
-            {/* Mobile date headers */}
-            <TableHead className="text-xs resize-x overflow-hidden w-[12%] table-cell lg:hidden">
-              {t('tenders.details.publicationDate')}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[20%] table-cell lg:hidden">
-              {t('tenders.details.submissionDeadline')}
-            </TableHead>
-            
-            <TableHead className="text-xs resize-x overflow-hidden w-[10%] hidden lg:table-cell">
-              {t('tenders.list.boardStatus')}
-            </TableHead>
-            
-            <TableHead className={cn("text-xs resize-x overflow-hidden", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>
-              {t('tenders.list.relevance')}
-            </TableHead>
-            
-            <TableHead className={cn("text-xs resize-x overflow-hidden", tableWidth < 700 ? "w-[3%]" : "w-[3%]")}>
-              {/* Empty header for actions */}
-            </TableHead>
+            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[8%]" : "w-[4%]")}></TableHead>
+            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[40%]" : "w-[25%]")}>{t('tenders.list.order')}</TableHead>
+            {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">{t('tenders.details.client')}</TableHead>}
+            {tableWidth >= 700 && (
+              <>
+                <TableHead className="text-xs w-[8%]">{t('tenders.details.publicationDate')}</TableHead>
+                <TableHead className="text-xs w-[8%]"></TableHead>
+                <TableHead className="text-xs w-[10%]">{t('tenders.details.submissionDeadline')}</TableHead>
+              </>
+            )}
+            {tableWidth < 700 && (
+              <>
+                <TableHead className="text-xs w-[12%]">{t('tenders.details.publicationDate')}</TableHead>
+                <TableHead className="text-xs w-[20%]">{t('tenders.details.submissionDeadline')}</TableHead>
+              </>
+            )}
+            {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">{t('tenders.list.boardStatus')}</TableHead>}
+            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>{t('tenders.list.relevance')}</TableHead>
+            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[3%]" : "w-[3%]")}></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

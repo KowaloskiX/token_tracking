@@ -1,6 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
 import { TenderAnalysisResult } from "@/types/tenders";
-import { SortableField } from '@/types/table';
 
 interface SortConfig {
   field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date';
@@ -20,7 +19,7 @@ export const useTenderSorting = ({
 }: UseTenderSortingProps) => {
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
 
-  const handleSort = useCallback((field: SortableField) => {
+  const handleSort = useCallback((field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => {
     setSortConfig(current => {
       if (current?.field === field) {
         return { field, direction: current.direction === 'asc' ? 'desc' : 'asc' };

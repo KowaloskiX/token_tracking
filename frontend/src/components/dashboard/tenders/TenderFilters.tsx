@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@/components/ui/popover";
+
 import {
   Tooltip,
   TooltipContent,
@@ -25,9 +26,7 @@ import { format } from "date-fns";
 import { AlertCircle, Archive, ArrowUpDown, Calendar as CalendarIcon, CheckCircle, ChevronDown, Filter, ListCheck, Loader2, MoreVertical, Percent, RefreshCw, Search, Sparkles, Trash, Clock, Plus, X } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import TenderSourceIcon from "./TenderSourceIcon";
-import { TenderAnalysisResult, TenderAnalysis } from "@/types/tenders";
-import { TableColumn } from "@/types/table";
-import { ColumnManagement } from "./table/ColumnManagement";
+import { TenderAnalysisResult } from "@/types/tenders";
 import { useTendersTranslations } from "@/hooks/useTranslations";
 
 type VoivodeshipKey = keyof Filters['voivodeship'];
@@ -74,13 +73,6 @@ interface TenderFiltersProps {
   handleSort: (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => void;
   availableSources: string[];
   availableCriteria: string[];
-  selectedAnalysis?: TenderAnalysis | null;
-  
-  // New props for column management
-  tableColumns?: TableColumn[];
-  onColumnVisibilityChange?: (columnId: string, visible: boolean) => void;
-  onAddCriteriaColumn?: (criteriaName: string) => void;
-  onRemoveCriteriaColumn?: (criteriaName: string) => void;
 }
 
 export const TenderFilters: React.FC<TenderFiltersProps> = ({
@@ -96,11 +88,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
   handleSort,
   availableSources,
   availableCriteria,
-  selectedAnalysis,
-  tableColumns,
-  onColumnVisibilityChange,
-  onAddCriteriaColumn,
-  onRemoveCriteriaColumn,
 }) => {
   const [showVoivodeships, setShowVoivodeships] = useState(false);
   const [showSources, setShowSources] = useState(false);
@@ -248,7 +235,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                            !Object.values(filters.status).every(Boolean) ||
                            !Object.values(filters.voivodeship).every(Boolean) ||
                            (filters.source && Object.keys(filters.source).length > 0 && !Object.values(filters.source).every(Boolean)) ||
-                           (filters.criteria && Object.keys(filters.criteria).length > 0 && Object.values(filters.criteria).some(Boolean));
+                           (filters.criteria && Object.keys(filters.criteria).length > 0 && Object.values(filters.criteria).some(Boolean)); // NEW: Check if any criteria are selected
 
   const getSortLabel = (field: string) => {
     switch (field) {
@@ -293,7 +280,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
         )}
       </div>
 
-      <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+      <div className="flex items-center gap-2 w-full sm:w-auto">
         <Popover>
           <PopoverTrigger asChild>
             <div className="relative">
@@ -446,7 +433,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                  </DropdownMenuItem>
 
                  <div className="max-h-[180px] overflow-y-auto border-t border-t-muted/20 pt-1">
-                   {Object.entries(filters.source ?? {}).sort(([sourceA], [sourceB]) => sourceA.localeCompare(sourceB))
+                   {Object.entries(filters.source ?? {}).sort(([sourceA], [sourceB]) => sourceA.localeCompare(sourceB)) // Sort alphabetically, handle undefined source
                    .map(([source, isChecked]) => (
                      <DropdownMenuCheckboxItem
                        key={source}
@@ -606,17 +593,6 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
              </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {tableColumns && onColumnVisibilityChange && onAddCriteriaColumn && onRemoveCriteriaColumn && (
-          <ColumnManagement
-            columns={tableColumns}
-            availableCriteria={availableCriteria}
-            selectedAnalysis={selectedAnalysis}
-            onColumnVisibilityChange={onColumnVisibilityChange}
-            onAddCriteriaColumn={onAddCriteriaColumn}
-            onRemoveCriteriaColumn={onRemoveCriteriaColumn}
-          />
-        )}
       </div>
     </div>
   );

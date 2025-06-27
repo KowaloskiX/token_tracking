@@ -156,9 +156,7 @@
       "citation": "Cytat",
       "fragment": "Fragment",
       "fragments": "fragmentów",
-      "unknownSource": "Nieznane źródło",
-      "confidence": "pewność",
-      "noAnalysis": "Brak analizy"
+      "unknownSource": "Nieznane źródło"
     },
     "status": {
       "inactive": "Nieaktywny",
@@ -212,8 +210,7 @@
       "sortByCreationDate": "Data utworzenia",
       "sortByPublicationDate": "Data publikacji",
       "noTenders": "Brak przetargów spełniających wybrane kryteria filtrowania.",
-      "criteriaFilter": "Kryteria",
-      "unknownSource": "Nieznane Źródło"
+      "criteriaFilter": "Kryteria"
     },
     "sidebar": {
       "search": "Wyszukuj",
@@ -343,12 +340,6 @@
       "unnamedTender": "Nienazwany przetarg",
       "deleteColumnConfirm": "Czy na pewno chcesz usunąć tę kolumnę i wszystkie jej elementy?",
       "weightLabel": "Waga (1-5)"
-    },
-    "table": {
-      "columns": "Kolumny",
-      "defaultColumns": "Domyślne Kolumny",
-      "criteriaColumns": "Kolumny Kryteriów",
-      "columnHint": "Przeciągnij krawędzie kolumn aby zmienić rozmiar"
     },
     "noFilesAvailable": "Brak dostępnych plików",
     "noFilesDescription": "Ten przetarg nie posiada plików do pobrania. Sprawdź bezpośrednio źródło przetargu, aby uzyskać dostęp do wymaganych dokumentów.",

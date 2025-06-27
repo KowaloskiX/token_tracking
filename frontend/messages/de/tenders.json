@@ -156,9 +156,7 @@
       "citation": "Zitat",
       "fragment": "Fragment",
       "fragments": "Fragmente",
-      "unknownSource": "Unbekannte Quelle",
-      "confidence": "Vertrauensgrad",
-      "noAnalysis": "Keine Analyse verfügbar"
+      "unknownSource": "Unbekannte Quelle"
     },
     "status": {
       "inactive": "Inaktiv",
@@ -212,8 +210,7 @@
       "sortByCreationDate": "Erstellungsdatum",
       "sortByPublicationDate": "Veröffentlichungsdatum",
       "noTenders": "Keine Ausschreibungen entsprechen den ausgewählten Filterkriterien.",
-      "criteriaFilter": "Kriterien",
-      "unknownSource": "Unbekannte Quelle"
+      "criteriaFilter": "Kriterien"
     },
     "sidebar": {
       "search": "Suchen",
@@ -343,12 +340,6 @@
       "unnamedTender": "Unbenannte Ausschreibung",
       "deleteColumnConfirm": "Sind Sie sicher, dass Sie diese Spalte und alle ihre Elemente löschen möchten?",
       "weightLabel": "Gewichtung (1-5)"
-    },
-    "table": {
-      "columns": "Spalten",
-      "defaultColumns": "Standardspalten",
-      "criteriaColumns": "Kriterien-Spalten",
-      "columnHint": "Spaltenränder ziehen, um die Größe zu ändern"
     },
     "noFilesAvailable": "Keine Dateien verfügbar",
     "noFilesDescription": "Diese Ausschreibung hat keine herunterladbaren Dateien. Überprüfen Sie die Ausschreibungsquelle direkt, um Zugang zu den erforderlichen Dokumenten zu erhalten.",
