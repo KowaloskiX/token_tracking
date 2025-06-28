@@ -156,7 +156,9 @@
       "citation": "Citation",
       "fragment": "Fragment",
       "fragments": "fragments",
-      "unknownSource": "Unknown source"
+      "unknownSource": "Unknown source",
+      "confidence": "confidence",
+      "noAnalysis": "No analysis available"
     },
     "status": {
       "inactive": "Inactive",
@@ -210,7 +212,8 @@
       "sortByCreationDate": "Creation date",
       "sortByPublicationDate": "Publication date",
       "noTenders": "No tenders matching the selected filtering criteria.",
-      "criteriaFilter": "Criteria"
+      "criteriaFilter": "Criteria",
+      "unknownSource": "Unknown Source"
     },
     "sidebar": {
       "search": "Search",
@@ -340,6 +343,12 @@
       "unnamedTender": "Unnamed Tender",
       "deleteColumnConfirm": "Are you sure you want to delete this column and all its items?",
       "weightLabel": "Weight (1-5)"
+    },
+    "table": {
+      "columns": "Columns",
+      "defaultColumns": "Default Columns",
+      "criteriaColumns": "Criteria Columns", 
+      "columnHint": "Drag column borders to resize"
     },
     "noFilesAvailable": "No files available",
     "noFilesDescription": "This tender does not have any downloadable files. Check the tender source directly to access required documents.",

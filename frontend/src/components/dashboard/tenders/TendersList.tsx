@@ -32,6 +32,8 @@ import { useTenderSorting } from "@/hooks/table/useTenderSorting";
 import { usePaginationEffects } from "@/hooks/table/usePaginationEffects";
 import { useTenderInitialization } from "@/hooks/table/useTenderInitialization";
 import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
+import { useTableLayout } from "@/hooks/table/useTableLayout";
+import { SortableField } from "@/types/table";
 
 const LOCAL_ITEMS_PER_PAGE = 10;
 
@@ -42,11 +44,11 @@ interface TendersListProps {
   setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-const TendersList: React.FC<TendersListProps> = ({ 
-  drawerRef, 
-  allResults, 
-  setAllResults, 
-  setCurrentTenderBoardStatus 
+const TendersList: React.FC<TendersListProps> = ({
+  drawerRef,
+  allResults,
+  setAllResults,
+  setCurrentTenderBoardStatus
 }) => {
   const t = useTendersTranslations();
   const commonT = useCommonTranslations();
@@ -124,6 +126,15 @@ const TendersList: React.FC<TendersListProps> = ({
     fetchKanbanBoards,
     getTenderBoards
   } = useKanbanBoards();
+
+  const {
+    currentLayout,
+    visibleColumns,
+    updateColumnWidth,
+    updateColumnVisibility,
+    addCriteriaColumn,
+    removeCriteriaColumn,
+  } = useTableLayout({ selectedAnalysis });
 
   const updateCurrentPage = useCallback((newPage: number, isUserTriggered = false) => {
     setCurrentPage(newPage);
@@ -362,19 +373,19 @@ const TendersList: React.FC<TendersListProps> = ({
 
       if (filters.criteria && Object.keys(filters.criteria).length > 0) {
         const selectedCriteria = Object.entries(filters.criteria).filter(([_, isSelected]) => isSelected);
-        
+
         if (selectedCriteria.length > 0) {
           const hasFailingCriteria = selectedCriteria.some(([criteriaName, isSelected]) => {
             const criteriaResult = result.criteria_analysis?.find(ca => ca.criteria === criteriaName);
-            
+
             if (!criteriaResult) {
               return true;
             }
-            
+
             const isMet = criteriaResult.analysis?.criteria_met === true;
             return !isMet;
           });
-          
+
           if (hasFailingCriteria) {
             return false;
           }
@@ -385,10 +396,10 @@ const TendersList: React.FC<TendersListProps> = ({
     });
   }, [allResults, filters, getTenderBoards, searchQuery, selectedDate, dateFilterType]);
 
-  const { sortConfig, sortedResults, handleSort } = useTenderSorting({ 
-    filteredResults, 
+  const { sortConfig, sortedResults, handleSort } = useTenderSorting({
+    filteredResults,
     calculateDaysRemaining,
-    selectedDate 
+    selectedDate
   });
 
   usePaginationEffects({
@@ -476,8 +487,8 @@ const TendersList: React.FC<TendersListProps> = ({
                   >
                     {(selectedAnalysis.assigned_users?.length ?? 0) > 1
                       ? t('tenders.edit.share.sharedBadge')
-                      : t('tenders.edit.share.privateBadge')}                  
-                    </Badge>
+                      : t('tenders.edit.share.privateBadge')}
+                  </Badge>
                 )}
               </div>
               <CardDescription className="mt-1">
@@ -510,22 +521,28 @@ const TendersList: React.FC<TendersListProps> = ({
             </div>
           </div>
 
-          <TenderFilters
-            filters={filters}
-            setFilters={setFilters}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            dateFilterType={dateFilterType}
-            setDateFilterType={setDateFilterType}
-            sortConfig={sortConfig}
-            handleSort={handleSort}
-            availableSources={availableSources}
-            availableCriteria={availableCriteria}
-          />
+<TenderFilters
+  filters={filters}
+  setFilters={setFilters}
+  searchQuery={searchQuery}
+  setSearchQuery={setSearchQuery}
+  selectedDate={selectedDate}
+  setSelectedDate={setSelectedDate}
+  dateFilterType={dateFilterType}
+  setDateFilterType={setDateFilterType}
+  sortConfig={sortConfig}
+  handleSort={handleSort}
+  availableSources={availableSources}
+  availableCriteria={availableCriteria}
+  selectedAnalysis={selectedAnalysis}
+  // UPDATED PROPS - these now use the table layout hook:
+  tableColumns={currentLayout?.columns}
+  onColumnVisibilityChange={updateColumnVisibility}
+  onAddCriteriaColumn={addCriteriaColumn}
+  onRemoveCriteriaColumn={removeCriteriaColumn}
+/>
         </CardHeader>
-        <CardContent className="overflow-x-auto" ref={tableContainerRef}>
+        <CardContent className="overflow-x-auto" ref={tableContainerRef} >
           <TenderTable
             results={currentResults}
             selectedResult={selectedResult}
@@ -549,6 +566,11 @@ const TendersList: React.FC<TendersListProps> = ({
             onUnopened={handleUnopened}
             onDelete={handleDelete}
             onAddToKanban={handleAddToKanban}
+            // NEW PROPS - these are now required for the dynamic table:
+            visibleColumns={visibleColumns}
+            onColumnResize={updateColumnWidth}
+            onSort={handleSort}
+            sortConfig={sortConfig}
           />
           <TendersPagination
             totalPages={totalPages}

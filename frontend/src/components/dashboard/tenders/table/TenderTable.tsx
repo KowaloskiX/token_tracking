@@ -1,3 +1,4 @@
+// src/components/dashboard/tenders/table/TenderTable.tsx
 import React from 'react';
 import {
   Table,
@@ -10,7 +11,9 @@ import {
 import { Loader2 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { TenderAnalysisResult } from "@/types/tenders";
-import { TenderRow } from "./TenderRow";
+import { TableColumn, SortableField } from '@/types/table';
+import { ResizableTableHeader } from "./ResizableTableHeader";
+import { TableCellRenderer } from "./TableCellRenderer";
 import { useTendersTranslations } from "@/hooks/useTranslations";
 
 interface TenderTableProps {
@@ -36,6 +39,15 @@ interface TenderTableProps {
   onUnopened: (result: TenderAnalysisResult) => Promise<void>;
   onDelete: (event: React.MouseEvent, resultId: string) => Promise<void>;
   onAddToKanban: (result: TenderAnalysisResult) => void;
+  
+  // New props for dynamic columns
+  visibleColumns?: TableColumn[];
+  onColumnResize?: (columnId: string, width: number) => void;
+  onSort?: (field: SortableField) => void;
+  sortConfig?: {
+    field: SortableField;
+    direction: 'asc' | 'desc';
+  } | null;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -60,40 +72,149 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onStatusChange,
   onUnopened,
   onDelete,
-  onAddToKanban
+  onAddToKanban,
+  visibleColumns = [],
+  onColumnResize,
+  onSort,
+  sortConfig
 }) => {
   const t = useTendersTranslations();
 
+  // Filter columns for responsive display
+  const getVisibleColumnsForWidth = () => {
+    if (!visibleColumns || visibleColumns.length === 0) {
+      // Fallback to original layout if no columns provided
+      return [];
+    }
+
+    return visibleColumns.filter(column => {
+      if (!column.responsive_breakpoint) return true;
+      
+      switch (column.responsive_breakpoint) {
+        case 'sm':
+          return tableWidth >= 640;
+        case 'md':
+          return tableWidth >= 768;
+        case 'lg':
+          return tableWidth >= 1024;
+        case 'xl':
+          return tableWidth >= 1280;
+        default:
+          return true;
+      }
+    });
+  };
+
+  const displayColumns = getVisibleColumnsForWidth();
+  const totalColumns = displayColumns.length;
+
+  const renderTableHeaders = () => {
+    return displayColumns.map((column) => (
+      <ResizableTableHeader
+        key={column.id}
+        column={column}
+        onResize={(width) => onColumnResize?.(column.id, width)}
+        onSort={onSort}
+        sortConfig={sortConfig}
+      />
+    ));
+  };
+
+  const renderTableRow = (result: TenderAnalysisResult) => {
+    const boardNames = getTenderBoards(result._id!);
+    
+    return (
+      <TableRow
+        key={result._id}
+        className={cn(
+          "cursor-pointer hover:bg-secondary/70 transition-colors",
+          selectedResult?._id === result._id
+            ? "bg-secondary-hover !border-l-2 !border-l-primary shadow-sm"
+            : (!result.opened_at || result.opened_at === "")
+              ? "bg-green-600/5 font-semibold !border-l-2 !border-l-green-600/70 shadow-sm"
+              : isUpdatedAfterOpened(result)
+                ? "bg-orange-700/5 !border-l-2 !border-l-orange-600"
+                : "bg-background"
+        )}
+        onClick={(e) => onRowClick(result, e)}
+      >
+        {displayColumns.map((column) => {
+          // Get the value based on column type
+          let value: any;
+          switch (column.field_name) {
+            case 'name':
+              value = result.tender_metadata.name;
+              break;
+            case 'organization':
+              value = result.tender_metadata.organization;
+              break;
+            case 'initiation_date':
+              value = result.tender_metadata.initiation_date;
+              break;
+            case 'submission_deadline':
+              value = result.tender_metadata.submission_deadline;
+              break;
+            case 'tender_score':
+              value = result.tender_score;
+              break;
+            case 'status':
+              value = result.status;
+              break;
+            default:
+              value = null;
+          }
+
+          return (
+            <TableCellRenderer
+              key={column.id}
+              column={column}
+              result={result}
+              value={value}
+              selectedResult={selectedResult}
+              boardNames={boardNames}
+              boardsLoading={boardsLoading}
+              isUpdatedAfterOpened={isUpdatedAfterOpened}
+              calculateDaysRemaining={calculateDaysRemaining}
+              calculateProgressPercentage={calculateProgressPercentage}
+              formatDate={formatDate}
+              extractHour={extractHour}
+              formatDateTime={formatDateTime}
+              truncateText={truncateText}
+              onStatusChange={onStatusChange}
+              onUnopened={onUnopened}
+              onDelete={onDelete}
+              onAddToKanban={onAddToKanban}
+              tableWidth={tableWidth}
+            />
+          );
+        })}
+      </TableRow>
+    );
+  };
+
+  // If no columns are provided or visible, show fallback message
+  if (!visibleColumns || visibleColumns.length === 0) {
+    return (
+      <div className="rounded-md border shadow-sm overflow-hidden">
+        <div className="p-8 text-center text-muted-foreground">
+          <p>No table layout configured. Please configure your table columns.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border shadow-sm overflow-hidden">
-      <Table className="w-full table-fixed">
+      <Table className="w-full">
         <TableHeader className="bg-white/20 shadow">
           <TableRow>
-            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[8%]" : "w-[4%]")}></TableHead>
-            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[40%]" : "w-[25%]")}>{t('tenders.list.order')}</TableHead>
-            {tableWidth >= 700 && <TableHead className="text-xs w-[15%]">{t('tenders.details.client')}</TableHead>}
-            {tableWidth >= 700 && (
-              <>
-                <TableHead className="text-xs w-[8%]">{t('tenders.details.publicationDate')}</TableHead>
-                <TableHead className="text-xs w-[8%]"></TableHead>
-                <TableHead className="text-xs w-[10%]">{t('tenders.details.submissionDeadline')}</TableHead>
-              </>
-            )}
-            {tableWidth < 700 && (
-              <>
-                <TableHead className="text-xs w-[12%]">{t('tenders.details.publicationDate')}</TableHead>
-                <TableHead className="text-xs w-[20%]">{t('tenders.details.submissionDeadline')}</TableHead>
-              </>
-            )}
-            {tableWidth >= 700 && <TableHead className="text-xs w-[10%]">{t('tenders.list.boardStatus')}</TableHead>}
-            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[15%]" : "w-[10%]")}>{t('tenders.list.relevance')}</TableHead>
-            <TableHead className={cn("text-xs", tableWidth < 700 ? "w-[3%]" : "w-[3%]")}></TableHead>
+            {renderTableHeaders()}
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={tableWidth >= 700 ? 9 : 6} className="h-[500px]">
+              <TableCell colSpan={totalColumns} className="h-[500px]">
                 <div className="flex flex-col w-full h-full items-center justify-center space-y-2">
                   <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
                   <p className="text-sm text-muted-foreground">
@@ -115,7 +236,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
             </TableRow>
           ) : results.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={tableWidth >= 700 ? 9 : 6} className="text-center text-muted-foreground py-20">
+              <TableCell colSpan={totalColumns} className="text-center text-muted-foreground py-20">
                 {allResults.length > 0 ?
                   t('tenders.list.noTenders') :
                   selectedAnalysis ?
@@ -125,28 +246,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               </TableCell>
             </TableRow>
           ) : (
-            results.map((result: TenderAnalysisResult) => (
-              <TenderRow
-                key={result._id}
-                result={result}
-                selectedResult={selectedResult}
-                tableWidth={tableWidth}
-                boardNames={getTenderBoards(result._id!)}
-                boardsLoading={boardsLoading}
-                isUpdatedAfterOpened={isUpdatedAfterOpened}
-                calculateDaysRemaining={calculateDaysRemaining}
-                calculateProgressPercentage={calculateProgressPercentage}
-                formatDate={formatDate}
-                extractHour={extractHour}
-                formatDateTime={formatDateTime}
-                truncateText={truncateText}
-                onRowClick={onRowClick}
-                onStatusChange={onStatusChange}
-                onUnopened={onUnopened}
-                onDelete={onDelete}
-                onAddToKanban={onAddToKanban}
-              />
-            ))
+            results.map(renderTableRow)
           )}
         </TableBody>
       </Table>
