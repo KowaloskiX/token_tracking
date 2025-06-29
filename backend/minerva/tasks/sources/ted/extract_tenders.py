@@ -16,31 +16,86 @@ from minerva.core.database.database import db
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
 
 
-async def safe_goto(page, url, max_retries=2, initial_backoff=120, **kwargs):
+async def safe_goto(page, url, max_retries=3, initial_backoff=120, **kwargs):
     """
-    Navigate to a URL. If a 429 error is encountered,
-    wait and then retry (2 minutes, then 5 minutes).
+    Navigate to a URL with enhanced retry logic. If any error is encountered,
+    wait with random jitter and then retry.
     """
     backoff = initial_backoff
     for attempt in range(max_retries + 1):
         try:
+            # Add random delay before each attempt to spread out requests
+            if attempt > 0:
+                jitter = random.uniform(0.5, 1.5)  # Random multiplier
+                delay = backoff * jitter
+                logging.warning(
+                    f"Retrying navigation to {url} after {delay:.1f} seconds "
+                    f"(attempt {attempt + 1}/{max_retries + 1})."
+                )
+                await asyncio.sleep(delay)
+            
             await page.goto(url, **kwargs)
+            # Add small random delay after successful navigation
+            await asyncio.sleep(random.uniform(1, 3))
             return  # success
         except Exception as e:
-            if "429" in str(e):
+            error_msg = str(e).lower()
+            if "429" in error_msg or "timeout" in error_msg or "net::err" in error_msg:
                 if attempt < max_retries:
-                    logging.warning(
-                        f"429 error when navigating to {url}. Waiting {backoff} seconds "
-                        f"(attempt {attempt + 1}/{max_retries + 1})."
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = 300  # next wait: 5 minutes
+                    # Exponential backoff with jitter for various error types
+                    if "429" in error_msg:
+                        backoff = min(backoff * 2, 600)  # Cap at 10 minutes
+                    else:
+                        backoff = min(backoff * 1.5, 300)  # Cap at 5 minutes for other errors
                 else:
                     logging.error(
-                        f"Failed to navigate to {url} after {max_retries + 1} attempts due to 429."
+                        f"Failed to navigate to {url} after {max_retries + 1} attempts: {str(e)}"
                     )
                     raise e
             else:
+                raise e
+
+
+async def safe_wait_for_selector(page, selector, timeout=15000, max_retries=3):
+    """
+    Wait for a selector with retry logic and random delays.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                # Add random delay before retry
+                delay = random.uniform(2, 5) * (attempt + 1)
+                logging.warning(f"Retrying wait for selector '{selector}' after {delay:.1f} seconds")
+                await asyncio.sleep(delay)
+            
+            await page.wait_for_selector(selector, timeout=timeout)
+            return True
+        except Exception as e:
+            if attempt < max_retries:
+                logging.warning(f"Failed to find selector '{selector}' on attempt {attempt + 1}: {str(e)}")
+            else:
+                logging.error(f"Failed to find selector '{selector}' after {max_retries + 1} attempts: {str(e)}")
+                raise e
+
+
+async def safe_page_operation(operation_func, operation_name, max_retries=2):
+    """
+    Wrapper for page operations with retry logic.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                delay = random.uniform(2, 4) * attempt
+                logging.warning(f"Retrying {operation_name} after {delay:.1f} seconds")
+                await asyncio.sleep(delay)
+            
+            result = await operation_func()
+            return result
+        except Exception as e:
+            if attempt < max_retries:
+                logging.warning(f"Failed {operation_name} on attempt {attempt + 1}: {str(e)}")
+            else:
+                logging.error(f"Failed {operation_name} after {max_retries + 1} attempts: {str(e)}")
                 raise e
 
 
@@ -200,40 +255,75 @@ class BaseTedCountryExtractor:
         page = await context.new_page()
         organization = ""
         notice_type = ""
-        try:
-            await safe_goto(page, detail_url, wait_until='networkidle', timeout=20000)
+        max_retries = 2
+        
+        for attempt in range(max_retries + 1):
             try:
-                # First check for notice type in the summary section
-                summary_section = page.locator("section#summary")
-                if await summary_section.count() > 0:
-                    first_div = summary_section.locator("div").first
-                    if await first_div.count() > 0:
-                        notice_type_span = first_div.locator("span[data-labels-key*='form-type']")
-                        if await notice_type_span.count() > 0:
-                            notice_type = await notice_type_span.inner_text()
-                            logging.info(f"Found notice type: {notice_type}")
+                if attempt > 0:
+                    delay = random.uniform(2, 5) * attempt
+                    logging.warning(f"Retrying detail page extraction after {delay:.1f} seconds (attempt {attempt + 1})")
+                    await asyncio.sleep(delay)
+                
+                await safe_goto(page, detail_url, max_retries=2, initial_backoff=15, wait_until='networkidle', timeout=30000)
+                
+                try:
+                    # First check for notice type in the summary section
+                    summary_section = page.locator("section#summary")
+                    if await summary_section.count() > 0:
+                        first_div = summary_section.locator("div").first
+                        if await first_div.count() > 0:
+                            notice_type_span = first_div.locator("span[data-labels-key*='form-type']")
+                            if await notice_type_span.count() > 0:
+                                notice_type = await notice_type_span.inner_text()
+                                logging.info(f"Found notice type: {notice_type}")
 
-                # Then get the organization name
-                official_name_labels = page.locator(
-                    "span.label:has-text('Official name'), span.label:has-text('Official Name')"
-                )
-                if await official_name_labels.count() > 0:
-                    label_elem = official_name_labels.nth(0)
-                    parent = label_elem.locator("xpath=..")
-                    data_elem = parent.locator("span.data")
-                    if await data_elem.count() > 0:
-                        organization = (await data_elem.inner_text()).strip()
+                    # Then get the organization name
+                    official_name_labels = page.locator(
+                        "span.label:has-text('Official name'), span.label:has-text('Official Name')"
+                    )
+                    if await official_name_labels.count() > 0:
+                        label_elem = official_name_labels.nth(0)
+                        parent = label_elem.locator("xpath=..")
+                        data_elem = parent.locator("span.data")
+                        if await data_elem.count() > 0:
+                            organization = (await data_elem.inner_text()).strip()
+                    
+                    # If we get here, extraction was successful
+                    break
+                    
+                except Exception as e:
+                    if attempt < max_retries:
+                        logging.warning(f"Error extracting from detail page (attempt {attempt + 1}): {e}")
+                        organization = ""
+                        notice_type = ""
+                    else:
+                        logging.error(f"Error extracting official name or notice type after all retries: {e}")
+                        organization = ""
+                        notice_type = ""
+                        break
+                        
             except Exception as e:
-                logging.error(f"Error extracting official name or notice type: {e}")
-                organization = ""
-                notice_type = ""
-        finally:
+                if attempt < max_retries:
+                    logging.warning(f"Failed to access detail page (attempt {attempt + 1}): {e}")
+                else:
+                    logging.error(f"Failed to access detail page after all retries: {e}")
+                    break
+        
+        try:
             await page.close()
+        except Exception as e:
+            logging.warning(f"Error closing detail page: {e}")
+            
         return organization, notice_type
 
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 1)
         start_date_str = inputs.get("start_date")  # e.g., "2025-01-01"
+        
+        # Add random initial delay to spread out concurrent requests
+        initial_delay = random.uniform(5, 15)
+        logging.info(f"Starting {self.country_code} TED extraction after {initial_delay:.1f} second delay")
+        await asyncio.sleep(initial_delay)
         
         # Use the country-specific code in the URL
         listing_url = (
@@ -252,7 +342,7 @@ class BaseTedCountryExtractor:
 
                 logging.info(f"Navigating to {listing_url}")
                 try:
-                    await safe_goto(page, listing_url, wait_until='networkidle', timeout=30000)
+                    await safe_goto(page, listing_url, max_retries=3, initial_backoff=30, wait_until='networkidle', timeout=45000)
                 except Exception as e:
                     logging.error(f"Could not navigate to {listing_url}. Error: {e}")
                     return {
@@ -267,164 +357,205 @@ class BaseTedCountryExtractor:
 
                 while current_page <= max_pages and not found_older:
                     logging.info(f"Scraping page {current_page}...")
-                    try:
-                        await page.wait_for_selector("table tbody tr", timeout=10000)
-                        previous_count = 0
-                        while True:
-                            await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
-                            await page.wait_for_timeout(2000)
-                            current_count = await page.locator("table tbody tr").count()
-                            if current_count == previous_count:
-                                break
-                            previous_count = current_count
+                    page_retry_count = 0
+                    page_processed = False
+                    
+                    while page_retry_count < 3 and not page_processed:
+                        try:
+                            # Wait for page content with retry logic
+                            await safe_wait_for_selector(page, "table tbody tr", timeout=20000, max_retries=2)
+                            
+                            # Scroll to load all content with random delays
+                            previous_count = 0
+                            scroll_attempts = 0
+                            max_scroll_attempts = 10
+                            
+                            while scroll_attempts < max_scroll_attempts:
+                                await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
+                                # Random delay between scrolls
+                                await asyncio.sleep(random.uniform(2, 4))
+                                current_count = await page.locator("table tbody tr").count()
+                                if current_count == previous_count:
+                                    break
+                                previous_count = current_count
+                                scroll_attempts += 1
 
-                        rows = page.locator("table tbody tr")
-                        row_count = await rows.count()
-                        logging.info(f"Found {row_count} rows on page {current_page}.")
-
-                        if row_count < 10:
-                            logging.warning(
-                                f"Row count ({row_count}) on page {current_page} is unexpectedly low. "
-                                "Waiting 2 minutes and reloading page."
-                            )
-                            await asyncio.sleep(120)
-                            await page.reload(wait_until='networkidle', timeout=30000)
-                            await page.wait_for_selector("table tbody tr", timeout=15000)
                             rows = page.locator("table tbody tr")
                             row_count = await rows.count()
-                            logging.info(f"After reload, found {row_count} rows on page {current_page}.")
+                            logging.info(f"Found {row_count} rows on page {current_page}.")
+
                             if row_count < 10:
-                                logging.error("Row count still too low after reload. Ending pagination.")
+                                logging.warning(
+                                    f"Row count ({row_count}) on page {current_page} is unexpectedly low. "
+                                    "Waiting and reloading page."
+                                )
+                                # Random delay before reload
+                                await asyncio.sleep(random.uniform(60, 120))
+                                await page.reload(wait_until='networkidle', timeout=45000)
+                                await safe_wait_for_selector(page, "table tbody tr", timeout=20000, max_retries=2)
+                                rows = page.locator("table tbody tr")
+                                row_count = await rows.count()
+                                logging.info(f"After reload, found {row_count} rows on page {current_page}.")
+                                if row_count < 10:
+                                    logging.error("Row count still too low after reload. Ending pagination.")
+                                    break
+
+                            for row_index in range(row_count):
+                                row = rows.nth(row_index)
+                                cells = row.locator("td")
+                                cell_count = await cells.count()
+                                if cell_count < 6:
+                                    continue
+                                try:
+                                    notice_num_cell = cells.nth(1)
+                                    notice_link = notice_num_cell.locator("a")
+                                    details_href = await notice_link.get_attribute("href")
+                                    detail_url = f"https://ted.europa.eu{details_href}"
+
+                                    if detail_url in seen_urls:
+                                        logging.info(f"Skipping duplicate URL: {detail_url}")
+                                        continue
+                                    seen_urls.add(detail_url)
+
+                                    description_cell = cells.nth(2)
+                                    name_span = description_cell.locator("span.css-u0hsu5.eeimd6y0").first
+                                    name = await name_span.inner_text()
+                                    if not name:
+                                        name = await notice_link.inner_text()
+
+                                    publication_date_str = (await cells.nth(4).inner_text()).strip()
+                                    iso_initiation_date = ""
+                                    try:
+                                        day, month, year_str = publication_date_str.split("/")
+                                        iso_initiation_date = f"{year_str}-{month}-{day}"
+                                    except Exception:
+                                        iso_initiation_date = publication_date_str
+
+                                    if start_date_str and iso_initiation_date:
+                                        try:
+                                            start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                                            publication_dt = datetime.strptime(iso_initiation_date, "%Y-%m-%d")
+                                            if publication_dt < start_dt:
+                                                logging.info(
+                                                    f"Found older date {iso_initiation_date} "
+                                                    f"than start date {start_date_str}"
+                                                )
+                                                found_older = True
+                                                break
+                                        except ValueError as e:
+                                            logging.error(f"Error parsing dates: {e}")
+
+                                    submission_deadline = ""
+                                    if cell_count > 5:
+                                        submission_deadline_raw = (await cells.nth(5).inner_text()).strip()
+                                        
+                                        # First, remove any timezone information that might be in the raw string
+                                        if '(' in submission_deadline_raw:
+                                            submission_deadline_raw = submission_deadline_raw.split('(')[0].strip()
+                                        
+                                        try:
+                                            # Try parsing the date with seconds if present
+                                            if ':00' in submission_deadline_raw and submission_deadline_raw.count(':') > 1:
+                                                dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M:%S")
+                                            else:
+                                                # Standard format without seconds
+                                                dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M")
+                                                
+                                            # Format exactly as required
+                                            submission_deadline = dt.strftime("%Y-%m-%d %H:%M")
+                                        except ValueError as e:
+                                            # If parsing fails, use a regex to extract just the date and time parts
+                                            import re
+                                            match = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})', submission_deadline_raw)
+                                            if match:
+                                                try:
+                                                    extracted_date = match.group(1)
+                                                    dt = datetime.strptime(extracted_date, "%d/%m/%Y %H:%M")
+                                                    submission_deadline = dt.strftime("%Y-%m-%d %H:%M")
+                                                except Exception:
+                                                    # Last resort: just remove anything after parentheses and keep as is
+                                                    submission_deadline = submission_deadline_raw
+                                            else:
+                                                submission_deadline = submission_deadline_raw
+
+                                    country = (await cells.nth(3).inner_text()).strip()
+                                    
+                                    # Add small delay between detail page requests to avoid overwhelming
+                                    await asyncio.sleep(random.uniform(0.5, 1.5))
+                                    organization, notice_type = await self.get_organization_from_detail_page(context, detail_url)
+
+                                    # Skip if this is a result notice
+                                    if notice_type and "Result" in notice_type:
+                                        logging.info(f"Skipping result notice at {detail_url}")
+                                        continue
+
+                                    tender_data = {
+                                        "name": name,
+                                        "organization": organization or "Unknown from detail page",
+                                        "location": country,
+                                        "submission_deadline": submission_deadline,
+                                        "initiation_date": iso_initiation_date,
+                                        "details_url": detail_url,
+                                        "content_type": "tender",
+                                        "source_type": self.source_type_name
+                                    }
+
+                                    try:
+                                        tender = Tender(**tender_data)
+                                        tenders.append(tender)
+                                        logging.debug(f"Added tender: {tender.name} ({tender.details_url})")
+                                    except Exception as e:
+                                        logging.error(f"Error creating tender object: {e}")
+                                except Exception as e:
+                                    logging.error(f"Error processing row {row_index} on page {current_page}: {e}")
+
+                            page_processed = True
+                            
+                        except Exception as e:
+                            page_retry_count += 1
+                            if page_retry_count < 3:
+                                delay = random.uniform(30, 60) * page_retry_count
+                                logging.warning(f"Page processing failed (attempt {page_retry_count}/3), retrying after {delay:.1f} seconds: {str(e)}")
+                                await asyncio.sleep(delay)
+                                # Try to reload the page
+                                try:
+                                    await page.reload(wait_until='networkidle', timeout=45000)
+                                except Exception as reload_e:
+                                    logging.warning(f"Page reload failed: {reload_e}")
+                            else:
+                                logging.error(f"Failed to process page {current_page} after 3 attempts: {e}")
                                 break
 
-                        for row_index in range(row_count):
-                            row = rows.nth(row_index)
-                            cells = row.locator("td")
-                            cell_count = await cells.count()
-                            if cell_count < 6:
-                                continue
-                            try:
-                                notice_num_cell = cells.nth(1)
-                                notice_link = notice_num_cell.locator("a")
-                                details_href = await notice_link.get_attribute("href")
-                                detail_url = f"https://ted.europa.eu{details_href}"
+                    if found_older:
+                        logging.info("Found older date than start date, stopping pagination.")
+                        break
 
-                                if detail_url in seen_urls:
-                                    logging.info(f"Skipping duplicate URL: {detail_url}")
-                                    continue
-                                seen_urls.add(detail_url)
+                    if current_page >= max_pages:
+                        logging.info(f"Reached maximum pages limit: {max_pages}")
+                        break
 
-                                description_cell = cells.nth(2)
-                                name_span = description_cell.locator("span.css-u0hsu5.eeimd6y0").first
-                                name = await name_span.inner_text()
-                                if not name:
-                                    name = await notice_link.inner_text()
-
-                                publication_date_str = (await cells.nth(4).inner_text()).strip()
-                                iso_initiation_date = ""
-                                try:
-                                    day, month, year_str = publication_date_str.split("/")
-                                    iso_initiation_date = f"{year_str}-{month}-{day}"
-                                except Exception:
-                                    iso_initiation_date = publication_date_str
-
-                                if start_date_str and iso_initiation_date:
-                                    try:
-                                        start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
-                                        publication_dt = datetime.strptime(iso_initiation_date, "%Y-%m-%d")
-                                        if publication_dt < start_dt:
-                                            logging.info(
-                                                f"Found older date {iso_initiation_date} "
-                                                f"than start date {start_date_str}"
-                                            )
-                                            found_older = True
-                                            break
-                                    except ValueError as e:
-                                        logging.error(f"Error parsing dates: {e}")
-
-                                submission_deadline = ""
-                                if cell_count > 5:
-                                    submission_deadline_raw = (await cells.nth(5).inner_text()).strip()
-                                    
-                                    # First, remove any timezone information that might be in the raw string
-                                    if '(' in submission_deadline_raw:
-                                        submission_deadline_raw = submission_deadline_raw.split('(')[0].strip()
-                                    
-                                    try:
-                                        # Try parsing the date with seconds if present
-                                        if ':00' in submission_deadline_raw and submission_deadline_raw.count(':') > 1:
-                                            dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M:%S")
-                                        else:
-                                            # Standard format without seconds
-                                            dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M")
-                                            
-                                        # Format exactly as required
-                                        submission_deadline = dt.strftime("%Y-%m-%d %H:%M")
-                                    except ValueError as e:
-                                        # If parsing fails, use a regex to extract just the date and time parts
-                                        import re
-                                        match = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})', submission_deadline_raw)
-                                        if match:
-                                            try:
-                                                extracted_date = match.group(1)
-                                                dt = datetime.strptime(extracted_date, "%d/%m/%Y %H:%M")
-                                                submission_deadline = dt.strftime("%Y-%m-%d %H:%M")
-                                            except Exception:
-                                                # Last resort: just remove anything after parentheses and keep as is
-                                                submission_deadline = submission_deadline_raw
-                                        else:
-                                            submission_deadline = submission_deadline_raw
-
-                                country = (await cells.nth(3).inner_text()).strip()
-                                organization, notice_type = await self.get_organization_from_detail_page(context, detail_url)
-
-                                # Skip if this is a result notice
-                                if notice_type and "Result" in notice_type:
-                                    logging.info(f"Skipping result notice at {detail_url}")
-                                    continue
-
-                                tender_data = {
-                                    "name": name,
-                                    "organization": organization or "Unknown from detail page",
-                                    "location": country,
-                                    "submission_deadline": submission_deadline,
-                                    "initiation_date": iso_initiation_date,
-                                    "details_url": detail_url,
-                                    "content_type": "tender",
-                                    "source_type": self.source_type_name
-                                }
-
-                                try:
-                                    tender = Tender(**tender_data)
-                                    tenders.append(tender)
-                                    logging.debug(f"Added tender: {tender.name} ({tender.details_url})")
-                                except Exception as e:
-                                    logging.error(f"Error creating tender object: {e}")
-                            except Exception as e:
-                                logging.error(f"Error processing row {row_index} on page {current_page}: {e}")
-
-                        if found_older:
-                            logging.info("Found older date than start date, stopping pagination.")
-                            break
-
-                        if current_page >= max_pages:
-                            logging.info(f"Reached maximum pages limit: {max_pages}")
-                            break
-
+                    # Handle pagination with retry logic
+                    try:
                         next_buttons = page.locator("button[aria-label='Go to the next page']")
                         if await next_buttons.count() > 0:
                             next_button = next_buttons.first
                             logging.info(f"Found next page button on page {current_page}.")
-                            await next_button.click()
-                            await page.wait_for_timeout(3000)
-                            await page.wait_for_selector("table tbody tr", timeout=15000)
+                            
+                            # Click with retry logic
+                            async def click_next():
+                                await next_button.click()
+                                # Random delay after clicking
+                                delay = random.uniform(3, 6)
+                                await asyncio.sleep(delay)
+                                await safe_wait_for_selector(page, "table tbody tr", timeout=20000, max_retries=2)
+                            
+                            await safe_page_operation(click_next, f"clicking next page button on page {current_page}")
                             current_page += 1
                         else:
                             logging.info("No next page button found, ending pagination.")
                             break
-
                     except Exception as e:
-                        logging.error(f"Error processing page {current_page}: {e}")
+                        logging.error(f"Error during pagination from page {current_page}: {e}")
                         break
 
                 metadata = ExtractorMetadata(
@@ -460,6 +591,11 @@ class BaseTedCountryExtractor:
 
         updates_found: Dict[str, List[Tuple[str, bytes, str, str]]] = {}
 
+        # Add random delay to spread out concurrent update checks
+        update_delay = random.uniform(2, 8)
+        self.logger.info(f"Starting update check after {update_delay:.1f} second delay")
+        await asyncio.sleep(update_delay)
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context()
@@ -476,9 +612,11 @@ class BaseTedCountryExtractor:
                     self.logger.info(f"Checking updates for tender: {tender.id} at {url}")
                     page = await context.new_page()
 
-                    # Go to the tender_url
+                    # Go to the tender_url with enhanced retry logic
                     try:
-                        await safe_goto(page, url, wait_until='networkidle', timeout=30000)
+                        await safe_goto(page, url, max_retries=2, initial_backoff=15, wait_until='networkidle', timeout=30000)
+                        # Add small random delay after navigation
+                        await asyncio.sleep(random.uniform(1, 2))
                     except Exception as e:
                         self.logger.error(f"Could not navigate to {url}: {e}")
                         await page.close()
@@ -543,6 +681,9 @@ class BaseTedCountryExtractor:
 
                     # Close the page before moving to the next tender
                     await page.close()
+                    
+                    # Add random delay between processing different tenders
+                    await asyncio.sleep(random.uniform(1, 3))
 
             finally:
                 await context.close()

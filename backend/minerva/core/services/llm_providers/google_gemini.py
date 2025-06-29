@@ -20,14 +20,77 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _shared_genai_client: genai.Client | None = None
+_current_api_key_index: int = 0  # Track which API key we're currently using
 
+# Available API keys in order of preference
+_available_api_keys = [
+    os.getenv("GEMINI_API_KEY"),
+    os.getenv("GEMINI_API_KEY_2")
+]
+
+def _get_next_api_key() -> Optional[str]:
+    """Get the next available API key, cycling through available keys."""
+    global _current_api_key_index
+    
+    # Filter out None values
+    valid_keys = [key for key in _available_api_keys if key is not None]
+    
+    if not valid_keys:
+        return None
+    
+    # Get current key
+    if _current_api_key_index < len(valid_keys):
+        return valid_keys[_current_api_key_index]
+    
+    return None
+
+def _rotate_api_key() -> Optional[str]:
+    """Rotate to the next API key. Returns the new key or None if no more keys available."""
+    global _current_api_key_index, _shared_genai_client
+    
+    _current_api_key_index += 1
+    
+    # Close existing client to force recreation with new key
+    if _shared_genai_client is not None:
+        try:
+            _shared_genai_client.close()
+        except:
+            pass
+        _shared_genai_client = None
+    
+    return _get_next_api_key()
+
+def _reset_api_key_rotation():
+    """Reset API key rotation to start from the first key."""
+    global _current_api_key_index, _shared_genai_client
+    _current_api_key_index = 0
+    
+    # Close existing client to force recreation
+    if _shared_genai_client is not None:
+        try:
+            _shared_genai_client.close()
+        except:
+            pass
+        _shared_genai_client = None
 
 def _ensure_client() -> genai.Client:
     """Return a singleton ``genai.Client`` instance (Developer API or Vertex AI)."""
     global _shared_genai_client
     if _shared_genai_client is None:
-        _shared_genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+        api_key = _get_next_api_key()
+        if not api_key:
+            raise ValueError("No valid Google API key available")
+        _shared_genai_client = genai.Client(api_key=api_key)
     return _shared_genai_client
+
+def _is_rate_limit_error(error: Exception) -> bool:
+    """Check if the error is a rate limit error that should trigger API key rotation."""
+    error_str = str(error).lower()
+    rate_limit_indicators = [
+        "quota", "resource_exhausted", "rate limit", "429", 
+        "too many requests", "quota exceeded"
+    ]
+    return any(indicator in error_str for indicator in rate_limit_indicators)
 
 def _clean_schema_for_gemini(schema: Any) -> Any:
     """
@@ -120,6 +183,54 @@ class GeminiLLM:
         self.instructions = instructions
         self.response_format = response_format or {}
 
+    def _refresh_client(self):
+        """Force refresh the client (used after API key rotation)."""
+        self.client = _ensure_client()
+
+    async def _try_with_api_key_rotation(self, operation_func, *args, **kwargs):
+        """
+        Try an operation with API key rotation on rate limit errors.
+        
+        Args:
+            operation_func: The async function to call
+            *args, **kwargs: Arguments to pass to the operation function
+        
+        Returns:
+            The result of the operation
+        
+        Raises:
+            The last exception if all API keys fail
+        """
+        last_exception = None
+        max_attempts = len([key for key in _available_api_keys if key is not None])
+        
+        for attempt in range(max_attempts):
+            try:
+                return await operation_func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                
+                # Check if this is a rate limit error that should trigger rotation
+                if _is_rate_limit_error(e) and attempt < max_attempts - 1:
+                    logger.warning(f"Gemini API key {_current_api_key_index + 1} hit rate limit, rotating to next key")
+                    
+                    # Try to rotate to next API key
+                    next_key = _rotate_api_key()
+                    if next_key:
+                        logger.info(f"Rotated to Gemini API key {_current_api_key_index + 1}")
+                        # Refresh our client with the new key
+                        self._refresh_client()
+                        continue
+                    else:
+                        logger.error("No more Gemini API keys available for rotation")
+                        break
+                else:
+                    # Not a rate limit error, or we've exhausted all attempts
+                    break
+        
+        # If we get here, all attempts failed
+        raise last_exception
+
     # ------------------------------------------------------------------
     # Public API --------------------------------------------------------
     # ------------------------------------------------------------------
@@ -128,6 +239,10 @@ class GeminiLLM:
         self, messages: List[Dict[str, str]]
     ) -> Union[str, LLMResponse, AsyncGenerator[Dict[str, Any], None]]:
         """Generate a response (sync or streaming) with proper config handling and usage tracking."""
+
+        # Always reset API key rotation to start with the first key for each new request
+        _reset_api_key_rotation()
+        self._refresh_client()
 
         # Convert chat messages → Gemini ``Content`` objects.
         contents: List[types.Content] = []
@@ -160,13 +275,17 @@ class GeminiLLM:
             types.GenerateContentConfig(**cfg_kwargs, thinking_config=types.ThinkingConfig(thinking_budget=0)) if cfg_kwargs else None
         )
 
-        # --------------------------- Call model -------------------------
+        # --------------------------- Call model with API key rotation -------------------------
         if not self.stream:
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=gen_config
-            )
+            async def _generate_content():
+                response = await self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=gen_config
+                )
+                return response
+            
+            response = await self._try_with_api_key_rotation(_generate_content)
             
             # Extract usage information from Gemini response
             usage_info = None
@@ -193,12 +312,15 @@ class GeminiLLM:
             else:
                 return LLMResponse(str(content), usage_info, "text")
 
-        # Streaming
-        stream_iter = await self.client.aio.models.generate_content_stream(
-            model=self.model_name,
-            contents=contents,
-            config=gen_config,
-        )
+        # Streaming with API key rotation
+        async def _generate_content_stream():
+            return await self.client.aio.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents,
+                config=gen_config,
+            )
+
+        stream_iter = await self._try_with_api_key_rotation(_generate_content_stream)
 
         async def _stream() -> AsyncGenerator[Dict[str, Any], None]:
             async for chunk in stream_iter:
@@ -248,3 +370,8 @@ class GeminiLLM:
             else:
                 _shared_genai_client.close()  # type: ignore[attr-defined]
             _shared_genai_client = None
+
+    @classmethod  
+    def reset_api_key_rotation(cls):
+        """Reset API key rotation to start from the first key. Useful for testing or manual resets."""
+        _reset_api_key_rotation()

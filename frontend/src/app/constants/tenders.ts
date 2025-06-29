@@ -34,7 +34,7 @@ export const POLISH_SOURCES = {
     label: 'Logintrade',
     urlPattern: 'logintrade.net'
   },
-  epropublico: {
+  epropublico_main: {
     icon: '/images/tender_sources/epropublico_logo.png',
     label: 'Epropublico',
     urlPattern: 'e-propublico.pl'

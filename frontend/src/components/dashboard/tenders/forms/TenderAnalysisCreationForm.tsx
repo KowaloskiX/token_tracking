@@ -82,6 +82,7 @@ const formSchema = z.object({
     .min(1, "At least one criterion is required")
     .max(20, "You can add max 20 criteria"),
   assigned_users: z.array(z.string()).default([]),
+  filtering_rules: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -94,6 +95,7 @@ interface Props {
 
 export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false }: Props) {
   const [tedExpanded, setTedExpanded] = useState(false);
+  const [advancedFilteringExpanded, setAdvancedFilteringExpanded] = useState(false);
   const [weights, setWeights] = useState<Record<string, number>>(
     CRITERIA_CONFIG.reduce((acc, curr) => {
       acc[curr.id] = 3;
@@ -112,6 +114,7 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
       search_phrase: "",
       sources: [],
       assigned_users: [],
+      filtering_rules: "",
       criteria: CRITERIA_CONFIG.map(c => ({
         name: c.name,
         description: c.description,
@@ -726,6 +729,46 @@ export function TenderAnalysisCreateForm({ onSubmit, onCancel, isLoading = false
                 {t('tenders.create.addCriterion')}
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAdvancedFilteringExpanded(!advancedFilteringExpanded)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground p-0 h-auto font-normal justify-start"
+            >
+              <Sparkles className="h-4 w-4" />
+              {advancedFilteringExpanded ? t('tenders.create.hideAdvancedFiltering') : t('tenders.create.showAdvancedFiltering')}
+              {advancedFilteringExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+
+            {advancedFilteringExpanded && (
+              <FormField
+                control={form.control}
+                name="filtering_rules"
+                render={({ field }) => (
+                  <FormItem className="w-full">
+                    <FormControl>
+                      <Textarea
+                        placeholder={t('tenders.create.filteringRulesPlaceholder')}
+                        className="min-h-[100px] w-full"
+                        {...field}
+                        value={field.value || ''}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs text-muted-foreground">
+                      {t('tenders.create.filteringRulesDescription')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </div>
 
           <Button type="submit" className="w-full bg-primary hover:bg-primary-hover shadow text-white" disabled={isLoading}>

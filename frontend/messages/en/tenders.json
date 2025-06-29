@@ -61,7 +61,14 @@
         "recipients": "Email notification recipients",
         "enableAll": "Enable all",
         "disableAll": "Disable all"
-      }
+      },
+      "advancedFiltering": "Advanced Filtering",
+      "showAdvancedFiltering": "Show advanced filtering",
+      "hideAdvancedFiltering": "Hide advanced filtering",
+      "filteringRulesLabel": "Custom Filtering Rules",
+      "filteringRulesPlaceholder": "Enter custom instructions for filtering tenders...",
+      "filteringRulesTooltip": "Provide specific instructions to guide the AI in filtering tenders based on your requirements",
+      "filteringRulesDescription": "Optional: Add custom rules to help the AI better filter tenders according to your specific needs"
     },
     "create": {
       "title": "Create new tender search",
@@ -93,7 +100,14 @@
       "keywordsPlaceholder": "Enter keywords separated by commas, e.g. 'certification, ISO, budget'",
       "keywordsTooltip": "Enter keywords separated by commas, e.g. \"certification, ISO, budget\"",
       "subcriteriaLabel": "Additional queries",
-      "addSubquery": "+ Add query"
+      "addSubquery": "+ Add query",
+      "advancedFiltering": "Advanced Filtering",
+      "showAdvancedFiltering": "Show advanced filtering",
+      "hideAdvancedFiltering": "Hide advanced filtering",
+      "filteringRulesLabel": "Custom Filtering Rules",
+      "filteringRulesPlaceholder": "Enter custom instructions for filtering tenders...",
+      "filteringRulesTooltip": "Provide specific instructions to guide the AI in filtering tenders based on your requirements",
+      "filteringRulesDescription": "Optional: Add custom rules to help the AI better filter tenders according to your specific needs"
     },
     "kanban": {
       "addToKanban": "Add to Kanban",
@@ -156,9 +170,7 @@
       "citation": "Citation",
       "fragment": "Fragment",
       "fragments": "fragments",
-      "unknownSource": "Unknown source",
-      "confidence": "confidence",
-      "noAnalysis": "No analysis available"
+      "unknownSource": "Unknown source"
     },
     "status": {
       "inactive": "Inactive",
@@ -173,7 +185,8 @@
       "status": "Status",
       "selectStatus": "Select status",
       "unknown": "Unknown",
-      "markRead": "Mark as read"
+      "markRead": "Mark as read",
+      "title": "Status"
     },
     "details": {
       "client": "Client",
@@ -212,8 +225,7 @@
       "sortByCreationDate": "Creation date",
       "sortByPublicationDate": "Publication date",
       "noTenders": "No tenders matching the selected filtering criteria.",
-      "criteriaFilter": "Criteria",
-      "unknownSource": "Unknown Source"
+      "criteriaFilter": "Criteria"
     },
     "sidebar": {
       "search": "Search",
@@ -273,7 +285,10 @@
       "addToKanban": "Add to Kanban board",
       "searchSettings": "Search settings",
       "noTenderSelected": "No tender selected",
-      "selectTenderToView": "Select a tender to view details"
+      "selectTenderToView": "Select a tender to view details",
+      "backToTenders": "Back to Tenders",
+      "copySuccess": "Copied",
+      "copySuccessDescription": "Text has been copied to clipboard"
     },
     "tooltips": {
       "newTender": "New tender, unread",
@@ -344,12 +359,6 @@
       "deleteColumnConfirm": "Are you sure you want to delete this column and all its items?",
       "weightLabel": "Weight (1-5)"
     },
-    "table": {
-      "columns": "Columns",
-      "defaultColumns": "Default Columns",
-      "criteriaColumns": "Criteria Columns", 
-      "columnHint": "Drag column borders to resize"
-    },
     "noFilesAvailable": "No files available",
     "noFilesDescription": "This tender does not have any downloadable files. Check the tender source directly to access required documents.",
     "openTenderSource": "Open tender source",
@@ -359,5 +368,19 @@
     "downloadFullData": "Download full data",
     "noAnalysis": "No criteria analysis available. Files were not downloaded from the tender source.",
     "noCommentsError": "Cannot load comments - missing tender identifier"
+  },
+  "errors": {
+    "notFound": "Tender not found",
+    "notFoundDescription": "The requested tender was not found.",
+    "loadFailed": "Failed to load tender details",
+    "loadFailedTitle": "Error"
+  },
+  "description": {
+    "title": "Description",
+    "noDescription": "No tender description available"
+  },
+  "info": {
+    "title": "Information",
+    "notSpecified": "Not specified"
   }
 }

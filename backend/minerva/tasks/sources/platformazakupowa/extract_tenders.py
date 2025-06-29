@@ -39,6 +39,19 @@ class PlatformaZakupowaTenderExtractor:
         )
         self.source_type = "platformazakupowa"
 
+    async def _goto_with_retry(self, page, url: str, wait_until: str, timeout: int, retries: int = 2, purpose: str = "navigation"):
+        for attempt in range(retries + 1):
+            try:
+                await page.goto(url, wait_until=wait_until, timeout=timeout)
+                return
+            except Exception as e:
+                if attempt < retries:
+                    logging.info(f"{self.source_type}: Retrying to load URL: {url} (attempt {attempt+1}) for {purpose}")
+                    await page.wait_for_timeout(random.uniform(2000, 4000))  # Random delay before retry
+                else:
+                    logging.error(f"{self.source_type}: Timeout/error loading URL: {url} for {purpose}")
+                    raise e
+
     async def fetch_detail_info(self, context, detail_url: str) -> dict:
         """Fetch additional information from tender detail page"""
         page = await context.new_page()
@@ -53,7 +66,8 @@ class PlatformaZakupowaTenderExtractor:
         }
         
         try:
-            await page.goto(detail_url, wait_until='networkidle', timeout=15000)
+            # await page.goto(detail_url, wait_until='domcontentloaded', timeout=15000)
+            await self._goto_with_retry(page, detail_url, wait_until='domcontentloaded', timeout=15000, retries=3)
             
             # Get basic info
             soup = BeautifulSoup(await page.content(), 'html.parser')
@@ -138,7 +152,7 @@ class PlatformaZakupowaTenderExtractor:
                         await page.wait_for_timeout(random.uniform(1000, 3000))
                         
                         # Navigate to page with increased timeout
-                        await page.goto(details_url, wait_until='networkidle', timeout=30000)
+                        await self._goto_with_retry(page, details_url, wait_until='domcontentloaded', timeout=30000, retries=3, purpose="tender detail page")
                         
                         # Close the chatbot widget if present
                         try:
@@ -432,7 +446,8 @@ class PlatformaZakupowaTenderExtractor:
                     try:
                         url = self.list_url.format(page=current_page)
                         logging.info(f"Processing page {current_page}")
-                        await page.goto(url, wait_until='networkidle', timeout=15000)
+                        # await page.goto(url, wait_until='domcontentloaded', timeout=15000)
+                        await self._goto_with_retry(page, url, wait_until='domcontentloaded', timeout=15000, retries=3, purpose="tender list page")
 
                         # Wait for tender listings to load
                         await page.wait_for_selector("div.auction-row", timeout=10000)
@@ -725,7 +740,15 @@ class PlatformaZakupowaTenderExtractor:
                 detail_page = await context.new_page()
                 try:
                     logging.info(f"Checking announcements for tender: {tender.tender_url}")
-                    await detail_page.goto(tender.tender_url, wait_until='networkidle', timeout=30000)
+                    # await detail_page.goto(tender.tender_url, wait_until='domcontentloaded', timeout=30000)
+                    await self._goto_with_retry(
+                        detail_page,
+                        tender.tender_url,
+                        wait_until='domcontentloaded',
+                        timeout=30000,
+                        retries=3,
+                        purpose="tender detail page"
+                    )
 
                     # Parse the announcements table
                     content_html = await detail_page.content()

@@ -764,7 +764,9 @@ class RAGManager:
                         logger.warning(f"Could not find ID for tender: {match['name']}")
 
             if current_user and hasattr(response, "usage") and response.usage:
-                await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+                total_tokens = response.usage.get('total_tokens', 0) if isinstance(response.usage, dict) else getattr(response.usage, 'total_tokens', 0)
+                if total_tokens > 0:
+                    await update_user_token_usage(str(current_user.id), total_tokens)
             # …
             log_mem(f"ai_filter_tenders_with_subject:end:{run_id or 'single'}")
             return TenderProfileMatches(**parsed_output)
@@ -889,7 +891,9 @@ class RAGManager:
                 }
 
             if current_user and hasattr(response, "usage") and response.usage:
-                await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+                total_tokens = response.usage.get('total_tokens', 0) if isinstance(response.usage, dict) else getattr(response.usage, 'total_tokens', 0)
+                if total_tokens > 0:
+                    await update_user_token_usage(str(current_user.id), total_tokens)
 
             log_mem("ai_review_filter_results:end")
             return parsed_output
@@ -1012,7 +1016,7 @@ class RAGManager:
                 # Base prompt
                 base_prompt = (
                     f"Please answer this question based on the documentation content:\n"
-                    f"<QUESTION>{criterion.name}</QUESTION>\n"
+                    f"<QUESTION>{criterion.description}</QUESTION>\n"
                 )
 
                 has_instruction = False
@@ -1025,7 +1029,7 @@ class RAGManager:
                     instruction_guidance = f"\nIMPORTANT INSTRUCTIONS: When writing your summary, follow this guidance: {criterion.instruction}\n"
                 
                 # Clean placeholder for JSON template
-                summary_placeholder = f"<Your concise answer to the '{criterion.name}' question based on the documentation{' following the instructions provided' if has_instruction else ''}>"
+                summary_placeholder = f"<Your concise answer to the '{criterion.description}' question based on the documentation{' following the instructions provided' if has_instruction else ''}>"
                 
                 format_instructions = (
                     f"Return your answer in JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <QUESTION> tag provided in the input.\n"
@@ -1156,8 +1160,8 @@ class RAGManager:
                 }
                 
                 # Determine model based on user ID whitelist
-                model_to_use = "gemini-2.5-flash-preview-05-20" if str(current_user.id) in PREMIUM_MODEL_USERS else "gpt-4o-mini"
-                
+                # model_to_use = "gemini-2.5-flash-preview-05-20" if str(current_user.id) in PREMIUM_MODEL_USERS else "gpt-4o-mini"
+                model_to_use = "gemini-2.5-flash"
                 # Get provider and max_tokens from model configuration
                 provider, max_tokens = get_model_config(model_to_use)
                 
@@ -1201,7 +1205,7 @@ class RAGManager:
                 try:
                     parsed_output = json.loads(response.llm_response)
                 except json.JSONDecodeError as json_error:
-                    logger.warning(f"Initial JSON parsing failed for criterion {criterion.name}: {str(json_error)}")
+                    logger.warning(f"Initial JSON parsing failed for criterion {criterion.description}: {str(json_error)}")
                     
                     # Try to sanitize the response by fixing common Unicode escape issues
                     sanitized_response = response.llm_response
@@ -1212,12 +1216,12 @@ class RAGManager:
                     # Try parsing again
                     try:
                         parsed_output = json.loads(sanitized_response)
-                        logger.info(f"Successfully parsed JSON after sanitization for criterion {criterion.name}")
+                        logger.info(f"Successfully parsed JSON after sanitization for criterion {criterion.description}")
                     except json.JSONDecodeError as second_error:
-                        logger.error(f"JSON parsing failed even after sanitization for criterion {criterion.name}: {str(second_error)}")
+                        logger.error(f"JSON parsing failed even after sanitization for criterion {criterion.description}: {str(second_error)}")
                         # Return a fallback response structure
                         parsed_output = {
-                            "criteria": criterion.name,
+                            "criteria": criterion.description,
                             "analysis": {
                                 "summary": f"Error parsing LLM response: {str(second_error)}",
                                 "confidence": "LOW",
@@ -1253,12 +1257,12 @@ class RAGManager:
                 if include_vector_results and hasattr(response, 'vector_search_results'):
                     parsed_output['vector_search_results'] = response.vector_search_results
 
-                # logger.info(f"Received LLM response for criterion {criterion.name}: {parsed_output}")
+                # logger.info(f"Received LLM response for criterion {criterion.description}: {parsed_output}")
                 return parsed_output
 
             except Exception as e:
                 logger.error(
-                    f"Error analyzing criterion {criterion.name}: {str(e)}")
+                    f"Error analyzing criterion {criterion.description}: {str(e)}")
                 raise HTTPException(status_code=500, detail=str(e))
 
         async def analyze_location() -> Dict[str, Any]:
@@ -1464,11 +1468,29 @@ class RAGManager:
 
     @staticmethod
     async def ai_filter_tenders_based_on_description(tender_analysis: TenderAnalysis, tender_matches: List[Union[TenderAnalysisResult, TenderToAnalyseDescription]], current_user: User) -> TenderDecriptionProfileMatches:
-        tenders_list_to_analyze = [
-            dict_.model_dump(include={'id', 'tender_metadata',
-                                    'tender_description'})
-            for dict_ in tender_matches
-        ]
+        # Check if filtering rules are present and include criteria if so
+        has_filtering_rules = tender_analysis.filtering_rules and tender_analysis.filtering_rules.strip()
+        
+        tenders_list_to_analyze = []
+        for dict_ in tender_matches:
+            # Start with base fields
+            tender_data = dict_.model_dump(include={'id', 'tender_metadata', 'tender_description'})
+            
+            # Add filtered criteria analysis if filtering rules are present
+            if has_filtering_rules and hasattr(dict_, 'criteria_analysis') and dict_.criteria_analysis:
+                filtered_criteria = []
+                for criteria_item in dict_.criteria_analysis:
+                    # Include only criteria (string) and analysis (summary, criteria_met)
+                    filtered_criteria.append({
+                        'criteria': criteria_item.criteria if hasattr(criteria_item, 'criteria') else criteria_item.get('criteria', ''),
+                        'analysis': {
+                            'summary': criteria_item.analysis.summary if hasattr(criteria_item, 'analysis') and hasattr(criteria_item.analysis, 'summary') else criteria_item.get('analysis', {}).get('summary', ''),
+                            'criteria_met': criteria_item.analysis.criteria_met if hasattr(criteria_item, 'analysis') and hasattr(criteria_item.analysis, 'criteria_met') else criteria_item.get('analysis', {}).get('criteria_met', False)
+                        }
+                    })
+                tender_data['criteria_analysis'] = filtered_criteria
+            
+            tenders_list_to_analyze.append(tender_data)
 
         # System prompt focused on model behavior/role
         system_prompt = """
@@ -1478,105 +1500,208 @@ class RAGManager:
         You follow instructions exactly and provide responses formatted as specified.
         """
 
-        # User prompt focused on task details and conditional rules
-        prompt = f"""
-        # EVALUATION TASK
-        Evaluate which tenders match what this company is looking for.
-
-        # COMPANY INFORMATION:
-        About company: '{tender_analysis.company_description}'
-
-        # FILTERING RULES:
-        {tender_analysis.filtering_rules if tender_analysis.filtering_rules else "-"}
-
-        # INSTRUCTIONS:
-        1. Review each tender's description carefully.
-            - if you detect in description something like it was not enough data to create description => evaluate tender based on metadata only
-        2. Return ONLY relevant tenders.
-        3. Completely exclude tenders that violate any filtering rules
-
-        # OUTPUT FORMAT:
-        Return JSON with this structure:
-        {{
-        "matches": [
-            {{
-            "id": "..."
-            }},
-            ...
-        ]
-        }}
-
-        # TENDERS TO CHOOSE FROM:
-        {tenders_list_to_analyze}
+        # Base filtering instructions
+        filtering_instructions = """
+        1. Review each tender carefully.
+        2. If in description there is not enough information (likely we failed to fetch) => evaluate tender solely based on the title
+        3. Return ONLY tenders relevant for company search request.
+        4. Only exclude tenders which description describes tender the company is not looking for.
         """
-        # print(f"filtering with description using prompt: {prompt}")           
-        # Use model configuration helper
-        # filter_model = "gpt-4.1"
-        filter_model = "o4-mini"
-        filter_provider, filter_max_tokens = get_model_config(filter_model)
-        # Use high complexity for detailed filtering task
-        filter_optimized_tokens = get_optimal_max_tokens(filter_model, "high")
         
-        request_data = LLMRAGRequest(
-            query=prompt,
-            rag_query="Nothing here",
-            vector_store=None,
-            llm={
-                "provider": filter_provider,
-                "model": filter_model,
-                "temperature": 0,
-                # "max_tokens": filter_optimized_tokens,
-                "system_message": system_prompt,
-                "stream": False,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "tender_matches_response",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "matches": {
-                                    "type": "array",
-                                    "description": "List of tenders that match the company's search criteria.",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "id": {"type": "string", "description": "Exact ID of the tender from the input list"}
-                                        },
-                                        "required": ["id"],
-                                        "additionalProperties": False
-                                    }
+        # Add custom filtering rules if present
+        if has_filtering_rules:
+            filtering_instructions += f"""
+        5. ADDITIONAL FILTERING RULES: {tender_analysis.filtering_rules}
+        6. When criteria_analysis is available for a tender, use it alongside the description and title to make more informed filtering decisions.
+        """
+
+        # Determine if we need to use batching (only when filtering rules are present and we have criteria)
+        needs_batching = has_filtering_rules and any(
+            hasattr(dict_, 'criteria_analysis') and dict_.criteria_analysis 
+            for dict_ in tender_matches
+        )
+        
+        if needs_batching:
+            # Process in batches of 25 when filtering rules are present with criteria
+            BATCH_SIZE = 25
+            all_matches = []
+            
+            for i in range(0, len(tenders_list_to_analyze), BATCH_SIZE):
+                batch = tenders_list_to_analyze[i:i + BATCH_SIZE]
+                
+                # User prompt for this batch
+                prompt = f"""
+                <TASK>
+                Analyze tender descriptions and titles from TENDERS_LIST. Return only tenders in OUTPUT_FORMAT matching the COMPANY_SEARCH_REQUEST based on FILTERING_INSTRUCTIONS.
+                </TASK>
+
+                <COMPANY_SEARCH_REQUEST>
+                Message from company: '{tender_analysis.company_description}'
+                </COMPANY_SEARCH_REQUEST>
+
+                <FILTERING_INSTRUCTIONS>
+                {filtering_instructions}
+                </FILTERING_INSTRUCTIONS>
+
+                <OUTPUT_FORMAT>
+                Return JSON with this structure:
+                {{
+                "matches": [
+                    {{
+                    "id": "..."
+                    }},
+                    ...
+                ]
+                }}
+                </OUTPUT_FORMAT>
+
+                <TENDERS_LIST>
+                {batch}
+                </TENDERS_LIST>
+                """
+                
+                # Use model configuration helper
+                filter_model = "o4-mini"
+                filter_provider, filter_max_tokens = get_model_config(filter_model)
+                
+                request_data = LLMRAGRequest(
+                    query=prompt,
+                    rag_query="Nothing here",
+                    vector_store=None,
+                    llm={
+                        "provider": filter_provider,
+                        "model": filter_model,
+                        "temperature": 0,
+                        "system_message": system_prompt,
+                        "stream": False,
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": "tender_matches_response",
+                                "strict": True,
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "matches": {
+                                            "type": "array",
+                                            "description": "List of tenders that match the company's search criteria.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {"type": "string", "description": "Exact ID of the tender from the input list"}
+                                                },
+                                                "required": ["id"],
+                                                "additionalProperties": False
+                                            }
+                                        }
+                                    },
+                                    "required": ["matches"],
+                                    "additionalProperties": False
                                 }
-                            },
-                            "required": ["matches"],
-                            "additionalProperties": False
+                            }
+                        }
+                    }
+                )
+                
+                response = await ask_llm_logic(request_data)
+                
+                # Parse batch response with error handling
+                batch_parsed_output = safe_json_loads(
+                    response.llm_response, 
+                    {"matches": []}, 
+                    f"ai_filter_tenders_based_on_description batch {i//BATCH_SIZE + 1}"
+                )
+                
+                # Add batch results to overall matches
+                all_matches.extend(batch_parsed_output.get("matches", []))
+                
+                logger.info(f"Processed batch {i//BATCH_SIZE + 1}/{(len(tenders_list_to_analyze) + BATCH_SIZE - 1)//BATCH_SIZE} with {len(batch_parsed_output.get('matches', []))} matches")
+            
+            # Combine all batch results
+            parsed_output = {"matches": all_matches}
+            
+        else:
+            # Process all tenders at once (original behavior)
+            prompt = f"""
+            <TASK>
+            Analyze tender descriptions and titles from TENDERS_LIST. Return only tenders in OUTPUT_FORMAT matching the COMPANY_SEARCH_REQUEST based on FILTERING_INSTRUCTIONS.
+            </TASK>
+
+            <COMPANY_SEARCH_REQUEST>
+            Message from company: '{tender_analysis.company_description}'
+            </COMPANY_SEARCH_REQUEST>
+
+            <FILTERING_INSTRUCTIONS>
+            {filtering_instructions}
+            </FILTERING_INSTRUCTIONS>
+
+            <OUTPUT_FORMAT>
+            Return JSON with this structure:
+            {{
+            "matches": [
+                {{
+                "id": "..."
+                }},
+                ...
+            ]
+            }}
+            </OUTPUT_FORMAT>
+
+            <TENDERS_LIST>
+            {tenders_list_to_analyze}
+            </TENDERS_LIST>
+            """
+            
+            # Use model configuration helper
+            filter_model = "o4-mini"
+            filter_provider, filter_max_tokens = get_model_config(filter_model)
+            
+            request_data = LLMRAGRequest(
+                query=prompt,
+                rag_query="Nothing here",
+                vector_store=None,
+                llm={
+                    "provider": filter_provider,
+                    "model": filter_model,
+                    "temperature": 0,
+                    "system_message": system_prompt,
+                    "stream": False,
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "tender_matches_response",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "matches": {
+                                        "type": "array",
+                                        "description": "List of tenders that match the company's search criteria.",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {"type": "string", "description": "Exact ID of the tender from the input list"}
+                                            },
+                                            "required": ["id"],
+                                            "additionalProperties": False
+                                        }
+                                    }
+                                },
+                                "required": ["matches"],
+                                "additionalProperties": False
+                            }
                         }
                     }
                 }
-            }
-        )
-        response = await ask_llm_logic(request_data)
-        
-        # Add robust JSON parsing with error handling
-        try:
-            parsed_output = json.loads(response.llm_response)
-        except json.JSONDecodeError as json_error:
-            logger.warning(f"Initial JSON parsing failed for ai_filter_tenders_based_on_description: {str(json_error)}")
+            )
             
-            # Try to sanitize the response by fixing common Unicode escape issues
-            sanitized_response = response.llm_response
+            response = await ask_llm_logic(request_data)
             
-            # Fix incomplete Unicode escapes by removing malformed \u sequences
-            sanitized_response = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', sanitized_response)
-            
-            # Try parsing again
-            try:
-                parsed_output = json.loads(sanitized_response)
-                logger.info(f"Successfully parsed JSON after sanitization for ai_filter_tenders_based_on_description")
-            except json.JSONDecodeError as second_error:
-                logger.error(f"JSON parsing failed even after sanitization for ai_filter_tenders_based_on_description: {str(second_error)}")
-                # Return a fallback response structure
-                parsed_output = {"matches": []}
+            # Parse response with error handling
+            parsed_output = safe_json_loads(
+                response.llm_response, 
+                {"matches": []}, 
+                "ai_filter_tenders_based_on_description"
+            )
 
         return TenderDecriptionProfileMatches(**parsed_output)

@@ -1,0 +1,40 @@
+@host = http://localhost:8000
+
+
+
+###
+
+
+
+# Test the create invitations endpoint
+// @prompt access_token
+// @prompt email
+
+POST {{host}}/invitations/
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "email": "{{email}}",
+  "role": "member"
+}
+
+
+
+###
+
+
+
+# Test the accept invitations endpoint
+// @prompt token
+// @prompt email
+// @prompt password
+
+POST {{host}}/invitations/accept
+Content-Type: application/json
+
+{
+  "token": "{{token}}",
+  "email": "{{email}}",
+  "password": "{{password}}"
+}

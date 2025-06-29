@@ -61,7 +61,14 @@
         "recipients": "E-Mail-Benachrichtigungsempfänger",
         "enableAll": "Alle aktivieren",
         "disableAll": "Alle deaktivieren"
-      }
+      },
+      "advancedFiltering": "Erweiterte Filterung",
+      "showAdvancedFiltering": "Erweiterte Filterung anzeigen",
+      "hideAdvancedFiltering": "Erweiterte Filterung ausblenden",
+      "filteringRulesLabel": "Benutzerdefinierte Filterregeln",
+      "filteringRulesPlaceholder": "Geben Sie benutzerdefinierte Anweisungen für die Filterung von Ausschreibungen ein...",
+      "filteringRulesTooltip": "Geben Sie spezifische Anweisungen zur Führung der KI bei der Filterung von Ausschreibungen basierend auf Ihren Anforderungen",
+      "filteringRulesDescription": "Optional: Fügen Sie benutzerdefinierte Regeln hinzu, um der KI zu helfen, Ausschreibungen besser nach Ihren spezifischen Bedürfnissen zu filtern"
     },
     "create": {
       "title": "Neue Ausschreibungssuche erstellen",
@@ -93,7 +100,14 @@
       "keywordsPlaceholder": "Geben Sie durch Kommas getrennte Schlüsselwörter ein, z.B. 'Zertifizierung, ISO, Budget'",
       "keywordsTooltip": "Geben Sie durch Kommas getrennte Schlüsselwörter ein, z.B. \"Zertifizierung, ISO, Budget\"",
       "subcriteriaLabel": "Zusätzliche Abfragen",
-      "addSubquery": "+ Abfrage hinzufügen"
+      "addSubquery": "+ Abfrage hinzufügen",
+      "advancedFiltering": "Erweiterte Filterung",
+      "showAdvancedFiltering": "Erweiterte Filterung anzeigen",
+      "hideAdvancedFiltering": "Erweiterte Filterung ausblenden",
+      "filteringRulesLabel": "Benutzerdefinierte Filterregeln",
+      "filteringRulesPlaceholder": "Geben Sie benutzerdefinierte Anweisungen für die Filterung von Ausschreibungen ein...",
+      "filteringRulesTooltip": "Geben Sie spezifische Anweisungen zur Führung der KI bei der Filterung von Ausschreibungen basierend auf Ihren Anforderungen",
+      "filteringRulesDescription": "Optional: Fügen Sie benutzerdefinierte Regeln hinzu, um der KI zu helfen, Ausschreibungen besser nach Ihren spezifischen Bedürfnissen zu filtern"
     },
     "kanban": {
       "addToKanban": "Zu Kanban hinzufügen",
@@ -156,9 +170,7 @@
       "citation": "Zitat",
       "fragment": "Fragment",
       "fragments": "Fragmente",
-      "unknownSource": "Unbekannte Quelle",
-      "confidence": "Vertrauensgrad",
-      "noAnalysis": "Keine Analyse verfügbar"
+      "unknownSource": "Unbekannte Quelle"
     },
     "status": {
       "inactive": "Inaktiv",
@@ -173,7 +185,8 @@
       "status": "Status",
       "selectStatus": "Status auswählen",
       "unknown": "Unbekannt",
-      "markRead": "Als gelesen markieren"
+      "markRead": "Als gelesen markieren",
+      "title": "Status"
     },
     "details": {
       "client": "Auftraggeber",
@@ -212,8 +225,7 @@
       "sortByCreationDate": "Erstellungsdatum",
       "sortByPublicationDate": "Veröffentlichungsdatum",
       "noTenders": "Keine Ausschreibungen entsprechen den ausgewählten Filterkriterien.",
-      "criteriaFilter": "Kriterien",
-      "unknownSource": "Unbekannte Quelle"
+      "criteriaFilter": "Kriterien"
     },
     "sidebar": {
       "search": "Suchen",
@@ -273,7 +285,10 @@
       "addToKanban": "Zu Kanban-Board hinzufügen",
       "searchSettings": "Sucheinstellungen",
       "noTenderSelected": "Keine Ausschreibung ausgewählt",
-      "selectTenderToView": "Wählen Sie eine Ausschreibung aus, um Details anzuzeigen"
+      "selectTenderToView": "Wählen Sie eine Ausschreibung aus, um Details anzuzeigen",
+      "backToTenders": "Zurück zu Ausschreibungen",
+      "copySuccess": "Kopiert",
+      "copySuccessDescription": "Text wurde in die Zwischenablage kopiert"
     },
     "tooltips": {
       "newTender": "Neue Ausschreibung, ungelesen",
@@ -344,12 +359,6 @@
       "deleteColumnConfirm": "Sind Sie sicher, dass Sie diese Spalte und alle ihre Elemente löschen möchten?",
       "weightLabel": "Gewichtung (1-5)"
     },
-    "table": {
-      "columns": "Spalten",
-      "defaultColumns": "Standardspalten",
-      "criteriaColumns": "Kriterien-Spalten",
-      "columnHint": "Spaltenränder ziehen, um die Größe zu ändern"
-    },
     "noFilesAvailable": "Keine Dateien verfügbar",
     "noFilesDescription": "Diese Ausschreibung hat keine herunterladbaren Dateien. Überprüfen Sie die Ausschreibungsquelle direkt, um Zugang zu den erforderlichen Dokumenten zu erhalten.",
     "openTenderSource": "Ausschreibungsquelle öffnen",
@@ -359,5 +368,19 @@
     "downloadFullData": "Vollständige Daten herunterladen",
     "noAnalysis": "Keine Kriterienanalyse verfügbar. Dateien wurden nicht von der Ausschreibungsquelle heruntergeladen.",
     "noCommentsError": "Kommentare können nicht geladen werden - fehlende Ausschreibungskennung"
+  },
+  "errors": {
+    "notFound": "Ausschreibung nicht gefunden",
+    "notFoundDescription": "Die angeforderte Ausschreibung wurde nicht gefunden.",
+    "loadFailed": "Ausschreibungsdetails konnten nicht geladen werden",
+    "loadFailedTitle": "Fehler"
+  },
+  "description": {
+      "title": "Beschreibung", 
+      "noDescription": "Keine Ausschreibungsbeschreibung verfügbar"
+    },
+  "info": {
+    "title": "Informationen", 
+    "notSpecified": "Nicht angegeben"
   }
 }

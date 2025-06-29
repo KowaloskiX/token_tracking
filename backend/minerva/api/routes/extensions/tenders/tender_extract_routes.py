@@ -1,5 +1,18 @@
 from datetime import datetime
+import os
+import json
 import logging
+import re
+from urllib.parse import urlparse
+from rapidfuzz import fuzz
+from bson import ObjectId
+from minerva.core.middleware.auth.jwt import get_current_user
+from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis
+from minerva.core.models.user import User
+from minerva.core.database.database import db
+from minerva.tasks.services.search_service import perform_tender_search
+from minerva.tasks.services.tender_initial_ai_filtering_service import AIFilteringMode, perform_ai_filtering
+from minerva.tasks.sources.oferent.extract_tenders import OferentReportExtractor
 from minerva.tasks.sources.vergapeplatforms.extract_tender import VergabePlatformsTenderExtractor
 from minerva.tasks.sources.vergabe.extract_tender import DTVPLikeTenderExtractor
 from minerva.tasks.sources.bazakonkurencyjnosci.extract_tenders import BazaKonkurencyjnosciTenderExtractor
@@ -8,8 +21,8 @@ from minerva.tasks.sources.ezamowienia.extract_tenders import TenderExtractor
 from minerva.tasks.sources.egospodarka.extract_tenders import EGospodarkaTenderExtractor
 from minerva.tasks.sources.logintrade.extract_tenders import LoginTradeExtractor
 from minerva.tasks.services.scraping_service import scrape_and_embed_all_sources
-from fastapi import APIRouter, HTTPException
-from typing import Any, Dict, Optional
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Any, Dict, List, Optional, Union
 from minerva.core.models.request.tender_extract import ExtractionRequest, HistoricalExtractionRequest
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.services.tender_insert_service import TenderInsertConfig, TenderInsertService
@@ -23,7 +36,16 @@ from minerva.tasks.sources.tender_source_manager import TenderSourceManager
 from openai import OpenAI
 from pinecone import Pinecone
 from pydantic import BaseModel
-import os
+from minerva.core.helpers.biznespolska_oferent_shared import (
+    normalize_eb2b_id,
+    prepare_tender_analysis,
+    run_search_and_filter,
+    calculate_pre_filter_differences,
+    ai_filter_tenders,
+    generate_comparison_summary,
+    calculate_tender_differences,
+    transform_endpoint_result
+)
 
 openai = OpenAI()
 pinecone = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -57,13 +79,13 @@ async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
 
         # Create configuration using the new pattern
         tender_insert_config = TenderInsertConfig.create_default(
-            pinecone_index="test-tenders5",
+            pinecone_index="tenders",
             pinecone_namespace="",
             embedding_model="text-embedding-3-large",
-            elasticsearch_index="test-tenders5"
+            elasticsearch_index="tenders"
         )
         
-        example_extractor = TenderExtractor()
+        example_extractor = PlatformaZakupowaTenderExtractor()
         # Create the service with the new configuration
         tender_service = TenderInsertService(
             config=tender_insert_config,
@@ -336,3 +358,395 @@ async def query_historical_multipart_tenders(search_request: SearchRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error querying multi-part historical tenders: {str(e)}")
+    
+
+class ExtractionRequest(BaseModel):
+    # Existing oferent extraction parameters
+    target_date: Optional[Union[str, List[str]]] = None  # Accept single date or list of dates
+    account_number: Optional[str] = None
+    email: Optional[str] = None
+    
+    # New search and filtering parameters
+    run_search_and_filter: Optional[bool] = False
+    analysis_id: Optional[str] = None
+    search_phrase: Optional[str] = None
+    company_description: Optional[str] = None
+    
+    # Search parameters
+    tender_names_index_name: Optional[str] = "tenders"
+    elasticsearch_index_name: Optional[str] = "tenders"
+    tender_subjects_index_name: Optional[str] = "tender-subjects"
+    embedding_model: Optional[str] = "text-embedding-3-large"
+    score_threshold: Optional[float] = 0.5
+    top_k: Optional[int] = 30
+    sources: Optional[List[str]] = None
+    filter_conditions: Optional[List[Dict[str, Any]]] = None
+    
+    # Filtering parameters
+    ai_batch_size: Optional[int] = 20
+    save_results: Optional[bool] = False
+
+class FilteredResults(BaseModel):
+    initial_ai_filter_id: Optional[str] = None
+    total_filtered: int
+    total_filtered_out: int
+    filtered_tenders: List[Any]
+
+class SearchResults(BaseModel):
+    search_id: Optional[str] = None
+    query: str
+    total_matches: int
+    matches: List[Dict[str, Any]]
+    detailed_results: Optional[Dict[str, Dict[str, List[Dict]]]] = None
+
+
+class TenderDifferences(BaseModel):
+    unique_to_oferent: List[Dict[str, Any]]
+    unique_to_search: List[Dict[str, Any]]
+    total_unique_to_oferent: int
+    total_unique_to_search: int
+    potential_overlaps: List[Dict[str, Any]]  # Overlapping tenders (same ID in both)
+
+class PreFilterDifferences(BaseModel):
+    unique_to_oferent: List[Dict[str, Any]]
+    unique_to_search: List[Dict[str, Any]]
+    total_unique_to_oferent: int
+    total_unique_to_search: int
+    potential_overlaps: List[Dict[str, Any]]  # Overlapping tenders (same ID in both)
+
+class CompareOferentResponse(BaseModel):
+    # Existing oferent results
+    success: bool
+    message: str
+    oferent_results: Dict[str, Any]
+    
+    # New search and filtering results
+    search_results: Optional[SearchResults] = None
+    oferent_filtered_results: Optional[FilteredResults] = None
+    search_filtered_results: Optional[FilteredResults] = None
+    
+    # Comparison metrics and differences
+    comparison_summary: Optional[Dict[str, Any]] = None
+    pre_filter_differences: Optional[PreFilterDifferences] = None  # Before filtering
+    tender_differences: Optional[TenderDifferences] = None  # After filtering
+
+@router.post("/compare-to-oferent", response_model=CompareOferentResponse)
+async def extract_tenders_sync(
+    request: ExtractionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Step 1: Extract tenders from Oferent (existing functionality)
+        # Support multiple dates
+        dates = []
+        if request.target_date:
+            if isinstance(request.target_date, str):
+                dates = [request.target_date]
+            elif isinstance(request.target_date, list):
+                dates = request.target_date
+            else:
+                raise HTTPException(status_code=400, detail="Invalid target_date format. Use string or list of strings.")
+        else:
+            dates = []
+        all_oferent_tenders = []
+        oferent_raw_results = []
+        for date in dates:
+            inputs = {"target_date": date}
+            if request.account_number:
+                inputs["account_number"] = request.account_number
+            if request.email:
+                inputs["email"] = request.email
+            try:
+                datetime.strptime(date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid date format: {date}. Use YYYY-MM-DD")
+            logging.info(f"Starting synchronous extraction for date: {date}")
+            extractor = OferentReportExtractor()
+            oferent_result = await extractor.execute(inputs)
+            oferent_raw_results.append(oferent_result)
+            all_oferent_tenders.extend(oferent_result.get('tenders', []))
+        # If no dates provided, run once with no date (legacy behavior)
+        if not dates:
+            inputs = {}
+            if request.account_number:
+                inputs["account_number"] = request.account_number
+            if request.email:
+                inputs["email"] = request.email
+            logging.info(f"Starting synchronous extraction for date: today (no date provided)")
+            extractor = OferentReportExtractor()
+            oferent_result = await extractor.execute(inputs)
+            oferent_raw_results.append(oferent_result)
+            all_oferent_tenders.extend(oferent_result.get('tenders', []))
+
+        transformed_oferent_result = transform_endpoint_result({'tenders': all_oferent_tenders}, search_phrase=request.search_phrase or "")
+        # --- TESTING: Read transformed_oferent_result from JSON file instead of scraping ---
+        # oferent_json_path = os.path.join(os.path.dirname(__file__), "oferent_results.json")
+        # transformed_oferent_result = extract_tenders_from_file(oferent_json_path)
+        all_oferent_tenders = transformed_oferent_result.get("tenders", [])
+        response_data = {
+            "success": True,
+            "message": f"Successfully extracted {len(all_oferent_tenders)} tenders from Oferent",
+            "oferent_results": transformed_oferent_result,
+            "search_results": None,
+            "oferent_filtered_results": None,
+            "search_filtered_results": None,
+            "comparison_summary": None
+        }
+        if request.run_search_and_filter:
+            tender_analysis, search_phrase_to_use, company_description_to_use, sources_to_use = await prepare_tender_analysis(request, current_user)
+            dates = []
+            if request.target_date:
+                if isinstance(request.target_date, str):
+                    dates = [request.target_date]
+                elif isinstance(request.target_date, list):
+                    dates = request.target_date
+            search_results = await run_search_and_filter(request, search_phrase_to_use, company_description_to_use, sources_to_use, dates)
+            # Normalize eb2b.com.pl tender IDs in all_tender_matches
+            for match in search_results["all_tender_matches"]:
+                if match.get("source_type") == "eb2b" and isinstance(match.get("id"), str):
+                    match["id"] = normalize_eb2b_id(match["id"])
+            response_data["search_results"] = SearchResults(
+                search_id=search_results.get("search_id"),
+                query=search_phrase_to_use,
+                total_matches=len(search_results["all_tender_matches"]),
+                matches=search_results["all_tender_matches"],
+                detailed_results=search_results.get("detailed_results", {})
+            )
+            response_data["pre_filter_differences"] = calculate_pre_filter_differences(transformed_oferent_result, search_results)
+            # AI filtering on search results
+            search_filter_results = await ai_filter_tenders(
+                tender_analysis,
+                search_results["all_tender_matches"],
+                search_results.get("combined_search_matches", {}),
+                request.analysis_id,
+                current_user,
+                request.ai_batch_size,
+                search_results.get("search_id"),
+                request.save_results,
+                AIFilteringMode.STANDARD
+            )
+            search_filtered_tenders = search_filter_results.get("filtered_tenders", [])
+            search_filtered_out_tenders = search_filter_results.get("filtered_out_tenders", [])
+            response_data["search_filtered_results"] = FilteredResults(
+                initial_ai_filter_id=search_filter_results.get('initial_ai_filter_id'),
+                total_filtered=len(search_filtered_tenders),
+                total_filtered_out=len(search_filtered_out_tenders),
+                filtered_tenders=search_filtered_tenders
+            )
+            # Convert Oferent results for AI filtering
+            oferent_matches = []
+            for tender in transformed_oferent_result.get("tenders", []):
+                tender_dict = tender if isinstance(tender, dict) else tender.__dict__
+                match_item = {
+                    "id": tender_dict.get("id", ""),
+                    "name": tender_dict.get("name", ""),
+                    "organization": tender_dict.get("organization", ""),
+                    "location": tender_dict.get("location", ""),
+                    "source": tender_dict.get("source", "oferent_tenders"),
+                    "source_type": tender_dict.get("source_type", ""),
+                    "search_phrase": search_phrase_to_use,
+                }
+                oferent_matches.append(match_item)
+            oferent_filter_results = await ai_filter_tenders(
+                tender_analysis,
+                oferent_matches,
+                {"oferent": oferent_matches},
+                request.analysis_id,
+                current_user,
+                request.ai_batch_size,
+                None,
+                request.save_results,
+                AIFilteringMode.STANDARD
+            )
+            oferent_filtered_tenders = oferent_filter_results.get("filtered_tenders", [])
+            oferent_filtered_out_tenders = oferent_filter_results.get("filtered_out_tenders", [])
+            response_data["oferent_filtered_results"] = FilteredResults(
+                initial_ai_filter_id=oferent_filter_results.get('initial_ai_filter_id'),
+                total_filtered=len(oferent_filtered_tenders),
+                total_filtered_out=len(oferent_filtered_out_tenders),
+                filtered_tenders=oferent_filtered_tenders
+            )
+            response_data["comparison_summary"] = generate_comparison_summary(
+                transformed_oferent_result, search_results, oferent_filtered_tenders, search_filtered_tenders, oferent_matches
+            )
+            # Tender differences
+            response_data["tender_differences"] = calculate_tender_differences(
+                oferent_filtered_tenders, search_filtered_tenders
+            )
+            response_data["message"] = (
+                f"Successfully extracted {len(transformed_oferent_result['tenders'])} tenders from Oferent, "
+                f"found {len(search_results['all_tender_matches'])} tenders via search, "
+                f"filtered to {len(oferent_filtered_tenders)} (Oferent) and {len(search_filtered_tenders)} (Search) relevant tenders"
+            )
+        return CompareOferentResponse(**response_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Extraction and comparison failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Extraction and comparison failed: {str(e)}")
+    
+class CompareBiznesPolskaRequest(BaseModel):
+    username: str
+    password: str
+    profile_name: str
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    current_only: Optional[bool] = True
+    run_search_and_filter: Optional[bool] = False
+    analysis_id: Optional[str] = None
+    search_phrase: Optional[str] = None
+    company_description: Optional[str] = None
+    tender_names_index_name: Optional[str] = "tenders"
+    elasticsearch_index_name: Optional[str] = "tenders"
+    tender_subjects_index_name: Optional[str] = "tender-subjects"
+    embedding_model: Optional[str] = "text-embedding-3-large"
+    score_threshold: Optional[float] = 0.5
+    top_k: Optional[int] = 30
+    sources: Optional[List[str]] = None
+    filter_conditions: Optional[List[Dict[str, Any]]] = None
+    ai_batch_size: Optional[int] = 20
+    save_results: Optional[bool] = False
+
+class CompareBiznesPolskaResponse(BaseModel):
+    success: bool
+    message: str
+    biznespolska_results: Dict[str, Any]
+    search_results: Optional[SearchResults] = None
+    biznespolska_filtered_results: Optional[FilteredResults] = None
+    search_filtered_results: Optional[FilteredResults] = None
+    comparison_summary: Optional[Dict[str, Any]] = None
+    pre_filter_differences: Optional[PreFilterDifferences] = None
+    tender_differences: Optional[TenderDifferences] = None
+
+@router.post("/compare-to-biznespolska", response_model=CompareBiznesPolskaResponse)
+async def compare_to_biznespolska(
+    request: CompareBiznesPolskaRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Step 1: Extract tenders from BiznesPolska
+        # --- PRODUCTION: Use extractor for real data ---
+        from minerva.tasks.sources.biznespolska.extract_tenders import BiznesPolskaReportExtractor
+        username = request.username
+        password = request.password
+        profile_name = request.profile_name
+        if not all((username, password, profile_name)):
+            raise HTTPException(status_code=400, detail="username, password and profile_name are required in request body")
+        date_from = request.date_from or datetime.now().strftime("%Y-%m-%d")
+        date_to = request.date_to or datetime.now().strftime("%Y-%m-%d")
+        current_only = request.current_only
+        extractor = BiznesPolskaReportExtractor()
+        inputs = {
+            "username": username,
+            "password": password,
+            "profile_name": profile_name,
+            "date_from": date_from,
+            "date_to": date_to,
+            "current_only": current_only
+        }
+        biznespolska_result = await extractor.execute(inputs)
+        tenders = biznespolska_result.get('tenders', [])
+        transformed_biznespolska_result = transform_endpoint_result({'tenders': tenders}, search_phrase=request.search_phrase or "")
+        # --- END PRODUCTION ---
+        # --- TESTING: Load from JSON file instead of real extraction ---
+        # biznespolska_json_path = os.path.join(os.path.dirname(__file__), "bizpol_res.json")
+        # transformed_biznespolska_result = extract_tenders_from_file(biznespolska_json_path)
+        # --- END TESTING ---
+        all_biznespolska_tenders = transformed_biznespolska_result.get("tenders", [])
+        response_data = {
+            "success": True,
+            "message": f"Successfully extracted {len(all_biznespolska_tenders)} tenders from BiznesPolska",
+            "biznespolska_results": transformed_biznespolska_result,
+            "search_results": None,
+            "biznespolska_filtered_results": None,
+            "search_filtered_results": None,
+            "comparison_summary": None
+        }
+        if request.run_search_and_filter:
+            tender_analysis, search_phrase_to_use, company_description_to_use, sources_to_use = await prepare_tender_analysis(request, current_user)
+            date_from = getattr(request, 'date_from', None) or datetime.now().strftime("%Y-%m-%d")
+            date_to = getattr(request, 'date_to', None) or datetime.now().strftime("%Y-%m-%d")
+            dates = [date_from, date_to]
+            search_results = await run_search_and_filter(request, search_phrase_to_use, company_description_to_use, sources_to_use, dates)
+            # Normalize eb2b.com.pl tender IDs in all_tender_matches
+            for match in search_results["all_tender_matches"]:
+                if match.get("source_type") == "eb2b" and isinstance(match.get("id"), str):
+                    match["id"] = normalize_eb2b_id(match["id"])
+            response_data["search_results"] = SearchResults(
+                search_id=search_results.get("search_id"),
+                query=search_phrase_to_use,
+                total_matches=len(search_results["all_tender_matches"]),
+                matches=search_results["all_tender_matches"],
+                detailed_results=search_results.get("detailed_results", {})
+            )
+            response_data["pre_filter_differences"] = calculate_pre_filter_differences(transformed_biznespolska_result, search_results)
+            # AI filtering on search results
+            search_filter_results = await ai_filter_tenders(
+                tender_analysis,
+                search_results["all_tender_matches"],
+                search_results.get("combined_search_matches", {}),
+                request.analysis_id,
+                current_user,
+                request.ai_batch_size,
+                search_results.get("search_id"),
+                request.save_results,
+                AIFilteringMode.STANDARD
+            )
+            search_filtered_tenders = search_filter_results.get("filtered_tenders", [])
+            search_filtered_out_tenders = search_filter_results.get("filtered_out_tenders", [])
+            response_data["search_filtered_results"] = FilteredResults(
+                initial_ai_filter_id=search_filter_results.get('initial_ai_filter_id'),
+                total_filtered=len(search_filtered_tenders),
+                total_filtered_out=len(search_filtered_out_tenders),
+                filtered_tenders=search_filtered_tenders
+            )
+            # Convert BiznesPolska results for AI filtering
+            biznespolska_matches = []
+            for tender in transformed_biznespolska_result.get("tenders", []):
+                tender_dict = tender if isinstance(tender, dict) else tender.__dict__
+                match_item = {
+                    "id": tender_dict.get("id", ""),
+                    "name": tender_dict.get("name", ""),
+                    "organization": tender_dict.get("organization", ""),
+                    "location": tender_dict.get("location", ""),
+                    "source": tender_dict.get("source", "biznespolska_tenders"),
+                    "source_type": tender_dict.get("source_type", ""),
+                    "search_phrase": search_phrase_to_use,
+                }
+                biznespolska_matches.append(match_item)
+            biznespolska_filter_results = await ai_filter_tenders(
+                tender_analysis,
+                biznespolska_matches,
+                {"biznespolska": biznespolska_matches},
+                request.analysis_id,
+                current_user,
+                request.ai_batch_size,
+                None,
+                request.save_results,
+                AIFilteringMode.STANDARD
+            )
+            biznespolska_filtered_tenders = biznespolska_filter_results.get("filtered_tenders", [])
+            biznespolska_filtered_out_tenders = biznespolska_filter_results.get("filtered_out_tenders", [])
+            response_data["biznespolska_filtered_results"] = FilteredResults(
+                initial_ai_filter_id=biznespolska_filter_results.get('initial_ai_filter_id'),
+                total_filtered=len(biznespolska_filtered_tenders),
+                total_filtered_out=len(biznespolska_filtered_out_tenders),
+                filtered_tenders=biznespolska_filtered_tenders
+            )
+            response_data["comparison_summary"] = generate_comparison_summary(
+                transformed_biznespolska_result, search_results, biznespolska_filtered_tenders, search_filtered_tenders, biznespolska_matches
+            )
+            response_data["tender_differences"] = calculate_tender_differences(
+                biznespolska_filtered_tenders, search_filtered_tenders
+            )
+            response_data["message"] = (
+                f"Successfully extracted {len(transformed_biznespolska_result['tenders'])} tenders from BiznesPolska, "
+                f"found {len(search_results['all_tender_matches'])} tenders via search, "
+                f"filtered to {len(biznespolska_filtered_tenders)} (BiznesPolska) and {len(search_filtered_tenders)} (Search) relevant tenders"
+            )
+        return CompareBiznesPolskaResponse(**response_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Extraction and comparison failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Extraction and comparison failed: {str(e)}")

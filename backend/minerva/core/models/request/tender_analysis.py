@@ -46,6 +46,7 @@ class TenderAnalysisUpdate(BaseModel):
     search_phrase: Optional[str] = None
     sources: List[str] = None
     criteria: Optional[List[AnalysisCriteria]] = None
+    filtering_rules: Optional[str] = None
     org_id: Optional[str] = None
     assigned_users: Optional[List[str]] = None
     email_recipients: Optional[List[str]] = None

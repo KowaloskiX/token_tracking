@@ -102,6 +102,7 @@ const formSchema = z.object({
   search_phrase: z.string().min(1, "Search phrase is required"),
   sources: z.array(z.string()).min(1, "Select at least one source"),
   criteria: z.array(criteriaSchema).min(1, "At least one criterion is required"),
+  filtering_rules: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>& { assigned_users: string[], email_recipients: string[] };
@@ -186,7 +187,7 @@ function SortableCriteriaItem({
           type="button"
           variant="ghost"
           onClick={() => remove(index)}
-          className="text-red-600 hover:text-red-700 p-1"
+          className="text-muted-foreground hover:text-red-700 p-1"
           size="sm"
         >
           <Trash2 className="h-4 w-4" />
@@ -478,6 +479,7 @@ function SortableCriteriaItem({
 
 export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, onShareToggle, showShareButton = false }: Props) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [advancedFilteringExpanded, setAdvancedFilteringExpanded] = useState(false);
   const { assignUsers } = useTender();
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [assignUsersOpen, setAssignUsersOpen] = useState(false);
@@ -548,6 +550,7 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
       search_phrase: analysis.search_phrase,
       sources: analysis.sources,
       criteria: defaultCriteria,
+      filtering_rules: analysis.filtering_rules || "",
     },
   });
 
@@ -1157,8 +1160,47 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                 {t('tenders.edit.addCriterion')}
               </Button>
             </div>
+            <div className="space-y-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAdvancedFilteringExpanded(!advancedFilteringExpanded)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground p-0 h-auto font-normal justify-start"
+            >
+              <Sparkles className="h-4 w-4" />
+              {advancedFilteringExpanded ? t('tenders.edit.hideAdvancedFiltering') : t('tenders.edit.showAdvancedFiltering')}
+              {advancedFilteringExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+
+            {advancedFilteringExpanded && (
+              <FormField
+                control={form.control}
+                name="filtering_rules"
+                render={({ field }) => (
+                  <FormItem className="w-full">
+                    <FormControl>
+                      <Textarea
+                        placeholder={t('tenders.edit.filteringRulesPlaceholder')}
+                        className="min-h-[100px] w-full"
+                        {...field}
+                        value={field.value || ''}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs text-muted-foreground">
+                      {t('tenders.edit.filteringRulesDescription')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </div>
 
+          </div>
           <Button type="submit" className="w-full bg-primary hover:bg-primary-hover shadow text-white" disabled={isLoading}>
             {isLoading ? t('tenders.edit.saving') : t('tenders.edit.saveChanges')}
           </Button>

@@ -14,6 +14,7 @@ from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryT
 from pinecone import Pinecone
 import os
 import psutil
+import asyncio
 
 logger = logging.getLogger("minerva.tasks.analysis_tasks")
 
@@ -222,6 +223,13 @@ async def perform_tender_search(
     )
     query_tool = QueryTool(config=query_config)
 
+    query_config_subjects = QueryConfig(
+        index_name=tender_subjects_index_name,
+        namespace="",
+        embedding_model=embedding_model
+    )
+    query_tool_subjects = QueryTool(config=query_config_subjects)
+
     logger.info(f"Searching with query: {search_phrase}")
 
     # --- Memory usage BEFORE search operations ---
@@ -235,21 +243,21 @@ async def perform_tender_search(
     search_phrases = [phrase.strip() for phrase in search_phrase.split(",")]
 
     semantic_phrases = await generate_pinecone_queries(search_phrase, company_description) 
-
-    # print(semantic_phrases)
-    # semantic_phrases = ['Termomodernizacja budynków publicznych', 'Budowa żłobków i przedszkoli', 'Przebudowa obiektów szkolnych', 'Remont kapitalny szpitali', 'Rozbudowa domów pomocy społecznej', 'Modernizacja obiektów wojskowych', 'Instalacje centralnego ogrzewania wewnętrzne', 'Instalacje wodno-kanalizacyjne wewnętrzne', 'Instalacje klimatyzacyjne i wentylacyjne', 'Systemy oddymiania i wentylacji', 'Modernizacja kotłowni gazowych', 'Wymiana kotłów kondensacyjnych', 'Instalacje fotowoltaiczne do 50kWp', 'Instalacje siłowe i oświetleniowe', 'Instalacje odgromowe i BMS', 'Systemy SAP DSO SZR', 'Okablowanie strukturalne budynków', 'Generalne wykonawstwo pod klucz', 'Buduj pod klucz', 'Zaprojektuj i wybuduj', 'Remont elewacji i dachów', 'Wykończenia stolarka i elewacje', 'Modernizacja energetyczna budynku', 'Adaptacja pomieszczeń wewnętrznych', 'Roboty sanitarne powyżej 200 tys', 'Roboty budowlane powyżej 2 mln', 'Budowa budynków administracyjnych', 'Adaptacja i modernizacja funkcji', 'Przebudowa obiektów służby zdrowia', 'Remont oddziałów szpitalnych']
-    # semantic_phrases = ['termomodernizacja budynków użyteczności publicznej', 'przebudowa szkół i przedszkoli', 'remont szpitala', 'rozbudowa domu pomocy społecznej', 'modernizacja instalacji sanitarnych', 'budowa budynków administracyjnych', 'instalacje centralnego ogrzewania', 'modernizacja kotłowni gazowych', 'wymiana źródeł ciepła', 'instalacje klimatyzacyjne i wentylacyjne', 'remont dachów budynków publicznych', 'prace wykończeniowe budynków', 'adaptacja pomieszczeń użyteczności publicznej', 'instalacje fotowoltaiczne do 50 kWp', 'modernizacja instalacji wod-kan', 'roboty budowlane pod klucz', 'projektuj i buduj obiekty publiczne', 'modernizacja energetyczna budynków', 'przebudowa obiektów wojskowych', 'remont świetlic wiejskich', 'instalacje BMS i SAP', 'instalacje odgromowe i oświetleniowe', 'roboty sanitarne powyżej 200 tys zł', 'roboty budowlane powyżej 2 mln zł', 'przebudowa instalacji hydrantowych', 'modernizacja budynków zabytkowych', 'wymiana pionów sanitarnych', 'prace instalacyjne wewnątrz budynków', 'rozbiórka i nadbudowa obiektów', 'modernizacja sieci wewnętrznych']
-    # semantic_phrases = ['kompleksowe roboty budowlane publiczne', 'termomodernizacja budynków użyteczności publicznej', 'budowa szkół i przedszkoli', 'remonty szpitali i domów opieki', 'modernizacja obiektów wojskowych', 'instalacje sanitarne wewnętrzne', 'instalacje centralnego ogrzewania', 'instalacje klimatyzacyjne i wentylacyjne', 'modernizacja kotłowni gazowych', 'wymiana źródeł ciepła', 'instalacje fotowoltaiczne do 50 kWp', 'roboty elektryczne i teletechniczne', 'instalacje BMS SAP DSO SZR', 'okablowanie strukturalne budynków', 'wykończenia wnętrz budynków publicznych', 'remonty kapitalne obiektów publicznych', 'adaptacja budynków do nowych funkcji', 'przebudowa szkół i szpitali', 'rozbudowa budynków administracji', 'modernizacje energetyczne budynków', 'generalne wykonawstwo pod klucz', 'projekty zaprojektuj i wybuduj', 'prace instalacyjne wewnątrz budynków', 'modernizacja instalacji sanitarnych', 'remonty dachów i elewacji', 'przebudowa domów pomocy społecznej', 'roboty budowlane powyżej 2 mln zł', 'roboty sanitarne powyżej 200 tys zł', 'modernizacja instalacji hydrantowych', 'prace budowlane w obiektach zabytkowych']
     
     pinecone_filters = translate_filters_to_pinecone(filter_conditions or [])
     es_filters = translate_filters_to_elasticsearch(filter_conditions or [])
 
+    # Prepare all Pinecone query tasks
+    pinecone_tasks = []
+    task_metadata = []
+
     if sources and isinstance(sources, list) and len(sources) > 0:
+        # Create tasks for each source + phrase combination
         for source in sources:
             source_pinecone_filters = pinecone_filters.copy()
-            # Correct filter application for Pinecone
             source_pinecone_filters["source_type"] = {"$eq": source}
 
+            # Add Elasticsearch tasks for each search phrase
             for phrase in search_phrases:
                 es_query = {
                     "bool": {
@@ -304,288 +312,42 @@ async def perform_tender_search(
                 es_hits = es_result.get("hits", {}).get("hits", [])
                 es_count = len(es_hits)
                 logger.info(f"Elasticsearch found: {es_count} unique tenders for source: {source}.")
-            # Add keyword search filters for each search phrase
+
+            # Add Pinecone tasks for each semantic phrase
             for phrase in semantic_phrases:
-                # Perform vector similarity search in tender subjects index
-                logger.info(f"Querying Pinecone for source: {source} with vector search, phrase: {phrase} and keyword filters: {source_pinecone_filters}")
-                
-                # Perform vector similarity search in tender names index
-                pinecone_results = await query_tool.query_by_text(
+                # Tender names query task
+                task = query_tool.query_by_text(
                     query_text=phrase,
                     top_k=top_k,
                     score_threshold=score_threshold,
                     filter_conditions=source_pinecone_filters
                 )
+                pinecone_tasks.append(task)
+                task_metadata.append({
+                    "phrase": phrase,
+                    "source": source,
+                    "index_type": "tender_names",
+                    "filters": source_pinecone_filters
+                })
 
-                if pinecone_results.get("matches"):
-                    for match in pinecone_results["matches"]:
-                        match_id = match["id"]
-                        if match_id in processed_ids:
-                            continue
-                        processed_ids.add(match_id)
-                        tender_name = match["metadata"].get("name", "")
-                        all_tender_matches.append({
-                            "id": match_id,
-                            "name": tender_name,
-                            "organization": match["metadata"].get("organization", ""),
-                            "location": match["metadata"].get("location", ""),
-                            "source": "pinecone",
-                            "search_phrase": phrase,
-                            "source_type": match["metadata"].get("source_type")
-                        })
-                        combined_search_matches[match_id] = match
-                        detailed_results.setdefault(phrase, {}).setdefault("pinecone", []).append({
-                            "id": match_id,
-                            "name": tender_name,
-                            "score": match.get("score"),
-                            "source": "pinecone",
-                            "source_type": match["metadata"].get("source_type")
-                        })
-
-                pinecone_matches = pinecone_results.get("matches", [])
-                pinecone_count = len(pinecone_matches)
-                logger.info(f"Pinecone found: {pinecone_count} unique tenders for source: {source} and phrase: {phrase}.")
-
-
-
-                query_config_subjects = QueryConfig(
-                    index_name=tender_subjects_index_name,
-                    namespace="",
-                    embedding_model=embedding_model
-                )
-                query_tool_subjects = QueryTool(config=query_config_subjects)
-
-                logger.info(f"Querying tender-subjects Pinecone for source: {source} with vector search, phrase: {phrase} and keyword filters: {source_pinecone_filters}")
-                pinecone_subjects_results = await query_tool_subjects.query_by_text(
+                # Tender subjects query task
+                task = query_tool_subjects.query_by_text(
                     query_text=phrase,
                     top_k=top_k,
                     score_threshold=0.3,
                     filter_conditions=source_pinecone_filters
                 )
-
-                if pinecone_subjects_results.get("matches"):
-                    for match in pinecone_subjects_results["matches"]:
-                        match_id = match["id"]
-                        metadata = match["metadata"]
-                        tender_id = metadata.get("tender_id")
-                        if tender_id in processed_ids:
-                            continue
-                        processed_ids.add(tender_id)
-                        chunk_index = metadata.get("chunk_index")
-                        
-                        # Skip if we don't have the required metadata
-                        if not tender_id:
-                            logger.warning(f"Skipping tender subject match {match_id} - missing tender_id")
-                            continue
-
-                        # Fetch complete tender metadata from default index
-                        try:
-                            default_index_results = await query_tool.query_by_id(
-                                id=tender_id,
-                                top_k=1,
-                                filter_conditions=source_pinecone_filters
-                            )
-                            if default_index_results.get("matches"):
-                                default_metadata = default_index_results["matches"][0]["metadata"]
-                                # Merge metadata, preferring subject match metadata for specific fields
-                                metadata.update({
-                                    "name": default_metadata.get("name", metadata.get("name", "")),
-                                    "organization": default_metadata.get("organization", metadata.get("organization", "")),
-                                    "location": default_metadata.get("location", metadata.get("location", "")),
-                                    "source_type": default_metadata.get("source_type", metadata.get("source_type", ""))
-                                })
-                        except Exception as e:
-                            logger.warning(f"Failed to fetch complete metadata for tender {tender_id}: {e}")
-
-                        # Add the tender subject match
-                        all_tender_matches.append({
-                            "id": tender_id,  # Use the parent tender ID
-                            "name": metadata.get("name", ""),
-                            "organization": metadata.get("organization", ""),
-                            "location": metadata.get("location", ""),
-                            "source": "tender_subjects",
-                            "search_phrase": phrase,
-                            "source_type": metadata.get("source_type"),
-                            "subject_match": {
-                                "id": match_id,
-                                "chunk_index": chunk_index,
-                                "score": match.get("score"),
-                                "text": metadata.get("text", "")
-                            }
-                        })
-                        
-                        # Store the full match data with the parent tender ID
-                        combined_search_matches[tender_id] = {
-                            "id": tender_id,
-                            "score": match.get("score"),
-                            "metadata": metadata,
-                            "subject_match": {
-                                "id": match_id,
-                                "chunk_index": chunk_index,
-                                "score": match.get("score"),
-                                "text": metadata.get("text", "")
-                            }
-                        }
-                        
-                        detailed_results.setdefault(phrase, {}).setdefault("tender_subjects", []).append({
-                            "id": tender_id,  # Use the parent tender ID
-                            "name": metadata.get("name", ""),
-                            "score": match.get("score"),
-                            "source": "tender_subjects",
-                            "source_type": metadata.get("source_type"),
-                            "subject_match": {
-                                "id": match_id,
-                                "chunk_index": chunk_index,
-                                "score": match.get("score"),
-                                "text": metadata.get("text", "")
-                            }
-                        })
-
-                pinecone_subjects_matches = pinecone_subjects_results.get("matches", [])
-                pinecone_subjects_count = len(pinecone_subjects_matches)
-                logger.info(f"Tender-subjects Pinecone found: {pinecone_subjects_count} unique tenders for source: {source} and phrase: {phrase}.")
+                pinecone_tasks.append(task)
+                task_metadata.append({
+                    "phrase": phrase,
+                    "source": source,
+                    "index_type": "tender_subjects",
+                    "filters": source_pinecone_filters
+                })
     else:
         logger.info("No specific sources provided, running single query across both search engines.")
 
-        # Add keyword search filters for each search phrase
-        for phrase in semantic_phrases:
-            logger.info(f"Querying Pinecone with vector search and keyword filters: {pinecone_filters}")
-            
-            # Perform vector similarity search in tender names index
-            pinecone_results = await query_tool.query_by_text(
-                query_text=phrase,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                filter_conditions=pinecone_filters
-            )
-
-            if pinecone_results.get("matches"):
-                for match in pinecone_results["matches"]:
-                    match_id = match["id"]
-                    if match_id in processed_ids:
-                        continue
-                    processed_ids.add(match_id)
-                    tender_name = match["metadata"].get("name", "")
-                    all_tender_matches.append({
-                        "id": match_id,
-                        "name": tender_name,
-                        "organization": match["metadata"].get("organization", ""),
-                        "location": match["metadata"].get("location", ""),
-                        "source": "pinecone",
-                        "search_phrase": phrase,
-                        "source_type": match["metadata"].get("source_type")
-                    })
-                    combined_search_matches[match_id] = match
-                    detailed_results.setdefault(phrase, {}).setdefault("pinecone", []).append({
-                        "id": match_id,
-                        "name": tender_name,
-                        "score": match.get("score"),
-                        "source": "pinecone",
-                        "source_type": match["metadata"].get("source_type")
-                    })
-
-            pinecone_matches = pinecone_results.get("matches", [])
-            pinecone_count = len(pinecone_matches)
-            logger.info(f"Pinecone found: {pinecone_count} unique tenders for phrase: {phrase}.")
-
-            # Perform vector similarity search in tender subjects index
-            query_config_subjects = QueryConfig(
-                index_name=tender_subjects_index_name,
-                namespace="",
-                embedding_model=embedding_model
-            )
-            query_tool_subjects = QueryTool(config=query_config_subjects)
-
-            logger.info(f"Querying tender-subjects Pinecone with vector search and keyword filters: {pinecone_filters}")
-            pinecone_subjects_results = await query_tool_subjects.query_by_text(
-                query_text=phrase,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                filter_conditions=pinecone_filters
-            )
-
-            if pinecone_subjects_results.get("matches"):
-                for match in pinecone_subjects_results["matches"]:
-                    match_id = match["id"]
-                    metadata = match["metadata"]
-                    tender_id = metadata.get("tender_id")
-                    if tender_id in processed_ids:
-                        continue
-                    processed_ids.add(tender_id)
-                    chunk_index = metadata.get("chunk_index")
-                    
-                    # Skip if we don't have the required metadata
-                    if not tender_id:
-                        logger.warning(f"Skipping tender subject match {match_id} - missing tender_id")
-                        continue
-
-                    # Fetch complete tender metadata from default index
-                    try:
-                        default_index_results = await query_tool.query_by_id(
-                            id=tender_id,
-                            top_k=1,
-                            filter_conditions=pinecone_filters
-                        )
-                        if default_index_results.get("matches"):
-                            default_metadata = default_index_results["matches"][0]["metadata"]
-                            # Merge metadata, preferring subject match metadata for specific fields
-                            metadata.update({
-                                "name": default_metadata.get("name", metadata.get("name", "")),
-                                "organization": default_metadata.get("organization", metadata.get("organization", "")),
-                                "location": default_metadata.get("location", metadata.get("location", "")),
-                                "source_type": default_metadata.get("source_type", metadata.get("source_type", ""))
-                            })
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch complete metadata for tender {tender_id}: {e}")
-
-                    # Add the tender subject match
-                    all_tender_matches.append({
-                        "id": tender_id,  # Use the parent tender ID
-                        "name": metadata.get("name", ""),
-                        "organization": metadata.get("organization", ""),
-                        "location": metadata.get("location", ""),
-                        "source": "tender_subjects",
-                        "search_phrase": phrase,
-                        "source_type": metadata.get("source_type"),
-                        "subject_match": {
-                            "id": match_id,
-                            "chunk_index": chunk_index,
-                            "score": match.get("score"),
-                            "text": metadata.get("text", "")
-                        }
-                    })
-                    
-                    # Store the full match data with the parent tender ID
-                    combined_search_matches[tender_id] = {
-                        "id": tender_id,
-                        "score": match.get("score"),
-                        "metadata": metadata,
-                        "subject_match": {
-                            "id": match_id,
-                            "chunk_index": chunk_index,
-                            "score": match.get("score"),
-                            "text": metadata.get("text", "")
-                        }
-                    }
-                    
-                    detailed_results.setdefault(phrase, {}).setdefault("tender_subjects", []).append({
-                        "id": tender_id,  # Use the parent tender ID
-                        "name": metadata.get("name", ""),
-                        "score": match.get("score"),
-                        "source": "tender_subjects",
-                        "source_type": metadata.get("source_type"),
-                        "subject_match": {
-                            "id": match_id,
-                            "chunk_index": chunk_index,
-                            "score": match.get("score"),
-                            "text": metadata.get("text", "")
-                        }
-                    })
-
-            pinecone_subjects_matches = pinecone_subjects_results.get("matches", [])
-            pinecone_subjects_count = len(pinecone_subjects_matches)
-            logger.info(f"Tender-subjects Pinecone found: {pinecone_subjects_count} unique tenders for phrase: {phrase}.")
-
+        # Add Elasticsearch tasks for each search phrase
         for phrase in search_phrases:
             es_query = {
                 "bool": {
@@ -638,6 +400,184 @@ async def perform_tender_search(
             es_hits = es_result.get("hits", {}).get("hits", [])
             es_count = len(es_hits)
             logger.info(f"Elasticsearch found: {es_count} unique tenders.")
+
+        # Add Pinecone tasks for each semantic phrase
+        for phrase in semantic_phrases:
+            # Tender names query task
+            task = query_tool.query_by_text(
+                query_text=phrase,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=pinecone_filters
+            )
+            pinecone_tasks.append(task)
+            task_metadata.append({
+                "phrase": phrase,
+                "source": None,
+                "index_type": "tender_names",
+                "filters": pinecone_filters
+            })
+
+            # Tender subjects query task
+            task = query_tool_subjects.query_by_text(
+                query_text=phrase,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=pinecone_filters
+            )
+            pinecone_tasks.append(task)
+            task_metadata.append({
+                "phrase": phrase,
+                "source": None,
+                "index_type": "tender_subjects",
+                "filters": pinecone_filters
+            })
+
+    # Execute Pinecone queries in controlled batches to avoid rate limits
+    logger.info(f"Executing {len(pinecone_tasks)} Pinecone queries in controlled batches...")
+    
+    # Create semaphore to limit concurrent queries (adjust based on your Pinecone plan)
+    max_concurrent_queries = 10  # Adjust this based on your rate limits
+    semaphore = asyncio.Semaphore(max_concurrent_queries)
+    
+    async def execute_with_semaphore(task):
+        async with semaphore:
+            # Add small delay to further reduce rate limit risk
+            await asyncio.sleep(0.1)
+            return await task
+    
+    # Execute tasks with concurrency control
+    pinecone_results = await asyncio.gather(
+        *[execute_with_semaphore(task) for task in pinecone_tasks], 
+        return_exceptions=True
+    )
+
+    # Process results
+    for i, (result, metadata) in enumerate(zip(pinecone_results, task_metadata)):
+        if isinstance(result, Exception):
+            logger.error(f"Pinecone query failed for phrase '{metadata['phrase']}', source '{metadata['source']}', index '{metadata['index_type']}': {result}")
+            continue
+
+        phrase = metadata["phrase"]
+        source = metadata["source"]
+        index_type = metadata["index_type"]
+
+        if index_type == "tender_names":
+            # Process tender names results
+            if result.get("matches"):
+                for match in result["matches"]:
+                    match_id = match["id"]
+                    if match_id in processed_ids:
+                        continue
+                    processed_ids.add(match_id)
+                    tender_name = match["metadata"].get("name", "")
+                    all_tender_matches.append({
+                        "id": match_id,
+                        "name": tender_name,
+                        "organization": match["metadata"].get("organization", ""),
+                        "location": match["metadata"].get("location", ""),
+                        "source": "pinecone",
+                        "search_phrase": phrase,
+                        "source_type": match["metadata"].get("source_type")
+                    })
+                    combined_search_matches[match_id] = match
+                    detailed_results.setdefault(phrase, {}).setdefault("pinecone", []).append({
+                        "id": match_id,
+                        "name": tender_name,
+                        "score": match.get("score"),
+                        "source": "pinecone",
+                        "source_type": match["metadata"].get("source_type")
+                    })
+
+            pinecone_matches = result.get("matches", [])
+            pinecone_count = len(pinecone_matches)
+            source_info = f" for source: {source}" if source else ""
+            logger.info(f"Pinecone found: {pinecone_count} unique tenders{source_info} and phrase: {phrase}.")
+
+        elif index_type == "tender_subjects":
+            # Process tender subjects results
+            if result.get("matches"):
+                for match in result["matches"]:
+                    match_id = match["id"]
+                    match_metadata = match["metadata"]
+                    tender_id = match_metadata.get("tender_id")
+                    if tender_id in processed_ids:
+                        continue
+                    processed_ids.add(tender_id)
+                    chunk_index = match_metadata.get("chunk_index")
+                    
+                    # Skip if we don't have the required metadata
+                    if not tender_id:
+                        logger.warning(f"Skipping tender subject match {match_id} - missing tender_id")
+                        continue
+
+                    # Fetch complete tender metadata from default index
+                    try:
+                        default_index_results = await query_tool.query_by_id(
+                            id=tender_id,
+                            top_k=1,
+                            filter_conditions=metadata["filters"]
+                        )
+                        if default_index_results.get("matches"):
+                            default_metadata = default_index_results["matches"][0]["metadata"]
+                            # Merge metadata, preferring subject match metadata for specific fields
+                            match_metadata.update({
+                                "name": default_metadata.get("name", match_metadata.get("name", "")),
+                                "organization": default_metadata.get("organization", match_metadata.get("organization", "")),
+                                "location": default_metadata.get("location", match_metadata.get("location", "")),
+                                "source_type": default_metadata.get("source_type", match_metadata.get("source_type", ""))
+                            })
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch complete metadata for tender {tender_id}: {e}")
+
+                    # Add the tender subject match
+                    all_tender_matches.append({
+                        "id": tender_id,  # Use the parent tender ID
+                        "name": match_metadata.get("name", ""),
+                        "organization": match_metadata.get("organization", ""),
+                        "location": match_metadata.get("location", ""),
+                        "source": "tender_subjects",
+                        "search_phrase": phrase,
+                        "source_type": match_metadata.get("source_type"),
+                        "subject_match": {
+                            "id": match_id,
+                            "chunk_index": chunk_index,
+                            "score": match.get("score"),
+                            "text": match_metadata.get("text", "")
+                        }
+                    })
+                    
+                    # Store the full match data with the parent tender ID
+                    combined_search_matches[tender_id] = {
+                        "id": tender_id,
+                        "score": match.get("score"),
+                        "metadata": match_metadata,
+                        "subject_match": {
+                            "id": match_id,
+                            "chunk_index": chunk_index,
+                            "score": match.get("score"),
+                            "text": match_metadata.get("text", "")
+                        }
+                    }
+                    
+                    detailed_results.setdefault(phrase, {}).setdefault("tender_subjects", []).append({
+                        "id": tender_id,  # Use the parent tender ID
+                        "name": match_metadata.get("name", ""),
+                        "score": match.get("score"),
+                        "source": "tender_subjects",
+                        "source_type": match_metadata.get("source_type"),
+                        "subject_match": {
+                            "id": match_id,
+                            "chunk_index": chunk_index,
+                            "score": match.get("score"),
+                            "text": match_metadata.get("text", "")
+                        }
+                    })
+
+            pinecone_subjects_matches = result.get("matches", [])
+            pinecone_subjects_count = len(pinecone_subjects_matches)
+            source_info = f" for source: {source}" if source else ""
+            logger.info(f"Tender-subjects Pinecone found: {pinecone_subjects_count} unique tenders{source_info} and phrase: {phrase}.")
 
     logger.info(f"Combined search found {len(all_tender_matches)} unique tenders.")
     

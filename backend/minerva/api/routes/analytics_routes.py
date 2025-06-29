@@ -1013,3 +1013,124 @@ async def get_daily_activity_breakdown(
     except Exception as e:
         logger.error(f"Error generating daily activity breakdown: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating daily activity breakdown: {str(e)}")
+
+@router.get("/analytics/users-with-active-tenders", response_model=List[Dict[str, Any]])
+async def get_users_with_active_tenders(
+    current_user: User = Depends(get_current_user)
+):
+    """Get all users who have either created at least one project (assistant) OR activated at least one public tender analysis"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Get all user IDs who have at least one active tender analysis result
+        users_with_active_tenders = await db.tender_analysis_results.distinct(
+            "user_id",
+            {"status": "active"}
+        )
+        
+        # Get all user IDs who have created at least one assistant (project)
+        users_with_assistants_str = await db.assistants.distinct("owner_id")
+        users_with_assistants = [ObjectId(user_id) for user_id in users_with_assistants_str if ObjectId.is_valid(user_id)]
+        
+        # Combine both sets of users (union)
+        all_relevant_users = list(set(users_with_active_tenders + users_with_assistants))
+        
+        if not all_relevant_users:
+            return []
+        
+        # Get user details for these users
+        users_details = await db.users.find({
+            "_id": {"$in": all_relevant_users}
+        }, {
+            "_id": 1,
+            "email": 1,
+            "name": 1,
+            "created_at": 1,
+            "org_id": 1,
+            "total_tokens": 1
+        }).to_list(None)
+        
+        # Get count of active tender analysis results for each user
+        # First get all active tender analysis results
+        all_active_results = await db.tender_analysis_results.find(
+            {"status": "active"},
+            {"user_id": 1, "created_at": 1}
+        ).to_list(None)
+        
+        # Count them by user_id
+        tender_counts_dict = {}
+        for result in all_active_results:
+            user_id_str = str(result["user_id"])
+            if user_id_str not in tender_counts_dict:
+                tender_counts_dict[user_id_str] = {
+                    "active_tender_count": 0,
+                    "latest_creation": result["created_at"]
+                }
+            tender_counts_dict[user_id_str]["active_tender_count"] += 1
+            if result["created_at"] > tender_counts_dict[user_id_str]["latest_creation"]:
+                tender_counts_dict[user_id_str]["latest_creation"] = result["created_at"]
+        
+        # Get count of assistants (projects) for each user
+        user_id_strings = [str(uid) for uid in all_relevant_users]
+        pipeline_assistant_counts = [
+            {
+                "$match": {
+                    "owner_id": {"$in": user_id_strings}
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$owner_id",
+                    "projects_count": {"$sum": 1},
+                    "latest_project_creation": {"$max": "$created_at"}
+                }
+            }
+        ]
+        
+        assistant_counts = await db.assistants.aggregate(pipeline_assistant_counts).to_list(None)
+        assistant_counts_dict = {item["_id"]: item for item in assistant_counts}
+        
+        # Get count of opened tender analysis results for each user
+        all_opened_results = await db.tender_analysis_results.find(
+            {
+                "user_id": {"$in": all_relevant_users},
+                "opened_at": {"$exists": True, "$ne": None}
+            },
+            {"user_id": 1}
+        ).to_list(None)
+        
+        # Count opened results by user_id
+        opened_counts_dict = {}
+        for result in all_opened_results:
+            user_id_str = str(result["user_id"])
+            if user_id_str not in opened_counts_dict:
+                opened_counts_dict[user_id_str] = 0
+            opened_counts_dict[user_id_str] += 1
+        
+        # Combine user details with tender analysis, assistant, and opened results counts
+        result = []
+        for user in users_details:
+            user_id_str = str(user["_id"])
+            tender_info = tender_counts_dict.get(user_id_str, {})
+            assistant_info = assistant_counts_dict.get(user_id_str, {})
+            opened_count = opened_counts_dict.get(user_id_str, 0)
+            
+            result.append({
+                "email": user["email"],
+                "name": user.get("name"),
+                "total_tokens": user.get("total_tokens", 0),
+                "active_tender_analyses_count": tender_info.get("active_tender_count", 0),
+                "projects_count": assistant_info.get("projects_count", 0),
+                "total_opened_results": opened_count,
+            })
+        
+        # Sort by token usage (descending)
+        result.sort(key=lambda x: x["total_tokens"], reverse=True)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting users with active tenders: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting users with active tenders: {str(e)}")

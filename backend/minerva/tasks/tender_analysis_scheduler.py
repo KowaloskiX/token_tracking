@@ -11,13 +11,19 @@ logger = logging.getLogger("minerva.tender_analysis_scheduler")
 
 # --- CONFIGURATION ---
 
-USER_ID = "67c6cb742fee91862e135247"    
-ANALYSIS_ID = "680eb345e1189b4f5ce9dd32" 
+USER_ID = "6841db8e05c692b0289a70e0"    
+ANALYSIS_ID = "6841e02305c692b0289a70e1" 
 DATES = [
-    "2025-06-06",
-    "2025-06-09",
-    "2025-06-10",
-    "2025-06-11"
+    "2025-06-13",
+    "2025-06-16",
+    "2025-06-17",
+    "2025-06-18",
+    "2025-06-20",
+    "2025-06-23",
+    "2025-06-24",
+    "2025-06-25",
+    "2025-06-26",
+    "2025-06-27"
 ]  #dates, run all concurrently
 
 # --- MAIN SCHEDULER LOGIC ---

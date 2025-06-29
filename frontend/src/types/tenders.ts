@@ -79,6 +79,7 @@ export interface TenderAnalysis {
   search_phrase: string;
   sources?: string[];
   criteria: AnalysisCriteria[];
+  filtering_rules?: string;
   last_run?: string;
   created_at: string;
   updated_at: string;

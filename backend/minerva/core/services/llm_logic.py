@@ -19,8 +19,8 @@ FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "gpt-4.1-mini")
 
 MODEL_PRICING = {
     # OpenAI models
-    "gpt-4o": {"input_cost_per_million": 5.00, "output_cost_per_million": 20.00},
-    "gpt-4o-mini": {"input_cost_per_million": 0.60, "output_cost_per_million": 2.40},
+    "gpt-4o": {"input_cost_per_million": 2.50, "output_cost_per_million": 10.00},
+    "gpt-4o-mini": {"input_cost_per_million": 0.15, "output_cost_per_million": 0.60},
     "gpt-4.1": {"input_cost_per_million": 2.00, "output_cost_per_million": 8.00},
     "gpt-4.1-mini": {"input_cost_per_million": 0.40, "output_cost_per_million": 1.60},
     "gpt-4.1-nano": {"input_cost_per_million": 0.10, "output_cost_per_million": 0.40},
@@ -28,7 +28,8 @@ MODEL_PRICING = {
     "o4-mini": {"input_cost_per_million": 1.10, "output_cost_per_million": 4.40},
     
     # Gemini models
-    "gemini-2.5-flash-preview-05-20": {"input_cost_per_million": 1.25, "output_cost_per_million": 5.00},
+    "gemini-2.5-flash-preview-05-20": {"input_cost_per_million": 0.30, "output_cost_per_million": 2.50},
+    "gemini-2.5-flash": {"input_cost_per_million": 0.30, "output_cost_per_million": 2.50},
     "gemini-1.5-pro": {"input_cost_per_million": 3.50, "output_cost_per_million": 10.50},
     "gemini-1.5-flash": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
     "gemini-2.0-flash-exp": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
@@ -80,6 +81,15 @@ def _is_provider_error(error: Exception, provider: str) -> bool:
     
     return False
 
+def _is_gemini_rate_limit_error(error: Exception) -> bool:
+    """Check if the error is specifically a Gemini rate limit error that should trigger API key rotation."""
+    error_str = str(error).lower()
+    gemini_rate_limit_indicators = [
+        "quota", "resource_exhausted", "rate limit", "429", 
+        "too many requests", "quota exceeded"
+    ]
+    return any(indicator in error_str for indicator in gemini_rate_limit_indicators)
+
 def _get_llm_instance(provider: str, model: str, request: LLMSearchRequest):
     """Get an LLM instance for the specified provider and model."""
     llm_classes = {
@@ -107,7 +117,17 @@ async def _try_llm_with_universal_fallback(
     messages: list, 
     vector_search_results: list
 ) -> Union[LLMSearchResponse, object]:
-    """Try primary LLM provider first, fallback to configured provider if needed."""
+    """
+    Try primary LLM provider first, with enhanced Gemini API key rotation, then fallback to configured provider if needed.
+    
+    For Gemini providers:
+    1. First tries GEMINI_API_KEY
+    2. On rate limit, automatically rotates to GEMINI_API_KEY_2 within the GeminiLLM class
+    3. Only falls back to OpenAI after all Gemini API keys are exhausted
+    
+    For other providers:
+    - Uses the standard fallback mechanism directly
+    """
     
     primary_provider = request.llm.provider
     primary_model = request.llm.model
@@ -130,6 +150,13 @@ async def _try_llm_with_universal_fallback(
             return response
             
     except Exception as error:
+        # Special handling for Gemini rate limit errors - try API key rotation first
+        if primary_provider == "google" and _is_gemini_rate_limit_error(error):
+            logger.warning(f"Gemini rate limit detected, API key rotation was already attempted in GeminiLLM class")
+            # The GeminiLLM class already handles API key rotation internally
+            # If we're here, it means all Gemini API keys were exhausted
+            logger.info("All Gemini API keys exhausted, proceeding with fallback to configured provider")
+        
         error_detected = _is_provider_error(error, primary_provider)
         
         if ENABLE_LLM_FALLBACK and error_detected:

@@ -1,0 +1,106 @@
+@host = http://localhost:8000
+
+
+
+###
+
+
+
+# Search with custom phrase
+// @prompt access_token
+
+POST {{host}}/test-tender-search
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+    "search_phrase": "construction",
+    "save_results": "True"
+}
+
+
+
+###
+
+
+
+# Search with analysis_id
+// @prompt access_token
+
+POST {{host}}/test-tender-search
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+    "analysis_id": "683ea8188b55c8a9fc2616f5",
+    "save_results": "True",
+    "filter_conditions": [
+        {
+            "field": "initiation_date",
+            "op": "eq",
+            "value": "2025-06-16"
+            }
+        ]
+}
+
+
+
+###
+
+
+
+# Get saved search results
+// @prompt access_token
+// @prompt search_id
+
+GET {{host}}/tender-search/{{search_id}}
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Testing tender filtering with saved search
+// @prompt access_token
+
+POST {{host}}/test-tender-filter
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+    "analysis_id": "683ea8188b55c8a9fc2616f5",
+    "search_id": "6852b2ce1b0d779385eed306"
+}
+
+
+
+###
+
+
+
+# Get saved filter results
+// @prompt access_token
+// @prompt initial_ai_filter_id
+
+GET {{host}}/tender-filter/{{initial_ai_filter_id}}
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Analyze single tender
+// @prompt access_token
+
+POST {{host}}/analyze-single-tender
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+    "tender_url": "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-e9f33f94-011b-4352-95c8-1eb24eb80c6f",
+    "analysis_id": "683ea8188b55c8a9fc2616f5"
+}

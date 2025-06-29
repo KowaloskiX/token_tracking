@@ -109,15 +109,13 @@ def _get_projection_for_results(include_criteria_for_filtering: bool) -> dict:
             "status": 1,
             "created_at": 1,
             "updated_at": 1,
-            "opened": 1,
-            "last_opened_at": 1,
+            "opened_at": 1,
             "initiation_date": 1,
             "submission_deadline": 1,
             "qualified": 1,
-            "voivodeship": 1,
+            "location": 1,
             "source": 1,
-            "order": 1,
-            # Include minimal criteria data for filtering
+            "order_number": 1,
             "criteria_analysis.criteria": 1,
             "criteria_analysis.analysis.criteria_met": 1,
         }
@@ -257,7 +255,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-13"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-06-26"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -297,7 +295,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             tender_names_index_name="tenders",
             elasticsearch_index_name="tenders",
             embedding_model="text-embedding-3-large",
-            rag_index_name="test-files-rag",
+            rag_index_name="files-rag-23-04-2025",
             criteria_definitions=criteria_definitions
         )
         await assign_order_numbers(ObjectId(request.analysis_id), current_user)
@@ -1370,9 +1368,9 @@ async def mark_result_unopened(result_id: str):
 
     await db.tender_analysis_results.update_one(
         {"_id": ObjectId(result_id)},
-        {"$set": {"opened_at": None}}
+        {"$unset": {"opened_at": ""}}  # Use $unset to completely remove the field
     )
-    return {"message": "Tender result marked as unopened."}
+    return {"message": "Tender result marked as unopened.", "opened_at": None}
 
 
 
@@ -2806,6 +2804,8 @@ async def analyze_single_tender(
                 source_type = TenderSourceType("vergabeplatforms")
             elif "logintrade.net" in request.tender_url:
                 source_type = TenderSourceType("logintrade")
+            elif "e-propublico.pl" in request.tender_url:
+                source_type = TenderSourceType("epropublico_main")
             else:
                 raise HTTPException(
                     status_code=400, 
@@ -2858,8 +2858,8 @@ async def analyze_single_tender(
                     "analysis_id": request.analysis_id
                 }
             
-            # 8. Save the result to database
-            await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
+            # 8. Save the result to database (DISABLED FOR NOW)
+            # await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
             
             # 9. Update analysis last_run timestamp
             await db.tender_analysis.update_one(
@@ -2875,16 +2875,21 @@ async def analyze_single_tender(
             
             logger.info(f"Successfully analyzed single tender: {tender_result.id}")
             
+            def convert_objectids(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_objectids(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_objectids(i) for i in obj]
+                elif isinstance(obj, ObjectId):
+                    return str(obj)
+                return obj
+            
             return {
                 "status": "success",
                 "message": "Tender analyzed successfully",
+                "result": convert_objectids(tender_result.dict(by_alias=True)),
                 "tender_url": request.tender_url,
                 "analysis_id": request.analysis_id,
-                "result_id": str(tender_result.id),
-                "tender_score": tender_result.tender_score,
-                "tender_name": tender_result.tender_metadata.name if tender_result.tender_metadata else "Unknown",
-                "organization": tender_result.tender_metadata.organization if tender_result.tender_metadata else "Unknown",
-                "files_processed": len(tender_result.uploaded_files)
             }
             
         finally:

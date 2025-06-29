@@ -111,8 +111,7 @@ async def filter_tenders(
             current_user=current_user,
             ai_batch_size=request.ai_batch_size,
             search_id=request.search_id,
-            save_results=request.save_results,
-            filtering_mode=AIFilteringMode.TRIPLE_RUN
+            save_results=request.save_results
         )
         
         # Prepare base response data

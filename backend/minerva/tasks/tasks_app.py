@@ -62,15 +62,15 @@ def configure_scheduler(loop):
 
     # Use WORKER_INDEX, TOTAL_*_WORKERS, and WORKER_TYPE from environment
     worker_index = int(os.getenv("WORKER_INDEX", 0))
-    total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 6))
+    total_scraping_workers = int(os.getenv("TOTAL_SCRAPING_WORKERS", 12))
     total_cleanup_workers = int(os.getenv("TOTAL_CLEANUP_WORKERS", 1))
     worker_type = os.getenv("WORKER_TYPE", "scraping")  # Default to scraping if not set
 
     # Schedule jobs based on worker type
     if worker_type == "scraping":
         scheduler.add_job(
-            lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
-            trigger=CronTrigger(hour=19, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, "2025-06-27", None)),
+            trigger=CronTrigger(hour=11, minute=12, day_of_week='mon-sun', timezone="Europe/Warsaw"),
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )
@@ -88,7 +88,7 @@ def configure_scheduler(loop):
     elif worker_type == "monitoring" and worker_index == 0:
         scheduler.add_job(
             lambda: run_coroutine(monitoring_main(0, 1, None)),
-            trigger=CronTrigger(hour=18, minute=0, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=19, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name="monitoring_worker_0",
             replace_existing=True
         )

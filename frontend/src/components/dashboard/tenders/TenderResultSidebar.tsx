@@ -704,8 +704,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                 maxWidth={800} 
             >
                 <div className="flex flex-col h-full relative w-full overflow-hidden">
-                    {/* Show skeleton loader when fetch is in progress or when awaiting full result details */}
-                    {isLoadingFullResult || (updatedResult && updatedResult.uploaded_files?.length > 0 && (!updatedResult.criteria_analysis?.length || !updatedResult.tender_description)) ? (
+                    {/* Show skeleton loader only when fetch is in progress */}
+                    {isLoadingFullResult ? (
                         <TenderDetailsSkeleton />
                     ) : (
                         <>

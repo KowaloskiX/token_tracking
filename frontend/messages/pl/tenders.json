@@ -61,7 +61,14 @@
         "recipients": "Odbiorcy powiadomień email",
         "enableAll": "Włącz wszystkich",
         "disableAll": "Wyłącz wszystkich"
-      }
+      },
+      "advancedFiltering": "Zaawansowane Filtrowanie",
+      "showAdvancedFiltering": "Pokaż zaawansowane filtrowanie",
+      "hideAdvancedFiltering": "Ukryj zaawansowane filtrowanie",
+      "filteringRulesLabel": "Niestandardowe Reguły Filtrowania",
+      "filteringRulesPlaceholder": "Wprowadź niestandardowe instrukcje dotyczące filtrowania przetargów...",
+      "filteringRulesTooltip": "Podaj szczegółowe instrukcje, które pomogą AI w filtrowaniu przetargów zgodnie z Twoimi wymaganiami",
+      "filteringRulesDescription": "Dodaj niestandardowe reguły, które pomogą AI lepiej filtrować przetargi zgodnie z Twoimi potrzebami"
     },
     "create": {
       "title": "Stwórz nową wyszukiwarkę",
@@ -93,7 +100,14 @@
       "keywordsPlaceholder": "Wprowadź słowa kluczowe oddzielone przecinkami, np. 'certyfikacja, ISO, budżet'",
       "keywordsTooltip": "Wprowadź słowa kluczowe oddzielone przecinkami, np. \"certyfikacja, ISO, budżet\"",
       "subcriteriaLabel": "Dodatkowe zapytania",
-      "addSubquery": "+ Dodaj zapytanie"
+      "addSubquery": "+ Dodaj zapytanie",
+      "advancedFiltering": "Zaawansowane Filtrowanie",
+      "showAdvancedFiltering": "Pokaż zaawansowane filtrowanie",
+      "hideAdvancedFiltering": "Ukryj zaawansowane filtrowanie",
+      "filteringRulesLabel": "Niestandardowe Reguły Filtrowania",
+      "filteringRulesPlaceholder": "Wprowadź niestandardowe instrukcje dotyczące filtrowania przetargów...",
+      "filteringRulesTooltip": "Podaj szczegółowe instrukcje, które pomogą AI w filtrowaniu przetargów zgodnie z Twoimi wymaganiami",
+      "filteringRulesDescription": "Dodaj niestandardowe reguły, które pomogą AI lepiej filtrować przetargi zgodnie z Twoimi potrzebami"
     },
     "kanban": {
       "addToKanban": "Dodaj do Kanban",
@@ -156,9 +170,7 @@
       "citation": "Cytat",
       "fragment": "Fragment",
       "fragments": "fragmentów",
-      "unknownSource": "Nieznane źródło",
-      "confidence": "pewność",
-      "noAnalysis": "Brak analizy"
+      "unknownSource": "Nieznane źródło"
     },
     "status": {
       "inactive": "Nieaktywny",
@@ -173,17 +185,18 @@
       "status": "Status",
       "selectStatus": "Wybierz status",
       "unknown": "Nieznany",
-      "markRead": "Oznacz jako przeczytane"
+      "markRead": "Oznacz jako przeczytane",
+      "title": "Status"
     },
     "details": {
       "client": "Zamawiający",
-      "submissionDeadline": "Termin zgłoszenia",
+      "submissionDeadline": "Termin składania",
       "relevance": "Relewantność",
       "country": "Kraj",
       "voivodeship": "Województwo",
       "city": "Miejscowość",
       "publicationDate": "Data publikacji",
-      "submissionDate": "Termin zgłoszenia",
+      "submissionDate": "Termin składania",
       "timeRemaining": "Pozostało czasu",
       "timeElapsed": "Upłynęło czasu",
       "day": "dzień",
@@ -199,21 +212,20 @@
       "selectDate": "Wybierz termin",
       "filterBy": "Filtruj po",
       "publicationDate": "Data ogłoszenia",
-      "submissionDeadline": "Termin zgłoszenia",
+      "submissionDeadline": "Termin składania",
       "filters": "Filtry",
       "sort": "Sortuj",
       "sources": "Źródła",
       "voivodeships": "Województwa",
       "selectAll": "Zaznacz wszystkie",
       "deselectAll": "Odznacz wszystkie",
-      "sortBySubmissionDeadline": "Termin zgłoszenia",
+      "sortBySubmissionDeadline": "Termin składania",
       "sortByRelevance": "Relewantność",
       "sortByLastUpdate": "Ostatnia aktualizacja",
       "sortByCreationDate": "Data utworzenia",
       "sortByPublicationDate": "Data publikacji",
       "noTenders": "Brak przetargów spełniających wybrane kryteria filtrowania.",
-      "criteriaFilter": "Kryteria",
-      "unknownSource": "Nieznane Źródło"
+      "criteriaFilter": "Kryteria"
     },
     "sidebar": {
       "search": "Wyszukuj",
@@ -273,7 +285,10 @@
       "addToKanban": "Dodaj do tablicy Kanban",
       "searchSettings": "Ustawienia wyszukiwania",
       "noTenderSelected": "Nie wybrano przetargu",
-      "selectTenderToView": "Wybierz przetarg żeby wyświetlić szczegóły"
+      "selectTenderToView": "Wybierz przetarg żeby wyświetlić szczegóły",
+      "backToTenders": "Powrót do Przetargów",
+      "copySuccess": "Skopiowano",
+      "copySuccessDescription": "Tekst został skopiowany do schowka"
     },
     "tooltips": {
       "newTender": "Nowy przetarg, nieprzeczytany",
@@ -344,12 +359,6 @@
       "deleteColumnConfirm": "Czy na pewno chcesz usunąć tę kolumnę i wszystkie jej elementy?",
       "weightLabel": "Waga (1-5)"
     },
-    "table": {
-      "columns": "Kolumny",
-      "defaultColumns": "Domyślne Kolumny",
-      "criteriaColumns": "Kolumny Kryteriów",
-      "columnHint": "Przeciągnij krawędzie kolumn aby zmienić rozmiar"
-    },
     "noFilesAvailable": "Brak dostępnych plików",
     "noFilesDescription": "Ten przetarg nie posiada plików do pobrania. Sprawdź bezpośrednio źródło przetargu, aby uzyskać dostęp do wymaganych dokumentów.",
     "openTenderSource": "Otwórz źródło przetargu",
@@ -359,5 +368,19 @@
     "downloadFullData": "Pobierz pełne dane",
     "noAnalysis": "Brak analizy kryteriów. Pliki nie zostały pobrane ze źródła przetargu.",
     "noCommentsError": "Nie można załadować komentarzy - brak identyfikatora przetargu"
+  },
+  "errors": {
+    "notFound": "Nie znaleziono przetargu",
+    "notFoundDescription": "Żądany tender nie został znaleziony.",
+    "loadFailed": "Nie udało się załadować szczegółów przetargu",
+    "loadFailedTitle": "Błąd"
+  },
+  "description": {
+    "title": "Opis",
+    "noDescription": "Brak opisu przetargu"
+  },
+  "info": {
+    "title": "Informacje",
+    "notSpecified": "Nie określono"
   }
 }

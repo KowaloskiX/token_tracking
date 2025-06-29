@@ -154,9 +154,9 @@ async def ai_pick_main_doc(
                     logger.warning("LLM picked unsupported extension → ignoring")
                     parsed["selected"] = None
 
-        # 6️⃣  token accounting
-        if current_user and getattr(response, "usage", None):
-            await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
+        # # 6️⃣  token accounting
+        # if current_user and getattr(response, "usage", None):
+        #     await update_user_token_usage(str(current_user.id), response.usage.total_tokens)
 
         log_mem(f"ai_pick_main_doc:end:{run_id or 'single'}")
         return FileSelectionResponse(**parsed)
