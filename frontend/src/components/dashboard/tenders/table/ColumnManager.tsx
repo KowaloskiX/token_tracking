@@ -1,12 +1,10 @@
-// components/dashboard/tenders/table/ColumnManager.tsx
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,321 +12,365 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
-  GripVertical,
-  Eye,
-  EyeOff,
-  Plus,
-  Trash2,
-  RotateCcw,
-  Settings,
-  ChevronDown,
-} from 'lucide-react';
-import { ColumnConfig, CriteriaColumnConfig, isCriteriaColumn } from '@/types/tableColumns';
-import { useTendersTranslations } from '@/hooks/useTranslations';
+    ColumnConfig,
+    CriteriaColumnConfig,
+    isCriteriaColumn,
+} from '@/types/tableColumns';
+import { useTendersTranslations, useTranslations } from '@/hooks/useTranslations';
+import { cn } from '@/lib/utils';
 
 interface ColumnManagerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  columns: ColumnConfig[];
-  availableCriteria: Array<{
-    id: string;
-    name: string;
-    description?: string;
-  }>;
-  onToggleVisibility: (columnId: string) => void;
-  onReorderColumns: (sourceIndex: number, destinationIndex: number) => void;
-  onAddCriteriaColumn: (criteriaId: string, criteriaName: string) => void;
-  onRemoveCriteriaColumn: (criteriaId: string) => void;
-  onResetToDefaults: () => void;
-  onUpdateColumnWidth: (columnId: string, width: number) => void;
+    isOpen: boolean;
+    onClose: () => void;
+    columns: ColumnConfig[];
+    availableCriteria: Array<{
+        id: string;
+        name: string;
+        description?: string;
+    }>;
+    onToggleVisibility: (columnId: string) => void;
+    onReorderColumns: (sourceIndex: number, destinationIndex: number) => void;
+    onAddCriteriaColumn: (criteriaId: string, criteriaName: string) => void;
+    onRemoveCriteriaColumn: (criteriaId: string) => void;
+    onResetToDefaults: () => void;
+    onUpdateColumnWidth: (columnId: string, width: number) => void;
 }
 
 export const ColumnManager: React.FC<ColumnManagerProps> = ({
-  isOpen,
-  onClose,
-  columns,
-  availableCriteria,
-  onToggleVisibility,
-  onReorderColumns,
-  onAddCriteriaColumn,
-  onRemoveCriteriaColumn,
-  onResetToDefaults,
-  onUpdateColumnWidth,
+    isOpen,
+    onClose,
+    columns,
+    availableCriteria,
+    onToggleVisibility,
+    onReorderColumns,
+    onAddCriteriaColumn,
+    onRemoveCriteriaColumn,
+    onResetToDefaults,
+    onUpdateColumnWidth,
 }) => {
-  const t = useTendersTranslations();
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const t = useTranslations();
+    const tTenders = useTendersTranslations();
 
-  // Get criteria columns that are already added
-  const addedCriteriaIds = columns
-    .filter(col => isCriteriaColumn(col))
-    .map(col => (col as CriteriaColumnConfig).criteriaId);
+    const MIN_VISIBLE = 3;
 
-  // Get available criteria that haven't been added yet
-  const availableToAdd = availableCriteria.filter(
-    criteria => !addedCriteriaIds.includes(criteria.id)
-  );
+    const [draftColumns, setDraftColumns] = useState<ColumnConfig[]>([]);
+    const [searchCriteria, setSearchCriteria] = useState('');
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+    useEffect(() => {
+        if (isOpen) {
+            setDraftColumns(columns.map(c => ({ ...c })));
+            setSearchCriteria('');
+        }
+    }, [isOpen, columns]);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-  };
+    const visibleDraftCount = draftColumns.filter(c => c.visible).length;
+    const addedCriteriaIds = draftColumns
+        .filter(isCriteriaColumn)
+        .map(col => (col as CriteriaColumnConfig).criteriaId);
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDragOverIndex(index);
-  };
+    const filteredAvailableCriteria = availableCriteria
+        .filter(c => !addedCriteriaIds.includes(c.id))
+        .filter(c =>
+            !searchCriteria ||
+            c.name.toLowerCase().includes(searchCriteria.toLowerCase()) ||
+            c.description?.toLowerCase().includes(searchCriteria.toLowerCase())
+        );
 
-  const handleDragEnd = () => {
-    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
-      onReorderColumns(draggedIndex, dragOverIndex);
-    }
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
+    const sortedDraft = [...draftColumns].sort((a, b) => a.order - b.order);
 
-  const handleWidthChange = (columnId: string, value: string) => {
-    const width = parseInt(value, 10);
-    if (!isNaN(width) && width > 0) {
-      onUpdateColumnWidth(columnId, width);
-    }
-  };
+    const toggleDraftVisibility = (id: string) => {
+        setDraftColumns(prev => {
+            const next = prev.map(c =>
+                c.id === id ? { ...c, visible: !c.visible } : c
+            );
+            if (next.filter(c => c.visible).length < MIN_VISIBLE) return prev;
+            return next;
+        });
+    };
 
-  const getColumnIcon = (column: ColumnConfig) => {
-    switch (column.type) {
-      case 'source':
-        return '🔗';
-      case 'name':
-        return '📋';
-      case 'organization':
-        return '🏢';
-      case 'publication_date':
-        return '📅';
-      case 'submission_deadline':
-        return '⏰';
-      case 'board_status':
-        return '📊';
-      case 'score':
-        return '⭐';
-      case 'criteria':
-        return '✅';
-      case 'actions':
-        return '⚡';
-      default:
-        return '📄';
-    }
-  };
+    const reorderDraft = (from: number, to: number) => {
+        setDraftColumns(prev => {
+            const arr = [...prev];
+            const [moved] = arr.splice(from, 1);
+            arr.splice(to, 0, moved);
+            return arr.map((c, idx) => ({ ...c, order: idx }));
+        });
+    };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            {t('tenders.columns.manageColumns')}
-          </DialogTitle>
-        </DialogHeader>
+    const updateDraftWidth = (id: string, width: number) => {
+        setDraftColumns(prev =>
+            prev.map(c => (c.id === id ? { ...c, width } : c))
+        );
+    };
 
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-          {/* Current Columns */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center justify-between">
-                  {t('tenders.columns.currentColumns')}
-                  <Badge variant="secondary">
-                    {columns.filter(col => col.visible).length} / {columns.length}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px] pr-4">
-                  <div className="space-y-2">
-                    {sortedColumns.map((column, index) => (
-                      <div
-                        key={column.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragEnd={handleDragEnd}
-                        className={`
-                          p-3 border rounded-lg transition-all duration-200 cursor-move
-                          ${dragOverIndex === index ? 'border-primary bg-primary/5' : 'border-border'}
-                          ${draggedIndex === index ? 'opacity-50' : 'opacity-100'}
-                          ${column.visible ? 'bg-background' : 'bg-muted/50'}
-                        `}
-                      >
-                        <div className="flex items-center gap-3">
-                          <GripVertical className="h-4 w-4 text-muted-foreground" />
-                          
-                          <span className="text-lg">{getColumnIcon(column)}</span>
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-sm truncate">
-                                {column.label}
-                              </span>
-                              {isCriteriaColumn(column) && (
-                                <Badge variant="outline" className="text-xs">
-                                  {t('tenders.columns.criteria')}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span>{t('tenders.columns.width')}: {column.width}px</span>
-                              <span>{t('tenders.columns.order')}: {column.order + 1}</span>
-                            </div>
-                          </div>
+    const addDraftCriteria = (criteriaId: string, name: string) => {
+        setDraftColumns(prev => {
+            const newCol: CriteriaColumnConfig = {
+                id: `criteria-${criteriaId}`,
+                type: 'criteria',
+                criteriaId,
+                label: name,
+                order: prev.length,
+                visible: true,
+                width: 160,
+                minWidth: 120,
+                maxWidth: 400,
+            } as CriteriaColumnConfig;
+            return [...prev, newCol];
+        });
+    };
 
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              <Label htmlFor={`width-${column.id}`} className="text-xs">
-                                W:
-                              </Label>
-                              <Input
-                                id={`width-${column.id}`}
-                                type="number"
-                                value={column.width}
-                                onChange={(e) => handleWidthChange(column.id, e.target.value)}
-                                className="w-16 h-6 text-xs"
-                                min={column.minWidth}
-                                max={column.maxWidth}
-                              />
-                            </div>
+    const removeDraftCriteria = (criteriaId: string) => {
+        setDraftColumns(prev => prev.filter(c => {
+            if (!isCriteriaColumn(c)) return true;
+            return (c as CriteriaColumnConfig).criteriaId !== criteriaId;
+        }));
+    };
 
-                            <Switch
-                              checked={column.visible}
-                              onCheckedChange={() => onToggleVisibility(column.id)}
-                              className="data-[state=checked]:bg-primary"
-                            />
+    const handleDragStart = (e: React.DragEvent, idx: number) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('input, button, label')) {
+            e.preventDefault();
+            return;
+        }
+        setDraggedIndex(idx);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+    const handleDragOver = (e: React.DragEvent, idx: number) => {
+        e.preventDefault();
+        setDragOverIndex(idx);
+    };
+    const finishDrag = () => {
+        if (
+            draggedIndex !== null &&
+            dragOverIndex !== null &&
+            draggedIndex !== dragOverIndex
+        ) {
+            reorderDraft(draggedIndex, dragOverIndex);
+        }
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
 
-                            {isCriteriaColumn(column) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onRemoveCriteriaColumn((column as CriteriaColumnConfig).criteriaId)}
-                                className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            )}
+    const commitChanges = () => {
+        draftColumns.forEach((draft, newIdx) => {
+            const original = columns.find(c => c.id === draft.id);
+            if (!original) {
+                if (isCriteriaColumn(draft)) {
+                    onAddCriteriaColumn(draft.criteriaId, draft.label || '');
+                }
+                return;
+            }
+            if (draft.visible !== original.visible) onToggleVisibility(draft.id);
+            if (draft.width !== original.width) onUpdateColumnWidth(draft.id, draft.width);
+            const oldIdx = columns.findIndex(c => c.id === draft.id);
+            if (oldIdx !== newIdx) onReorderColumns(oldIdx, newIdx);
+        });
+        columns
+            .filter(isCriteriaColumn)
+            .forEach(col => {
+                if (!draftColumns.find(c => c.id === col.id)) {
+                    onRemoveCriteriaColumn((col as CriteriaColumnConfig).criteriaId);
+                }
+            });
+        onClose();
+    };
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onToggleVisibility(column.id)}
-                              className="h-6 w-6 p-0"
-                            >
-                              {column.visible ? (
-                                <Eye className="h-3 w-3" />
-                              ) : (
-                                <EyeOff className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Add Criteria */}
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  {t('tenders.columns.addCriteria')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px] pr-4">
-                  {availableToAdd.length > 0 ? (
-                    <div className="space-y-2">
-                      {availableToAdd.map((criteria) => (
-                        <div
-                          key={criteria.id}
-                          className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">
-                                {criteria.name}
-                              </div>
-                              {criteria.description && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {criteria.description}
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+                <DialogHeader className="pb-4 border-b">
+                    <DialogTitle className="text-lg font-semibold">
+                        {tTenders('columns.manageColumns')}
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                            ({visibleDraftCount}/{draftColumns.length} {tTenders('columns.visible')})
+                        </span>
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
+                    <div className="lg:col-span-2 flex flex-col min-h-0">
+                        <Card className="flex-1 flex flex-col overflow-hidden border">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base font-medium">
+                                    {tTenders('columns.currentColumns')}
+                                </CardTitle>
+                                <div className="mt-2 flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setDraftColumns(prev =>
+                                                prev.map(c => ({ ...c, visible: true }))
+                                            )
+                                        }
+                                    >
+                                        {tTenders('columns.showAll')}
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setDraftColumns(prev => {
+                                                const visibleCols = prev.filter(c => c.visible);
+                                                const mustKeep = visibleCols.slice(0, MIN_VISIBLE);
+                                                return prev.map(c =>
+                                                    mustKeep.includes(c)
+                                                        ? c
+                                                        : { ...c, visible: false }
+                                                );
+                                            })
+                                        }
+                                    >
+                                        {tTenders('columns.hideAll')}
+                                    </Button>
                                 </div>
-                              )}
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onAddCriteriaColumn(criteria.id, criteria.name)}
-                              className="h-6 text-xs"
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              {t('tenders.columns.add')}
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                            </CardHeader>
+                            <CardContent className="flex-1 overflow-hidden">
+                                <ScrollArea className="h-full pr-3">
+                                    <ul className="space-y-2 pb-2">
+                                        {sortedDraft.map((col, idx) => (
+                                            <li
+                                                key={`column-${col.id}`}
+                                                draggable
+                                                onDragStart={e => handleDragStart(e, idx)}
+                                                onDragOver={e => handleDragOver(e, idx)}
+                                                onDragEnd={finishDrag}
+                                                onDrop={finishDrag}
+                                                className={cn(
+                                                    'relative flex items-center gap-4 rounded-lg border px-3 py-2 bg-card transition-colors',
+                                                    col.visible ? 'opacity-100' : 'opacity-60',
+                                                    dragOverIndex === idx && 'ring-2 ring-primary/30',
+                                                    draggedIndex === idx && 'opacity-40'
+                                                )}
+                                            >
+                                                <span className="select-none cursor-grab text-muted-foreground">≡</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <span className="truncate font-medium text-sm">
+                                                            {col.label || col.id}
+                                                        </span>
+                                                        {isCriteriaColumn(col) && (
+                                                            <Badge variant="outline" className="text-xs">
+                                                                {tTenders('columns.criteria')}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                                                        <span>
+                                                            {tTenders('columns.order')}: {col.order + 1}
+                                                        </span>
+                                                        <span>
+                                                            {tTenders('columns.width')}: {col.width}px
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Label htmlFor={`w-${col.id}`} className="text-xs whitespace-nowrap">
+                                                        {tTenders('columns.widthShort')}:
+                                                    </Label>
+                                                    <Input
+                                                        id={`w-${col.id}`} type="number"
+                                                        value={col.width}
+                                                        min={col.minWidth}
+                                                        max={col.maxWidth}
+                                                        onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
+                                                        className="w-16 h-7 text-xs"
+                                                    />
+                                                </div>
+                                                <Switch
+                                                    checked={col.visible}
+                                                    onCheckedChange={() => toggleDraftVisibility(col.id)}
+                                                />
+                                                {isCriteriaColumn(col) && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-destructive"
+                                                        onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
+                                                    >
+                                                        {tTenders('columns.remove')}
+                                                    </Button>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </ScrollArea>
+                            </CardContent>
+                        </Card>
                     </div>
-                  ) : (
-                    <div className="text-center text-muted-foreground py-8">
-                      <Plus className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">
-                        {t('tenders.columns.allCriteriaAdded')}
-                      </p>
+                    <div className="flex flex-col min-h-0">
+                        <Card className="flex-1 flex flex-col overflow-hidden border">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base font-medium">
+                                    {tTenders('columns.addCriteria')}
+                                </CardTitle>
+                                {availableCriteria.length > 3 && (
+                                    <Input
+                                        placeholder={tTenders('columns.searchCriteria')}
+                                        value={searchCriteria}
+                                        onChange={e => setSearchCriteria(e.target.value)}
+                                        className="mt-2 h-8"
+                                    />
+                                )}
+                            </CardHeader>
+                            <CardContent className="flex-1 overflow-hidden">
+                                <ScrollArea className="h-full pr-3">
+                                    {filteredAvailableCriteria.length ? (
+                                        <ul className="space-y-2 pb-2">
+                                            {filteredAvailableCriteria.map(c => (
+                                                <li key={`criteria-${c.id}`} className="border rounded-lg p-3 hover:bg-muted/50 flex items-start justify-between">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-sm truncate">{c.name}</p>
+                                                        {c.description && (
+                                                            <p className="text-xs text-muted-foreground line-clamp-2">{c.description}</p>
+                                                        )}
+                                                    </div>
+                                                    <Button variant="outline" size="sm" onClick={() => addDraftCriteria(c.id, c.name)}>
+                                                        {tTenders('columns.add')}
+                                                    </Button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : availableCriteria.length === 0 ? (
+                                        <div className="text-center text-muted-foreground py-12 text-sm">
+                                            {tTenders('columns.noCriteriaAvailable')}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-muted-foreground py-12 text-sm">
+                                            {tTenders('columns.allCriteriaAdded')}
+                                        </div>
+                                    )}
+                                </ScrollArea>
+                            </CardContent>
+                        </Card>
                     </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        <Separator />
-
-        <DialogFooter className="flex justify-between">
-          <Button
-            variant="outline"
-            onClick={onResetToDefaults}
-            className="flex items-center gap-2"
-          >
-            <RotateCcw className="h-4 w-4" />
-            {t('tenders.columns.resetDefaults')}
-          </Button>
-
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              {t('common.cancel')}
-            </Button>
-            <Button onClick={onClose}>
-              {t('common.save')}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+                </div>
+                <Separator className="my-4" />
+                <DialogFooter className="flex flex-col lg:flex-row justify-between items-center gap-2">
+                    <Button variant="outline" onClick={onResetToDefaults}>
+                        {tTenders('columns.resetDefaults')}
+                    </Button>
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                        {visibleDraftCount < MIN_VISIBLE && (
+                            <span className="text-destructive text-sm">Select at least {MIN_VISIBLE} columns</span>
+                        )}
+                        <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+                        <Button onClick={commitChanges} className="bg-primary hover:bg-primary/90" disabled={visibleDraftCount < MIN_VISIBLE}>
+                            {t('common.save')}
+                        </Button>
+                    </div>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 };
