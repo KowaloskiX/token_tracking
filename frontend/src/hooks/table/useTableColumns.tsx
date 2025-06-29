@@ -1,0 +1,375 @@
+// hooks/table/useTableColumns.ts
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  ColumnConfig,
+  StandardColumnConfig,
+  CriteriaColumnConfig,
+  TableColumnState,
+  ColumnManagerState,
+  DEFAULT_COLUMNS,
+  BackendColumnConfig,
+  RESPONSIVE_BREAKPOINTS,
+  MOBILE_HIDDEN_COLUMNS,
+  TABLET_HIDDEN_COLUMNS,
+  SortDirection
+} from '@/types/tableColumns';
+
+interface UseTableColumnsProps {
+  selectedAnalysisId?: string;
+  availableCriteria: Array<{
+    id: string;
+    name: string;
+    description?: string;
+  }>;
+  tableWidth: number;
+}
+
+export const useTableColumns = ({
+  selectedAnalysisId,
+  availableCriteria,
+  tableWidth
+}: UseTableColumnsProps) => {
+  // Column state
+  const [columnState, setColumnState] = useState<TableColumnState>({
+    columns: DEFAULT_COLUMNS,
+    sortConfig: null
+  });
+
+  // Column manager state
+  const [managerState, setManagerState] = useState<ColumnManagerState>({
+    isOpen: false,
+    draggedColumn: null,
+    availableCriteria
+  });
+
+  // Track if columns were loaded from backend
+  const [isLoadedFromBackend, setIsLoadedFromBackend] = useState(false);
+
+  // Update available criteria when they change
+  useEffect(() => {
+    setManagerState(prev => ({
+      ...prev,
+      availableCriteria
+    }));
+  }, [availableCriteria]);
+
+  // Responsive column visibility based on actual container width
+  const responsiveColumns = useMemo(() => {
+    // Determine which columns to hide based on available space
+    const availableWidth = tableWidth;
+    let columnsToShow = [...columnState.columns];
+    
+    // Define priority order for hiding columns (least important first)
+    const hidePriority = [
+      'deadline_progress',
+      'publication_date', 
+      'organization',
+      'board_status',
+    ];
+    
+    // Calculate total width of currently visible columns
+    let totalWidth = columnsToShow
+      .filter(col => col.visible)
+      .reduce((sum, col) => sum + col.width, 0);
+    
+    // Add some padding for scroll bars and margins
+    const padding = 100;
+    
+    // If table is too wide, start hiding columns by priority
+    if (totalWidth + padding > availableWidth && availableWidth > 0) {
+      for (const columnId of hidePriority) {
+        const columnIndex = columnsToShow.findIndex(col => col.id === columnId && col.visible);
+        if (columnIndex !== -1 && totalWidth + padding > availableWidth) {
+          columnsToShow = columnsToShow.map(col => 
+            col.id === columnId ? { ...col, visible: false } : col
+          );
+          totalWidth -= columnsToShow[columnIndex].width;
+        }
+      }
+    }
+    
+    // Override visibility for mobile/tablet as before, but only if not auto-hidden
+    const isMobile = tableWidth < RESPONSIVE_BREAKPOINTS.tablet;
+    const isTablet = tableWidth >= RESPONSIVE_BREAKPOINTS.tablet && tableWidth < RESPONSIVE_BREAKPOINTS.desktop;
+
+    return columnsToShow.map(column => {
+      let visible = column.visible;
+
+      // Only apply responsive hiding if the column wasn't already hidden by space constraints
+      if (visible) {
+        if (isMobile && MOBILE_HIDDEN_COLUMNS.includes(column.id)) {
+          visible = false;
+        } else if (isTablet && TABLET_HIDDEN_COLUMNS.includes(column.id)) {
+          visible = false;
+        }
+      }
+
+      return {
+        ...column,
+        visible
+      };
+    });
+  }, [columnState.columns, tableWidth]);
+
+  // Get visible columns sorted by order
+  const visibleColumns = useMemo(() => {
+    return responsiveColumns
+      .filter(col => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [responsiveColumns]);
+
+  // Calculate total table width
+  const totalTableWidth = useMemo(() => {
+    return visibleColumns.reduce((total, col) => total + col.width, 0);
+  }, [visibleColumns]);
+
+  // Load columns from backend (placeholder for future integration)
+  const loadColumnsFromBackend = useCallback(async () => {
+    if (!selectedAnalysisId || isLoadedFromBackend) return;
+
+    try {
+      // TODO: Replace with actual API call
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/column-config`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const backendColumns: BackendColumnConfig[] = await response.json();
+        const convertedColumns = convertBackendToColumns(backendColumns);
+        setColumnState(prev => ({
+          ...prev,
+          columns: convertedColumns
+        }));
+        setIsLoadedFromBackend(true);
+      }
+    } catch (error) {
+      console.error('Failed to load column configuration:', error);
+      // Fallback to default columns
+      setIsLoadedFromBackend(true);
+    }
+  }, [selectedAnalysisId, isLoadedFromBackend]);
+
+  // Save columns to backend (placeholder for future integration)
+  const saveColumnsToBackend = useCallback(async () => {
+    if (!selectedAnalysisId) return;
+
+    try {
+      const backendColumns = convertColumnsToBackend(columnState.columns);
+      
+      // TODO: Replace with actual API call
+      await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/column-config`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(backendColumns),
+        }
+      );
+    } catch (error) {
+      console.error('Failed to save column configuration:', error);
+    }
+  }, [selectedAnalysisId, columnState.columns]);
+
+  // Convert backend format to our format
+  const convertBackendToColumns = (backendColumns: BackendColumnConfig[]): ColumnConfig[] => {
+    return backendColumns.map(col => {
+      if (col.criteria_id) {
+        return {
+          id: col.id,
+          type: 'criteria' as const,
+          key: col.key,
+          label: col.label,
+          width: col.width,
+          minWidth: 100,
+          maxWidth: 300,
+          visible: col.visible,
+          sortable: true,
+          resizable: true,
+          order: col.order,
+          criteriaName: col.label,
+          criteriaId: col.criteria_id,
+        } as CriteriaColumnConfig;
+      } else {
+        return {
+          id: col.id,
+          type: col.type as any,
+          key: col.key,
+          label: col.label,
+          width: col.width,
+          minWidth: 50,
+          maxWidth: 500,
+          visible: col.visible,
+          sortable: true,
+          resizable: true,
+          order: col.order,
+        } as StandardColumnConfig;
+      }
+    });
+  };
+
+  // Convert our format to backend format
+  const convertColumnsToBackend = (columns: ColumnConfig[]): Omit<BackendColumnConfig, 'user_id' | 'analysis_id' | 'created_at' | 'updated_at'>[] => {
+    return columns.map(col => ({
+      id: col.id,
+      type: col.type,
+      key: col.key,
+      label: col.label,
+      width: col.width,
+      visible: col.visible,
+      order: col.order,
+      criteria_id: col.type === 'criteria' ? (col as CriteriaColumnConfig).criteriaId : undefined,
+    }));
+  };
+
+  // Column manipulation functions
+  const updateColumnWidth = useCallback((columnId: string, newWidth: number) => {
+    setColumnState(prev => ({
+      ...prev,
+      columns: prev.columns.map(col =>
+        col.id === columnId
+          ? { ...col, width: Math.max(col.minWidth, Math.min(col.maxWidth, newWidth)) }
+          : col
+      )
+    }));
+  }, []);
+
+  const toggleColumnVisibility = useCallback((columnId: string) => {
+    setColumnState(prev => ({
+      ...prev,
+      columns: prev.columns.map(col =>
+        col.id === columnId ? { ...col, visible: !col.visible } : col
+      )
+    }));
+  }, []);
+
+  const reorderColumns = useCallback((sourceIndex: number, destinationIndex: number) => {
+    setColumnState(prev => {
+      const columns = [...prev.columns];
+      const [removed] = columns.splice(sourceIndex, 1);
+      columns.splice(destinationIndex, 0, removed);
+      
+      // Update order values
+      const reorderedColumns = columns.map((col, index) => ({
+        ...col,
+        order: index
+      }));
+
+      return {
+        ...prev,
+        columns: reorderedColumns
+      };
+    });
+  }, []);
+
+  const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
+    const newColumn: CriteriaColumnConfig = {
+      id: `criteria_${criteriaId}`,
+      type: 'criteria',
+      key: `criteria_analysis.${criteriaName}`,
+      label: criteriaName,
+      width: 150,
+      minWidth: 100,
+      maxWidth: 300,
+      visible: true,
+      sortable: true,
+      resizable: true,
+      order: columnState.columns.length,
+      criteriaName,
+      criteriaId,
+    };
+
+    setColumnState(prev => ({
+      ...prev,
+      columns: [...prev.columns, newColumn]
+    }));
+  }, [columnState.columns.length]);
+
+  const removeCriteriaColumn = useCallback((criteriaId: string) => {
+    setColumnState(prev => ({
+      ...prev,
+      columns: prev.columns.filter(col => 
+        !(col.type === 'criteria' && (col as CriteriaColumnConfig).criteriaId === criteriaId)
+      )
+    }));
+  }, []);
+
+  const setSortConfig = useCallback((columnId: string, direction: SortDirection) => {
+    setColumnState(prev => ({
+      ...prev,
+      sortConfig: direction ? { columnId, direction } : null
+    }));
+  }, []);
+
+  const resetToDefaults = useCallback(() => {
+    setColumnState({
+      columns: DEFAULT_COLUMNS,
+      sortConfig: null
+    });
+    setIsLoadedFromBackend(false);
+  }, []);
+
+  // Column manager controls
+  const openColumnManager = useCallback(() => {
+    setManagerState(prev => ({ ...prev, isOpen: true }));
+  }, []);
+
+  const closeColumnManager = useCallback(() => {
+    setManagerState(prev => ({ ...prev, isOpen: false, draggedColumn: null }));
+  }, []);
+
+  // Load columns when analysis changes
+  useEffect(() => {
+    if (selectedAnalysisId) {
+      setIsLoadedFromBackend(false);
+      loadColumnsFromBackend();
+    }
+  }, [selectedAnalysisId, loadColumnsFromBackend]);
+
+  // Auto-save columns when they change (debounced)
+  useEffect(() => {
+    if (!isLoadedFromBackend) return;
+
+    const timeoutId = setTimeout(() => {
+      saveColumnsToBackend();
+    }, 1000); // Debounce for 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [columnState.columns, isLoadedFromBackend, saveColumnsToBackend]);
+
+  return {
+    // State
+    columnState,
+    managerState,
+    visibleColumns,
+    responsiveColumns,
+    totalTableWidth,
+    isLoadedFromBackend,
+
+    // Column manipulation
+    updateColumnWidth,
+    toggleColumnVisibility,
+    reorderColumns,
+    addCriteriaColumn,
+    removeCriteriaColumn,
+    setSortConfig,
+    resetToDefaults,
+
+    // Manager controls
+    openColumnManager,
+    closeColumnManager,
+
+    // Backend integration
+    loadColumnsFromBackend,
+    saveColumnsToBackend,
+  };
+};
