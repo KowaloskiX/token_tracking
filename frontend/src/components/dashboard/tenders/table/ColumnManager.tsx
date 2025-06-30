@@ -150,12 +150,12 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
         setDraggedIndex(idx);
         e.dataTransfer.effectAllowed = 'move';
     };
-    
+
     const handleDragOver = (e: React.DragEvent, idx: number) => {
         e.preventDefault();
         setDragOverIndex(idx);
     };
-    
+
     const finishDrag = () => {
         if (
             draggedIndex !== null &&
@@ -294,7 +294,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         {tTenders('columns.widthShort')}:
                                                     </Label>
                                                     <Input
-                                                        id={`w-${col.id}`} 
+                                                        id={`w-${col.id}`}
                                                         type="number"
                                                         value={col.width}
                                                         min={col.minWidth}
@@ -324,7 +324,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                             </CardContent>
                         </Card>
                     </div>
-                    
+
                     {/* Add Criteria Section - Takes up 2/5 of the width (much wider) */}
                     <div className="lg:col-span-2 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
@@ -346,8 +346,8 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                     {filteredAvailableCriteria.length ? (
                                         <ul className="space-y-3 pb-2">
                                             {filteredAvailableCriteria.map(c => (
-                                                <li 
-                                                    key={`criteria-${c.id}`} 
+                                                <li
+                                                    key={`criteria-${c.id}`}
                                                     className="border rounded-lg p-4 hover:bg-muted/50 flex flex-col gap-3"
                                                 >
                                                     <div className="flex items-start justify-between gap-3">
@@ -361,9 +361,9 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                                 </p>
                                                             )}
                                                         </div>
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="sm" 
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
                                                             onClick={() => addDraftCriteria(c.id, c.name)}
                                                             className="shrink-0"
                                                         >
@@ -389,15 +389,35 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                 </div>
                 <Separator className="my-4" />
                 <DialogFooter className="flex flex-col lg:flex-row justify-between items-center gap-2">
-                    <Button variant="outline" onClick={onResetToDefaults}>
-                        {tTenders('columns.resetDefaults')}
+                    <Button
+                        variant="outline"
+                        onClick={async () => {
+                            // Show loading state
+                            const originalText = "Reset to Defaults";
+
+                            try {
+                                await onResetToDefaults();
+                                // Close the dialog after successful reset
+                                onClose();
+                            } catch (error) {
+                                console.error('Failed to reset to defaults:', error);
+                                // You might want to show an error toast here
+                            }
+                        }}
+                        disabled={false} // You can add loading state here if needed
+                    >
+                        {t('columns.resetDefaults')}
                     </Button>
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                         {visibleDraftCount < MIN_VISIBLE && (
                             <span className="text-destructive text-sm">Select at least {MIN_VISIBLE} columns</span>
                         )}
                         <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-                        <Button onClick={commitChanges} className="bg-primary hover:bg-primary/90" disabled={visibleDraftCount < MIN_VISIBLE}>
+                        <Button
+                            onClick={commitChanges}
+                            className="bg-primary hover:bg-primary/90"
+                            disabled={visibleDraftCount < MIN_VISIBLE}
+                        >
                             {t('common.save')}
                         </Button>
                     </div>

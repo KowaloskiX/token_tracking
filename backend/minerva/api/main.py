@@ -1,7 +1,7 @@
 # minerva/main.py (updated sections)
 import os
 from pathlib import Path
-from minerva.api.routes import ai_routes, assistant_routes, conversation_routes, file_routes, folder_routes, notification_routes, organization_routes, scraping_routes, user_routes, waitlist_routes, retrieval_routes, kanban_board_routes, invitation_routes, comment_routes, reset_password_routes, api_key_routes, cost_tracking_routes, analytics_routes
+from minerva.api.routes import ai_routes, assistant_routes, conversation_routes, file_routes, folder_routes, notification_routes, organization_routes, scraping_routes, user_routes, waitlist_routes, retrieval_routes, kanban_board_routes, invitation_routes, comment_routes, reset_password_routes, api_key_routes, cost_tracking_routes, analytics_routes, table_routes
 from minerva.api.routes.api import results_routes
 from minerva.api.routes.extensions.tenders import tender_analysis_routes, tender_description_filter_routes, tender_extract_routes, tender_monitoring_routes, tender_search_routes, tender_initial_ai_filtering_routes, tender_file_extraction_routes, tender_description_generation_routes, tender_criteria_analysis_routes, analysis_queue_routes
 from minerva.api.routes.api import results_routes
@@ -83,6 +83,7 @@ app.include_router(api_key_routes.router, prefix="/api-keys", tags=["api-keys"])
 app.include_router(results_routes.router, prefix="/api", tags=["api"])
 app.include_router(cost_tracking_routes.router, prefix="/cost-tracking", tags=["cost-tracking"])
 app.include_router(analytics_routes.router, tags=["analytics"])
+app.include_router(table_routes.router, tags=["table"])
 
 @app.get("/")
 async def read_root():
