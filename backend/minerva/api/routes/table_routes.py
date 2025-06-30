@@ -1,5 +1,6 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, logger
+from fastapi import APIRouter, Depends, HTTPException
+import logging
 from minerva.core.middleware.auth.jwt import get_current_user
 from minerva.core.models.columns import (
     ColumnConfiguration, 
@@ -12,6 +13,7 @@ from minerva.core.models.utils import PyObjectId
 from minerva.core.database.database import db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/tender-analysis/{analysis_id}/column-config", response_model=ColumnConfigurationResponse)
 async def get_column_configuration(
@@ -20,6 +22,8 @@ async def get_column_configuration(
 ):
     """Get column configuration for a specific analysis and user"""
     try:
+        logger.info(f"Getting column config for analysis {analysis_id}, user {current_user.id}")
+        
         # Check if analysis exists and user has access
         query = {
             "_id": analysis_id,
@@ -31,6 +35,7 @@ async def get_column_configuration(
         
         analysis = await db.tender_analysis.find_one(query)
         if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found or you don't have access to it"
@@ -41,6 +46,8 @@ async def get_column_configuration(
             "user_id": current_user.id,
             "analysis_id": analysis_id
         }).sort("order", 1).to_list(None)
+        
+        logger.info(f"Found {len(column_configs)} column configurations")
         
         # Convert to response format
         configs = [ColumnConfiguration(**config) for config in column_configs]
@@ -53,7 +60,7 @@ async def get_column_configuration(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error getting column configuration: {str(e)}")
+        logger.error(f"Error getting column configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error getting column configuration: {str(e)}"
@@ -67,6 +74,9 @@ async def save_column_configuration(
 ):
     """Save or update column configuration for a specific analysis and user"""
     try:
+        logger.info(f"Saving column config for analysis {analysis_id}, user {current_user.id}")
+        logger.info(f"Received {len(config_data.columns)} columns to save")
+        
         # Check if analysis exists and user has access
         query = {
             "_id": analysis_id,
@@ -78,16 +88,19 @@ async def save_column_configuration(
         
         analysis = await db.tender_analysis.find_one(query)
         if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found or you don't have access to it"
             )
         
         # Delete existing configurations for this user and analysis
-        await db.column_configurations.delete_many({
+        delete_result = await db.column_configurations.delete_many({
             "user_id": current_user.id,
             "analysis_id": analysis_id
         })
+        
+        logger.info(f"Deleted {delete_result.deleted_count} existing configurations")
         
         # Insert new configurations
         new_configs = []
@@ -109,7 +122,10 @@ async def save_column_configuration(
             new_configs.append(config.dict(by_alias=True))
         
         if new_configs:
-            await db.column_configurations.insert_many(new_configs)
+            insert_result = await db.column_configurations.insert_many(new_configs)
+            logger.info(f"Inserted {len(insert_result.inserted_ids)} new configurations")
+        else:
+            logger.info("No configurations to insert")
         
         # Fetch and return the saved configurations
         saved_configs = await db.column_configurations.find({
@@ -119,7 +135,7 @@ async def save_column_configuration(
         
         configs = [ColumnConfiguration(**config) for config in saved_configs]
         
-        logger.info(f"Saved {len(configs)} column configurations for user {current_user.id}, analysis {analysis_id}")
+        logger.info(f"Successfully saved {len(configs)} column configurations")
         
         return ColumnConfigurationResponse(
             columns=configs,
@@ -129,7 +145,7 @@ async def save_column_configuration(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error saving column configuration: {str(e)}")
+        logger.error(f"Error saving column configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error saving column configuration: {str(e)}"
@@ -142,6 +158,8 @@ async def reset_column_configuration(
 ):
     """Reset column configuration to defaults by deleting saved configuration"""
     try:
+        logger.info(f"Resetting column config for analysis {analysis_id}, user {current_user.id}")
+        
         # Check if analysis exists and user has access
         query = {
             "_id": analysis_id,
@@ -153,6 +171,7 @@ async def reset_column_configuration(
         
         analysis = await db.tender_analysis.find_one(query)
         if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
             raise HTTPException(
                 status_code=404,
                 detail="Tender analysis not found or you don't have access to it"
@@ -164,7 +183,7 @@ async def reset_column_configuration(
             "analysis_id": analysis_id
         })
         
-        logger.info(f"Reset column configuration for user {current_user.id}, analysis {analysis_id} - deleted {delete_result.deleted_count} configs")
+        logger.info(f"Reset column configuration - deleted {delete_result.deleted_count} configs")
         
         return {
             "message": "Column configuration reset to defaults",
@@ -174,7 +193,7 @@ async def reset_column_configuration(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error resetting column configuration: {str(e)}")
+        logger.error(f"Error resetting column configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error resetting column configuration: {str(e)}"
@@ -222,7 +241,7 @@ async def get_single_column_configuration(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error getting single column configuration: {str(e)}")
+        logger.error(f"Error getting single column configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error getting single column configuration: {str(e)}"
@@ -292,7 +311,7 @@ async def update_single_column_configuration(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating single column configuration: {str(e)}")
+        logger.error(f"Error updating single column configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error updating single column configuration: {str(e)}"

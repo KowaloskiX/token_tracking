@@ -80,6 +80,7 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
     openColumnManager,
     closeColumnManager,
     managerState,
+    saveColumnsToBackend, // Add this
   } = useTableColumns({
     selectedAnalysisId: selectedAnalysis?._id,
     availableCriteria,
@@ -190,6 +191,7 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
         onRemoveCriteriaColumn={removeCriteriaColumn}
         onResetToDefaults={resetToDefaults}
         onUpdateColumnWidth={updateColumnWidth}
+        onSaveConfiguration={saveColumnsToBackend}
       />
     </div>
   );

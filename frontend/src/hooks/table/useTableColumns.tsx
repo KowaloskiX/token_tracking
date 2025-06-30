@@ -76,6 +76,8 @@ export const useTableColumns = ({
 
   // Track if columns were loaded from backend
   const [isLoadedFromBackend, setIsLoadedFromBackend] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastSavedColumns, setLastSavedColumns] = useState<string>('');
 
   // Update available criteria when they change
   useEffect(() => {
@@ -96,7 +98,6 @@ export const useTableColumns = ({
       'publication_date',
       'organization',
       'board_status',
-      // Don't auto-hide criteria columns - let user control them
     ];
 
     // Calculate total width of currently visible columns
@@ -105,7 +106,7 @@ export const useTableColumns = ({
       .reduce((sum, col) => sum + col.width, 0);
 
     // Add some padding for scroll bars and margins
-    const padding = 150; // Increased padding for criteria columns
+    const padding = 150;
 
     // If table is too wide, start hiding columns by priority (but not criteria)
     if (totalWidth + padding > availableWidth && availableWidth > 0) {
@@ -161,9 +162,12 @@ export const useTableColumns = ({
   }, [visibleColumns]);
 
   const loadColumnsFromBackend = useCallback(async () => {
-    if (!selectedAnalysisId || isLoadedFromBackend) return;
+    if (!selectedAnalysisId) return;
 
+    setIsLoading(true);
     try {
+      console.log(`Loading column config for analysis: ${selectedAnalysisId}`);
+      
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/column-config`,
         {
@@ -176,6 +180,7 @@ export const useTableColumns = ({
 
       if (response.ok) {
         const data: ColumnConfigurationResponse = await response.json();
+        console.log('Loaded column configuration:', data);
 
         if (data.columns && data.columns.length > 0) {
           const convertedColumns = convertBackendToColumns(data.columns);
@@ -183,29 +188,50 @@ export const useTableColumns = ({
             ...prev,
             columns: convertedColumns
           }));
+          
+          // Initialize lastSavedColumns to prevent immediate auto-save
+          const columnsString = JSON.stringify(
+            convertedColumns.map(col => ({ id: col.id, width: col.width }))
+          );
+          setLastSavedColumns(columnsString);
+          
+          console.log('Applied loaded columns:', convertedColumns);
+        } else {
+          console.log('No saved columns found, using defaults');
+          // Initialize lastSavedColumns for defaults too
+          const defaultColumnsString = JSON.stringify(
+            DEFAULT_COLUMNS.map(col => ({ id: col.id, width: col.width }))
+          );
+          setLastSavedColumns(defaultColumnsString);
         }
-        // If no columns found, keep default columns
-
-        setIsLoadedFromBackend(true);
       } else if (response.status === 404) {
-        // No saved configuration found, use defaults
-        setIsLoadedFromBackend(true);
+        console.log('No saved configuration found, using defaults');
       } else {
-        console.error('Failed to load column configuration:', response.status);
-        setIsLoadedFromBackend(true);
+        console.error('Failed to load column configuration:', response.status, await response.text());
       }
     } catch (error) {
       console.error('Failed to load column configuration:', error);
-      // Fallback to default columns
+    } finally {
       setIsLoadedFromBackend(true);
+      setIsLoading(false);
     }
-  }, [selectedAnalysisId, isLoadedFromBackend]);
+  }, [selectedAnalysisId]);
 
-  const saveColumnsToBackend = useCallback(async () => {
-    if (!selectedAnalysisId) return;
+  const saveColumnsToBackend = useCallback(async (columnsToSave?: ColumnConfig[]) => {
+    if (!selectedAnalysisId) {
+      console.log('No selected analysis ID, skipping save');
+      return false;
+    }
+
+    const columns = columnsToSave || columnState.columns;
+    setIsLoading(true);
 
     try {
-      const backendColumns = convertColumnsToBackend(columnState.columns);
+      console.log('Saving column configuration for analysis:', selectedAnalysisId);
+      console.log('Columns to save:', columns);
+
+      const backendColumns = convertColumnsToBackend(columns);
+      console.log('Converted to backend format:', backendColumns);
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/column-config`,
@@ -220,12 +246,33 @@ export const useTableColumns = ({
       );
 
       if (!response.ok) {
-        console.error('Failed to save column configuration:', response.status);
+        const errorText = await response.text();
+        console.error('Failed to save column configuration:', response.status, errorText);
+        throw new Error(`Failed to save: ${response.status} ${errorText}`);
       } else {
-        console.log('Column configuration saved successfully');
+        const result = await response.json();
+        console.log('Column configuration saved successfully:', result);
+        
+        // Only update local state if we provided specific columns to save (from ColumnManager)
+        if (columnsToSave) {
+          setColumnState(prev => ({
+            ...prev,
+            columns: columnsToSave
+          }));
+          // Update the lastSavedColumns to prevent auto-save trigger
+          const columnsString = JSON.stringify(
+            columnsToSave.map(col => ({ id: col.id, width: col.width }))
+          );
+          setLastSavedColumns(columnsString);
+        }
+        
+        return true;
       }
     } catch (error) {
       console.error('Failed to save column configuration:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   }, [selectedAnalysisId, columnState.columns]);
 
@@ -249,17 +296,20 @@ export const useTableColumns = ({
           criteriaId: col.criteria_id,
         } as CriteriaColumnConfig;
       } else {
+        // Find the default column to get proper min/max widths
+        const defaultColumn = DEFAULT_COLUMNS.find(dc => dc.id === col.column_id);
+        
         return {
           id: col.column_id,
           type: col.column_type as any,
           key: col.column_key,
           label: col.label,
           width: col.width,
-          minWidth: 50,
-          maxWidth: 500,
+          minWidth: defaultColumn?.minWidth || 50,
+          maxWidth: defaultColumn?.maxWidth || 500,
           visible: col.visible,
-          sortable: true,
-          resizable: true,
+          sortable: defaultColumn?.sortable ?? true,
+          resizable: defaultColumn?.resizable ?? true,
           order: col.order,
         } as StandardColumnConfig;
       }
@@ -280,9 +330,14 @@ export const useTableColumns = ({
   };
 
   const resetColumnsToDefaults = useCallback(async () => {
-    if (!selectedAnalysisId) return;
+    if (!selectedAnalysisId) {
+      throw new Error('No analysis selected');
+    }
 
+    setIsLoading(true);
     try {
+      console.log('Resetting column configuration to defaults');
+      
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/column-config`,
         {
@@ -302,10 +357,15 @@ export const useTableColumns = ({
         });
         console.log('Column configuration reset to defaults');
       } else {
-        console.error('Failed to reset column configuration:', response.status);
+        const errorText = await response.text();
+        console.error('Failed to reset column configuration:', response.status, errorText);
+        throw new Error(`Failed to reset: ${response.status} ${errorText}`);
       }
     } catch (error) {
       console.error('Failed to reset column configuration:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   }, [selectedAnalysisId]);
 
@@ -350,27 +410,47 @@ export const useTableColumns = ({
   }, []);
 
   const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
-    const newColumn: CriteriaColumnConfig = {
-      id: `criteria-${criteriaId}`, // Use criteria name as part of ID
-      type: 'criteria',
-      key: `criteria_analysis.${criteriaName}`,
-      label: criteriaName,
-      width: 160,
-      minWidth: 120,
-      maxWidth: 400,
-      visible: true,
-      sortable: true, // Enable sorting for criteria columns
-      resizable: true,
-      order: columnState.columns.length,
-      criteriaName: criteriaName, // Store the actual criteria name
-      criteriaId: criteriaId, // Store the ID for reference
-    };
+    setColumnState(prev => {
+      // Use criteria name for ID generation to ensure uniqueness
+      const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      
+      // Check if this criteria column already exists by ID or criteriaName
+      const existingColumn = prev.columns.find(col => 
+        col.id === columnId ||
+        (col.type === 'criteria' && 
+         isCriteriaColumn(col) && 
+         (col as CriteriaColumnConfig).criteriaName === criteriaName)
+      );
+      
+      if (existingColumn) {
+        console.log(`Criteria column for ${criteriaName} already exists, skipping`);
+        return prev;
+      }
 
-    setColumnState(prev => ({
-      ...prev,
-      columns: [...prev.columns, newColumn]
-    }));
-  }, [columnState.columns.length]);
+      const newColumn: CriteriaColumnConfig = {
+        id: columnId, // Use sanitized criteria name for ID
+        type: 'criteria',
+        key: `criteria_analysis.${criteriaName}`,
+        label: criteriaName,
+        width: 160,
+        minWidth: 120,
+        maxWidth: 400,
+        visible: true,
+        sortable: true,
+        resizable: true,
+        order: prev.columns.length,
+        criteriaName: criteriaName,
+        criteriaId: criteriaId,
+      };
+
+      console.log('Adding criteria column:', newColumn);
+      
+      return {
+        ...prev,
+        columns: [...prev.columns, newColumn]
+      };
+    });
+  }, []);
 
   const removeCriteriaColumn = useCallback((criteriaId: string) => {
     setColumnState(prev => ({
@@ -378,7 +458,7 @@ export const useTableColumns = ({
       columns: prev.columns.filter(col => {
         if (!isCriteriaColumn(col)) return true;
         const criteriaCol = col as CriteriaColumnConfig;
-        return criteriaCol.criteriaId !== criteriaId; // Match by the criteriaId (criteria name)
+        return criteriaCol.criteriaId !== criteriaId;
       })
     }));
   }, []);
@@ -392,8 +472,8 @@ export const useTableColumns = ({
 
   const resetToDefaults = useCallback(async () => {
     await resetColumnsToDefaults();
-    setIsLoadedFromBackend(false);
   }, [resetColumnsToDefaults]);
+
   // Column manager controls
   const openColumnManager = useCallback(() => {
     setManagerState(prev => ({ ...prev, isOpen: true }));
@@ -407,20 +487,33 @@ export const useTableColumns = ({
   useEffect(() => {
     if (selectedAnalysisId) {
       setIsLoadedFromBackend(false);
+      setColumnState({ columns: DEFAULT_COLUMNS, sortConfig: null });
       loadColumnsFromBackend();
     }
   }, [selectedAnalysisId, loadColumnsFromBackend]);
 
-  // Auto-save columns when they change (debounced)
+  // Auto-save columns when they change (with debounce) - only for width changes  
   useEffect(() => {
-    if (!isLoadedFromBackend) return;
+    if (!isLoadedFromBackend || isLoading) return;
+
+    // Only auto-save for width changes to prevent infinite loops
+    const currentColumnsString = JSON.stringify(
+      columnState.columns.map(col => ({ id: col.id, width: col.width }))
+    );
+    
+    if (currentColumnsString === lastSavedColumns) return;
 
     const timeoutId = setTimeout(() => {
-      saveColumnsToBackend();
-    }, 1000); // Debounce for 1 second
+      console.log('Auto-saving column width changes...');
+      saveColumnsToBackend().then(() => {
+        setLastSavedColumns(currentColumnsString);
+      }).catch(error => {
+        console.error('Auto-save failed:', error);
+      });
+    }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [columnState.columns, isLoadedFromBackend, saveColumnsToBackend]);
+  }, [columnState.columns, isLoadedFromBackend, isLoading, lastSavedColumns, saveColumnsToBackend]);
 
   return {
     // State
@@ -430,6 +523,7 @@ export const useTableColumns = ({
     responsiveColumns,
     totalTableWidth,
     isLoadedFromBackend,
+    isLoading,
 
     // Column manipulation
     updateColumnWidth,

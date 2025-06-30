@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Loader2 } from 'lucide-react';
 import {
     ColumnConfig,
     CriteriaColumnConfig,
@@ -40,8 +41,9 @@ interface ColumnManagerProps {
     onReorderColumns: (sourceIndex: number, destinationIndex: number) => void;
     onAddCriteriaColumn: (criteriaId: string, criteriaName: string) => void;
     onRemoveCriteriaColumn: (criteriaId: string) => void;
-    onResetToDefaults: () => void;
+    onResetToDefaults: () => Promise<void>;
     onUpdateColumnWidth: (columnId: string, width: number) => void;
+    onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>; // Add this prop
 }
 
 export const ColumnManager: React.FC<ColumnManagerProps> = ({
@@ -55,6 +57,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
     onRemoveCriteriaColumn,
     onResetToDefaults,
     onUpdateColumnWidth,
+    onSaveConfiguration, // Add this
 }) => {
     const t = useTranslations();
     const tTenders = useTendersTranslations();
@@ -65,6 +68,8 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
     const [searchCriteria, setSearchCriteria] = useState('');
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -115,6 +120,18 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
 
     const addDraftCriteria = (criteriaId: string, name: string) => {
         setDraftColumns(prev => {
+            // Check if this criteria column already exists
+            const existingColumn = prev.find(col => 
+                col.type === 'criteria' && 
+                isCriteriaColumn(col) && 
+                (col as CriteriaColumnConfig).criteriaId === criteriaId
+            );
+            
+            if (existingColumn) {
+                console.log(`Draft criteria column for ${name} already exists, skipping`);
+                return prev;
+            }
+
             const newCol: CriteriaColumnConfig = {
                 id: `criteria-${criteriaId}`,
                 type: 'criteria',
@@ -168,28 +185,34 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
         setDragOverIndex(null);
     };
 
-    const commitChanges = () => {
-        draftColumns.forEach((draft, newIdx) => {
-            const original = columns.find(c => c.id === draft.id);
-            if (!original) {
-                if (isCriteriaColumn(draft)) {
-                    onAddCriteriaColumn(draft.criteriaId, draft.criteriaName);
-                }
-                return;
-            }
-            if (draft.visible !== original.visible) onToggleVisibility(draft.id);
-            if (draft.width !== original.width) onUpdateColumnWidth(draft.id, draft.width);
-            const oldIdx = columns.findIndex(c => c.id === draft.id);
-            if (oldIdx !== newIdx) onReorderColumns(oldIdx, newIdx);
-        });
-        columns
-            .filter(isCriteriaColumn)
-            .forEach(col => {
-                if (!draftColumns.find(c => c.id === col.id)) {
-                    onRemoveCriteriaColumn((col as CriteriaColumnConfig).criteriaId);
-                }
-            });
-        onClose();
+    const commitChanges = async () => {
+        setIsSaving(true);
+        try {
+            // First, save the configuration to backend
+            await onSaveConfiguration(draftColumns);
+
+            // The onSaveConfiguration will handle updating the local state
+            // so we don't need to manually apply changes here
+            onClose();
+        } catch (error) {
+            console.error('Failed to save column configuration:', error);
+            // You might want to show an error toast here
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleReset = async () => {
+        setIsResetting(true);
+        try {
+            await onResetToDefaults();
+            onClose();
+        } catch (error) {
+            console.error('Failed to reset to defaults:', error);
+            // You might want to show an error toast here
+        } finally {
+            setIsResetting(false);
+        }
     };
 
     return (
@@ -325,7 +348,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                         </Card>
                     </div>
 
-                    {/* Add Criteria Section - Takes up 2/5 of the width (much wider) */}
+                    {/* Add Criteria Section - Takes up 2/5 of the width */}
                     <div className="lg:col-span-2 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
                             <CardHeader className="pb-3">
@@ -391,34 +414,38 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                 <DialogFooter className="flex flex-col lg:flex-row justify-between items-center gap-2">
                     <Button
                         variant="outline"
-                        onClick={async () => {
-                            // Show loading state
-                            const originalText = "Reset to Defaults";
-
-                            try {
-                                await onResetToDefaults();
-                                // Close the dialog after successful reset
-                                onClose();
-                            } catch (error) {
-                                console.error('Failed to reset to defaults:', error);
-                                // You might want to show an error toast here
-                            }
-                        }}
-                        disabled={false} // You can add loading state here if needed
+                        onClick={handleReset}
+                        disabled={isResetting || isSaving}
                     >
-                        {t('columns.resetDefaults')}
+                        {isResetting ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Resetting...
+                            </>
+                        ) : (
+                            t('columns.resetDefaults')
+                        )}
                     </Button>
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                         {visibleDraftCount < MIN_VISIBLE && (
                             <span className="text-destructive text-sm">Select at least {MIN_VISIBLE} columns</span>
                         )}
-                        <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+                        <Button variant="outline" onClick={onClose} disabled={isSaving}>
+                            {t('common.cancel')}
+                        </Button>
                         <Button
                             onClick={commitChanges}
                             className="bg-primary hover:bg-primary/90"
-                            disabled={visibleDraftCount < MIN_VISIBLE}
+                            disabled={visibleDraftCount < MIN_VISIBLE || isSaving}
                         >
-                            {t('common.save')}
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                t('common.save')
+                            )}
                         </Button>
                     </div>
                 </DialogFooter>
