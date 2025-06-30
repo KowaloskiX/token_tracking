@@ -74,7 +74,6 @@ export interface BackendColumnConfig {
   updated_at: string;
 }
 
-// Default column configurations
 export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
   {
     id: 'source',
@@ -85,7 +84,7 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     minWidth: 30,
     maxWidth: 60,
     visible: true,
-    sortable: false,
+    sortable: true, // Enable sorting for source
     resizable: true,
     order: 0,
   },
@@ -137,7 +136,7 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     minWidth: 60,
     maxWidth: 120,
     visible: true,
-    sortable: false,
+    sortable: false, // Keep progress bar non-sortable as it's visual only
     resizable: true,
     order: 4,
   },
@@ -163,7 +162,7 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     minWidth: 80,
     maxWidth: 150,
     visible: true,
-    sortable: false,
+    sortable: true, // Enable sorting for board status
     resizable: true,
     order: 6,
   },
@@ -189,7 +188,7 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     minWidth: 30,
     maxWidth: 50,
     visible: true,
-    sortable: false,
+    sortable: false, // Actions column should not be sortable
     resizable: false,
     order: 8,
   },

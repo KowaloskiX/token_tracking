@@ -113,13 +113,13 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
 
   return (
     <div className="w-full max-w-full">
-      <div 
+      <div
         className="rounded-md border shadow-sm overflow-hidden"
         ref={tableContainerRef}
       >
         {/* Scrollable table container with strict width constraints */}
-        <div className="overflow-x-hidden">
-          <Table className="w-full table-fixed" style={{ minWidth: `${totalTableWidth}px` }}>
+        <div className="overflow-x-auto scrollbar-thin">
+          <Table className="min-w-max table-fixed" style={{ minWidth: `${totalTableWidth}px` }}>
             <ResizableTableHeader
               columns={visibleColumns}
               sortConfig={columnState.sortConfig}

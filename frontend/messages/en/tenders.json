@@ -382,5 +382,52 @@
   "info": {
     "title": "Information",
     "notSpecified": "Not specified"
-  }
+  },
+      "columns": {
+      "manageColumns": "Manage Columns",
+      "currentColumns": "Current Columns",
+      "addCriteria": "Add Criteria",
+      "searchCriteria": "Search Criteria...",
+      "visible": "Visible",
+      "showAll": "Show All",
+      "hideAll": "Hide Optional",
+      "order": "Order",
+      "width": "Width",
+      "widthShort": "Wdt.",
+      "criteria": "Criterion",
+      "add": "Add",
+      "resetDefaults": "Reset to Defaults",
+      "allCriteriaAdded": "All Criteria Added",
+      "allCriteriaAddedDesc": "There are no more criteria to add",
+      "noCriteriaAvailable": "No Criteria Available",
+      "noCriteriaAvailableDesc": "No criteria have been defined for this analysis",
+      "remove": "Remove",
+      "columnTypes": {
+        "source": "Source",
+        "name": "Name",
+        "organization": "Organization",
+        "publication_date": "Publication Date",
+        "deadline_progress": "Deadline Progress",
+        "submission_deadline": "Submission Deadline",
+        "board_status": "Board Status",
+        "score": "Score",
+        "actions": "Actions",
+        "criteria": "Criteria"
+      },
+      "tooltips": {
+        "drag": "Drag to reorder",
+        "visibility": "Show/Hide column",
+        "width": "Adjust column width",
+        "remove": "Remove criteria column",
+        "reset": "Reset column configuration"
+      },
+      "messages": {
+        "widthUpdated": "Column width updated",
+        "orderUpdated": "Column order updated",
+        "criteriaAdded": "Criterion added to table",
+        "criteriaRemoved": "Criterion removed from table",
+        "resetComplete": "Columns reset to defaults",
+        "visibilityChanged": "Column visibility changed"
+      }
+    }
 }

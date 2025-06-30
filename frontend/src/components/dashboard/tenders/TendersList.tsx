@@ -73,11 +73,11 @@ interface TendersListProps {
   setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-const TendersList: React.FC<TendersListProps> = ({ 
-  drawerRef, 
-  allResults, 
-  setAllResults, 
-  setCurrentTenderBoardStatus 
+const TendersList: React.FC<TendersListProps> = ({
+  drawerRef,
+  allResults,
+  setAllResults,
+  setCurrentTenderBoardStatus
 }) => {
   const t = useTendersTranslations();
   const commonT = useCommonTranslations();
@@ -110,7 +110,7 @@ const TendersList: React.FC<TendersListProps> = ({
     field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date';
     direction: 'asc' | 'desc';
   } | null>(null);
-  
+
   const [filters, setFilters] = useState<Filters>({
     onlyQualified: false,
     status: { inactive: true, active: true, archived: false, inBoard: true },
@@ -135,7 +135,7 @@ const TendersList: React.FC<TendersListProps> = ({
     source: {},
     criteria: {},
   });
-  
+
   const [showKanbanDialog, setShowKanbanDialog] = useState(false);
   const [includeHistorical, setIncludeHistorical] = useState(false);
 
@@ -260,12 +260,19 @@ const TendersList: React.FC<TendersListProps> = ({
     currentPage * LOCAL_ITEMS_PER_PAGE
   );
 
-  const handleSort = (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => {
+  const handleSort = (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date' | string) => {
     setSortConfig(current => {
       if (current?.field === field) {
         return { field, direction: current.direction === 'asc' ? 'desc' : 'asc' };
       }
-      return { field, direction: field === 'tender_score' ? 'desc' : 'asc' };
+
+      // Set default direction based on field type
+      let defaultDirection: 'asc' | 'desc' = 'asc';
+      if (field === 'tender_score' || field === 'updated_at' || field === 'created_at') {
+        defaultDirection = 'desc'; // Scores and dates default to descending
+      }
+
+      return { field, direction: defaultDirection };
     });
   };
 
@@ -306,7 +313,7 @@ const TendersList: React.FC<TendersListProps> = ({
   ]);
 
   return (
-    <div className="sm:px-8 py-2 w-full max-w-full overflow-hidden">
+    <div className="sm:px-8 py-2 w-full max-w-full overflow-x-auto overflow-y-hidden">
       <Card className="rounded-none sm:rounded-lg shadow">
         <CardHeader>
           <div className="flex justify-between flex-wrap sm:flex-nowrap gap-4">
@@ -320,7 +327,7 @@ const TendersList: React.FC<TendersListProps> = ({
                   >
                     {(selectedAnalysis.assigned_users?.length ?? 0) > 1
                       ? t('tenders.edit.share.sharedBadge')
-                      : t('tenders.edit.share.privateBadge')}                  
+                      : t('tenders.edit.share.privateBadge')}
                   </Badge>
                 )}
               </div>
@@ -366,10 +373,10 @@ const TendersList: React.FC<TendersListProps> = ({
             sortConfig={sortConfig}
             handleSort={handleSort}
             availableSources={availableSources}
-            availableCriteria={availableCriteria}
+            availableCriteria={selectedAnalysis?.criteria?.map((c: any) => c.name) || []} // Pass just the names for filter
           />
         </CardHeader>
-        
+
         <CardContent>
           <EnhancedTenderTable
             currentResults={currentResults}
@@ -393,28 +400,46 @@ const TendersList: React.FC<TendersListProps> = ({
             onAddToKanban={handleAddToKanban}
             onPageChange={(page) => updateCurrentPage(page, true)}
             onSortChange={(columnId, direction) => {
-              // Map the column-based sorting back to the original sorting logic
-              const fieldMap: Record<string, any> = {
-                'name': 'name',
-                'organization': 'organization', 
+              // Enhanced field mapping that covers all column types
+              const fieldMap: Record<string, string> = {
+                // Standard columns
+                'source': 'source',
+                'name': 'tender_metadata.name',
+                'organization': 'tender_metadata.organization',
                 'publication_date': 'initiation_date',
                 'submission_deadline': 'submission_deadline',
+                'board_status': 'status',
                 'score': 'tender_score',
                 'created_at': 'created_at',
                 'updated_at': 'updated_at'
               };
-              
-              const field = fieldMap[columnId];
-              if (field && direction) {
-                setSortConfig({ field, direction });
+
+              // Handle criteria columns dynamically
+              if (columnId.startsWith('criteria-')) {
+                // For criteria columns, we need to find the actual criteria name
+                const criteriaId = columnId.replace('criteria-', '');
+                const criteria = availableCriteria.find(c => c.id === criteriaId);
+                const field = criteria ? criteria.name : columnId; // Use criteria name for sorting
+
+                if (direction) {
+                  setSortConfig({ field, direction });
+                } else {
+                  setSortConfig(null);
+                }
               } else {
-                setSortConfig(null);
+                // For standard columns, use the field mapping
+                const field = fieldMap[columnId];
+                if (field && direction) {
+                  setSortConfig({ field, direction });
+                } else {
+                  setSortConfig(null);
+                }
               }
             }}
           />
         </CardContent>
       </Card>
-      
+
       {selectedResult && (
         <AddToKanbanDialog
           open={showKanbanDialog}
@@ -446,7 +471,7 @@ const TendersList: React.FC<TendersListProps> = ({
           }}
         />
       )}
-      
+
       {popupOpen && (
         <Dialog open={popupOpen} onOpenChange={setPopupOpen}>
           <DialogContent className="sm:max-w-[425px]">

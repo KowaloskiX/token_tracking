@@ -218,7 +218,7 @@ export const useTenderTableData = ({
   // Filter data
   const filteredResults = useMemo(() => {
     type VoivodeshipKey = keyof typeof filters.voivodeship;
-    
+
     return mergedData.filter((result) => {
       if (filters.onlyQualified && result.tender_score < 0.7) return false;
 
@@ -315,19 +315,19 @@ export const useTenderTableData = ({
 
       if (filters.criteria && Object.keys(filters.criteria).length > 0) {
         const selectedCriteria = Object.entries(filters.criteria).filter(([_, isSelected]) => isSelected);
-        
+
         if (selectedCriteria.length > 0) {
           const hasFailingCriteria = selectedCriteria.some(([criteriaName, isSelected]) => {
             const criteriaResult = result.criteria_analysis?.find(ca => ca.criteria === criteriaName);
-            
+
             if (!criteriaResult) {
               return true;
             }
-            
+
             const isMet = criteriaResult.analysis?.criteria_met === true;
             return !isMet;
           });
-          
+
           if (hasFailingCriteria) {
             return false;
           }
@@ -338,79 +338,204 @@ export const useTenderTableData = ({
     });
   }, [mergedData, filters, searchQuery, selectedDate, dateFilterType, getTenderBoards]);
 
-  // Sort data
   const sortedResults = useMemo(() => {
     let sorted = [...filteredResults];
 
     if (sortConfig) {
       sorted = sorted.sort((a, b) => {
-        if (sortConfig.field === 'tender_score') {
-          const cmp = sortConfig.direction === 'asc'
-            ? a.tender_score - b.tender_score
-            : b.tender_score - a.tender_score;
-          if (cmp !== 0) return cmp;
-          const aUpdated = new Date(a.updated_at || '').getTime();
-          const bUpdated = new Date(b.updated_at || '').getTime();
-          return bUpdated - aUpdated;
-        } else if (sortConfig.field === 'updated_at') {
-          const aDate = new Date(a.updated_at || '').getTime();
-          const bDate = new Date(b.updated_at || '').getTime();
-          const cmp = sortConfig.direction === 'asc' ? aDate - bDate : bDate - aDate;
-          if (cmp !== 0) return cmp;
-          return b.tender_score - a.tender_score;
-        } else if (sortConfig.field === 'submission_deadline') {
-          const getDeadlineStatus = (deadlineStr: string): { status: 'future' | 'past' | 'invalid', days: number } => {
-            if (!deadlineStr || deadlineStr.includes('NaN')) {
-              return { status: 'invalid', days: Infinity };
-            }
+        // Helper function to safely get nested property value
+        const getNestedValue = (obj: any, path: string): any => {
+          return path.split('.').reduce((current, key) => current?.[key], obj);
+        };
 
-            const days = calculateDaysRemaining(deadlineStr);
+        // Helper function to compare strings with locale awareness
+        const compareStrings = (a: string, b: string, direction: 'asc' | 'desc') => {
+          const result = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+          return direction === 'asc' ? result : -result;
+        };
 
-            if (isNaN(days)) {
-              return { status: 'invalid', days: Infinity };
-            } else if (days < 0) {
-              return { status: 'past', days: days };
-            } else {
-              return { status: 'future', days: days };
-            }
-          };
+        // Helper function to compare numbers
+        const compareNumbers = (a: number, b: number, direction: 'asc' | 'desc') => {
+          const result = a - b;
+          return direction === 'asc' ? result : -result;
+        };
 
-          const aStatus = getDeadlineStatus(a.tender_metadata.submission_deadline);
-          const bStatus = getDeadlineStatus(b.tender_metadata.submission_deadline);
+        // Helper function to compare dates
+        const compareDates = (a: string, b: string, direction: 'asc' | 'desc') => {
+          const dateA = new Date(a).getTime();
+          const dateB = new Date(b).getTime();
+          const result = dateA - dateB;
+          return direction === 'asc' ? result : -result;
+        };
 
-          const statusOrder = { future: 0, past: 1, invalid: 2 };
-          const aOrder = statusOrder[aStatus.status];
-          const bOrder = statusOrder[bStatus.status];
+        // Handle criteria columns (start with 'criteria-')
+        if (sortConfig.field.startsWith('criteria-')) {
+          const criteriaId = sortConfig.field.replace('criteria-', '');
+          const criteriaA = a.criteria_analysis?.find(ca => ca.criteria === criteriaId);
+          const criteriaB = b.criteria_analysis?.find(cb => cb.criteria === criteriaId);
 
-          let cmp = aOrder - bOrder;
+          // Sort by criteria met status first, then by confidence
+          const metA = criteriaA?.analysis?.criteria_met;
+          const metB = criteriaB?.analysis?.criteria_met;
 
-          if (cmp === 0) {
-            if (aStatus.status === 'future') {
-              cmp = sortConfig.direction === 'asc'
-                ? aStatus.days - bStatus.days
-                : bStatus.days - aStatus.days;
-            } else if (aStatus.status === 'past') {
-              cmp = sortConfig.direction === 'asc'
-                ? bStatus.days - aStatus.days
-                : aStatus.days - bStatus.days;
-            }
+          if (metA !== metB) {
+            // Met criteria come first in ascending, last in descending
+            if (metA === true && metB !== true) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (metB === true && metA !== true) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (metA === false && metB === null) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (metB === false && metA === null) return sortConfig.direction === 'asc' ? 1 : -1;
           }
 
-          if (cmp === 0) {
-            const aUpdated = new Date(a.updated_at || '').getTime();
-            const bUpdated = new Date(b.updated_at || '').getTime();
-            cmp = bUpdated - aUpdated;
-          }
+          // If criteria met status is the same, sort by confidence level
+          const confidenceA = criteriaA?.analysis?.confidence_level || 0;
+          const confidenceB = criteriaB?.analysis?.confidence_level || 0;
+          const confidenceResult = compareNumbers(confidenceA, confidenceB, sortConfig.direction);
 
-          return cmp;
+          if (confidenceResult !== 0) return confidenceResult;
+
+          // Fallback to tender score
+          return compareNumbers(a.tender_score, b.tender_score, 'desc');
         }
-        // Add other sorting logic as needed
-        return 0;
+
+        // Handle standard columns
+        switch (sortConfig.field) {
+          case 'tender_score': {
+            const cmp = compareNumbers(a.tender_score, b.tender_score, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            // Fallback to updated_at for consistency
+            return compareDates(a.updated_at || '', b.updated_at || '', 'desc');
+          }
+
+          case 'updated_at': {
+            const cmp = compareDates(a.updated_at || '', b.updated_at || '', sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            // Fallback to tender score
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'created_at': {
+            const cmp = compareDates(a.created_at || '', b.created_at || '', sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'initiation_date': {
+            const dateA = a.tender_metadata.initiation_date || a.tender_metadata.submission_deadline;
+            const dateB = b.tender_metadata.initiation_date || b.tender_metadata.submission_deadline;
+            const cmp = compareDates(dateA, dateB, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'submission_deadline': {
+            // Complex deadline sorting logic (keeping your existing logic)
+            const getDeadlineStatus = (deadlineStr: string): { status: 'future' | 'past' | 'invalid', days: number } => {
+              if (!deadlineStr || deadlineStr.includes('NaN')) {
+                return { status: 'invalid', days: Infinity };
+              }
+
+              const days = calculateDaysRemaining(deadlineStr);
+
+              if (isNaN(days)) {
+                return { status: 'invalid', days: Infinity };
+              } else if (days < 0) {
+                return { status: 'past', days: days };
+              } else {
+                return { status: 'future', days: days };
+              }
+            };
+
+            const aStatus = getDeadlineStatus(a.tender_metadata.submission_deadline);
+            const bStatus = getDeadlineStatus(b.tender_metadata.submission_deadline);
+
+            const statusOrder = { future: 0, past: 1, invalid: 2 };
+            const aOrder = statusOrder[aStatus.status];
+            const bOrder = statusOrder[bStatus.status];
+
+            let cmp = aOrder - bOrder;
+
+            if (cmp === 0) {
+              if (aStatus.status === 'future') {
+                cmp = sortConfig.direction === 'asc'
+                  ? aStatus.days - bStatus.days
+                  : bStatus.days - aStatus.days;
+              } else if (aStatus.status === 'past') {
+                cmp = sortConfig.direction === 'asc'
+                  ? bStatus.days - aStatus.days
+                  : aStatus.days - bStatus.days;
+              }
+            }
+
+            if (cmp === 0) {
+              const aUpdated = new Date(a.updated_at || '').getTime();
+              const bUpdated = new Date(b.updated_at || '').getTime();
+              cmp = bUpdated - aUpdated;
+            }
+
+            return cmp;
+          }
+
+          case 'tender_metadata.name': {
+            const nameA = a.tender_metadata.name || '';
+            const nameB = b.tender_metadata.name || '';
+            const cmp = compareStrings(nameA, nameB, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'tender_metadata.organization': {
+            const orgA = a.tender_metadata.organization || '';
+            const orgB = b.tender_metadata.organization || '';
+            const cmp = compareStrings(orgA, orgB, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'source': {
+            const sourceA = a.source || '';
+            const sourceB = b.source || '';
+            const cmp = compareStrings(sourceA, sourceB, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          case 'status': {
+            // Sort by board status (if in board) or regular status
+            const getBoardStatus = (result: TenderAnalysisResult) => {
+              const boards = getTenderBoards(result._id!);
+              if (boards.length > 0) {
+                return boards[0]; // Use first board name for sorting
+              }
+              return result.status || 'inactive';
+            };
+
+            const statusA = getBoardStatus(a);
+            const statusB = getBoardStatus(b);
+            const cmp = compareStrings(statusA, statusB, sortConfig.direction);
+            if (cmp !== 0) return cmp;
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+
+          default: {
+            // Fallback for any unmapped fields - try to get the value using the field path
+            const valueA = getNestedValue(a, sortConfig.field);
+            const valueB = getNestedValue(b, sortConfig.field);
+
+            if (typeof valueA === 'string' && typeof valueB === 'string') {
+              return compareStrings(valueA, valueB, sortConfig.direction);
+            } else if (typeof valueA === 'number' && typeof valueB === 'number') {
+              return compareNumbers(valueA, valueB, sortConfig.direction);
+            }
+
+            // Default fallback to tender score
+            return compareNumbers(a.tender_score, b.tender_score, 'desc');
+          }
+        }
       });
     }
 
     return sorted;
-  }, [filteredResults, sortConfig, calculateDaysRemaining]);
+  }, [filteredResults, sortConfig, calculateDaysRemaining, getTenderBoards]);
 
   const availableSources = useMemo(() => {
     const sources = new Set<string>();
@@ -426,7 +551,12 @@ export const useTenderTableData = ({
     if (!selectedAnalysis?.criteria || selectedAnalysis.criteria.length === 0) {
       return [];
     }
-    return selectedAnalysis.criteria.map((c: any) => c.name);
+
+    return selectedAnalysis.criteria.map((criteria: any, index: number) => ({
+      id: criteria.name,
+      name: criteria.name,
+      description: criteria.description || criteria.instruction || `Weight: ${criteria.weight || 'N/A'}`,
+    }));
   }, [selectedAnalysis?.criteria]);
 
   return {

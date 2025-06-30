@@ -118,13 +118,17 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
             const newCol: CriteriaColumnConfig = {
                 id: `criteria-${criteriaId}`,
                 type: 'criteria',
-                criteriaId,
+                key: `criteria_analysis.${name}`,
                 label: name,
                 order: prev.length,
                 visible: true,
                 width: 160,
                 minWidth: 120,
                 maxWidth: 400,
+                sortable: true,
+                resizable: true,
+                criteriaName: name,
+                criteriaId: criteriaId,
             } as CriteriaColumnConfig;
             return [...prev, newCol];
         });
@@ -146,10 +150,12 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
         setDraggedIndex(idx);
         e.dataTransfer.effectAllowed = 'move';
     };
+    
     const handleDragOver = (e: React.DragEvent, idx: number) => {
         e.preventDefault();
         setDragOverIndex(idx);
     };
+    
     const finishDrag = () => {
         if (
             draggedIndex !== null &&
@@ -167,7 +173,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
             const original = columns.find(c => c.id === draft.id);
             if (!original) {
                 if (isCriteriaColumn(draft)) {
-                    onAddCriteriaColumn(draft.criteriaId, draft.label || '');
+                    onAddCriteriaColumn(draft.criteriaId, draft.criteriaName);
                 }
                 return;
             }
@@ -188,7 +194,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+            <DialogContent className="max-w-7xl max-h-[90vh] flex flex-col">
                 <DialogHeader className="pb-4 border-b">
                     <DialogTitle className="text-lg font-semibold">
                         {tTenders('columns.manageColumns')}
@@ -197,8 +203,9 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                         </span>
                     </DialogTitle>
                 </DialogHeader>
-                <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-                    <div className="lg:col-span-2 flex flex-col min-h-0">
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0">
+                    {/* Current Columns - Takes up 3/5 of the width */}
+                    <div className="lg:col-span-3 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base font-medium">
@@ -255,8 +262,11 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                             >
                                                 <span className="select-none cursor-grab text-muted-foreground">≡</span>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 truncate">
-                                                        <span className="truncate font-medium text-sm">
+                                                    <div className="flex items-center gap-2">
+                                                        <span
+                                                            className="font-medium text-sm truncate max-w-[160px]"
+                                                            title={col.label || col.id}
+                                                        >
                                                             {col.label || col.id}
                                                         </span>
                                                         {isCriteriaColumn(col) && (
@@ -272,6 +282,11 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         <span>
                                                             {tTenders('columns.width')}: {col.width}px
                                                         </span>
+                                                        {isCriteriaColumn(col) && (
+                                                            <span className="text-primary">
+                                                                ✓ Criteria Column
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1">
@@ -279,7 +294,8 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         {tTenders('columns.widthShort')}:
                                                     </Label>
                                                     <Input
-                                                        id={`w-${col.id}`} type="number"
+                                                        id={`w-${col.id}`} 
+                                                        type="number"
                                                         value={col.width}
                                                         min={col.minWidth}
                                                         max={col.maxWidth}
@@ -295,7 +311,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-destructive"
+                                                        className="text-destructive hover:text-destructive"
                                                         onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
                                                     >
                                                         {tTenders('columns.remove')}
@@ -308,7 +324,9 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                             </CardContent>
                         </Card>
                     </div>
-                    <div className="flex flex-col min-h-0">
+                    
+                    {/* Add Criteria Section - Takes up 2/5 of the width (much wider) */}
+                    <div className="lg:col-span-2 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base font-medium">
@@ -326,18 +344,32 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                             <CardContent className="flex-1 overflow-hidden">
                                 <ScrollArea className="h-full pr-3">
                                     {filteredAvailableCriteria.length ? (
-                                        <ul className="space-y-2 pb-2">
+                                        <ul className="space-y-3 pb-2">
                                             {filteredAvailableCriteria.map(c => (
-                                                <li key={`criteria-${c.id}`} className="border rounded-lg p-3 hover:bg-muted/50 flex items-start justify-between">
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-medium text-sm truncate">{c.name}</p>
-                                                        {c.description && (
-                                                            <p className="text-xs text-muted-foreground line-clamp-2">{c.description}</p>
-                                                        )}
+                                                <li 
+                                                    key={`criteria-${c.id}`} 
+                                                    className="border rounded-lg p-4 hover:bg-muted/50 flex flex-col gap-3"
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-medium text-sm leading-snug">
+                                                                {c.name}
+                                                            </p>
+                                                            {c.description && (
+                                                                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                                                    {c.description}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm" 
+                                                            onClick={() => addDraftCriteria(c.id, c.name)}
+                                                            className="shrink-0"
+                                                        >
+                                                            {tTenders('columns.add')}
+                                                        </Button>
                                                     </div>
-                                                    <Button variant="outline" size="sm" onClick={() => addDraftCriteria(c.id, c.name)}>
-                                                        {tTenders('columns.add')}
-                                                    </Button>
                                                 </li>
                                             ))}
                                         </ul>

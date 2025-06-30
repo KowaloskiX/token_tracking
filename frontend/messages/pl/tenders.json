@@ -382,5 +382,52 @@
   "info": {
     "title": "Informacje",
     "notSpecified": "Nie określono"
-  }
+  },
+  "columns": {
+      "manageColumns": "Zarządzaj kolumnami",
+      "currentColumns": "Obecne kolumny",
+      "addCriteria": "Dodaj kryteria",
+      "searchCriteria": "Szukaj kryteriów...",
+      "visible": "widoczne",
+      "showAll": "Pokaż wszystkie",
+      "hideAll": "Ukryj opcjonalne",
+      "order": "Kolejność",
+      "width": "Szerokość",
+      "widthShort": "Szer.",
+      "criteria": "Kryterium",
+      "add": "Dodaj",
+      "resetDefaults": "Przywróć domyślne",
+      "allCriteriaAdded": "Wszystkie kryteria dodane",
+      "allCriteriaAddedDesc": "Nie ma więcej kryteriów do dodania",
+      "noCriteriaAvailable": "Brak dostępnych kryteriów",
+      "noCriteriaAvailableDesc": "W tej analizie nie zdefiniowano kryteriów",
+      "remove": "Usuń",
+      "columnTypes": {
+        "source": "Źródło",
+        "name": "Nazwa",
+        "organization": "Organizacja", 
+        "publication_date": "Data publikacji",
+        "deadline_progress": "Postęp terminu",
+        "submission_deadline": "Termin składania",
+        "board_status": "Status tablicy",
+        "score": "Ocena",
+        "actions": "Akcje",
+        "criteria": "Kryterium"
+      },
+      "tooltips": {
+        "drag": "Przeciągnij, aby zmienić kolejność",
+        "visibility": "Pokaż/ukryj kolumnę",
+        "width": "Dostosuj szerokość kolumny",
+        "remove": "Usuń kolumnę kryterium",
+        "reset": "Przywraca domyślną konfigurację kolumn"
+      },
+      "messages": {
+        "widthUpdated": "Szerokość kolumny zaktualizowana",
+        "orderUpdated": "Kolejność kolumn zaktualizowana", 
+        "criteriaAdded": "Kryterium dodane do tabeli",
+        "criteriaRemoved": "Kryterium usunięte z tabeli",
+        "resetComplete": "Kolumny przywrócone do ustawień domyślnych",
+        "visibilityChanged": "Widoczność kolumny zmieniona"
+      }
+    }
 }

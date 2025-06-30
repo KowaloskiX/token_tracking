@@ -46,7 +46,7 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
   onAddToKanban
 }) => {
   const t = useTendersTranslations();
-  
+
   const hasUpdate = isUpdatedAfterOpened(result);
   const daysRemaining = calculateDaysRemaining(result.tender_metadata.submission_deadline);
 
@@ -63,50 +63,80 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
     maxWidth: `${column.maxWidth}px`,
   });
 
-  const getCriteriaValue = (criteriaName: string): boolean | null => {
-    if (!result.criteria_analysis || !Array.isArray(result.criteria_analysis)) {
-      return null;
-    }
-    
-    const criteriaResult = result.criteria_analysis.find(
-      ca => ca.criteria === criteriaName
-    );
-    
-    return criteriaResult?.analysis?.criteria_met ?? null;
+const getCriteriaValue = (criteriaName: string): { met: boolean | null; summary: string; confidence: number } => {
+  if (!result.criteria_analysis || !Array.isArray(result.criteria_analysis)) {
+    return { met: null, summary: '', confidence: 0 };
+  }
+  
+  // Find criteria by name (which matches what we use for sorting)
+  const criteriaResult = result.criteria_analysis.find(
+    ca => ca.criteria === criteriaName
+  );
+  
+  if (!criteriaResult) {
+    return { met: null, summary: '', confidence: 0 };
+  }
+  
+  return {
+    met: criteriaResult.analysis?.criteria_met ?? null,
+    summary: criteriaResult.analysis?.summary || '',
+    confidence: criteriaResult.analysis?.confidence_level || 0
   };
+};
 
-  const renderCriteriaCell = (column: CriteriaColumnConfig) => {
-    const value = getCriteriaValue(column.criteriaName);
-    
-    if (value === null) {
-      return (
-        <div className="flex items-center justify-center">
-          <span className="text-muted-foreground text-xs">-</span>
-        </div>
-      );
-    }
 
+const renderCriteriaCell = (column: CriteriaColumnConfig) => {
+  const { met, summary, confidence } = getCriteriaValue(column.criteriaName);
+  
+  if (met === null) {
     return (
       <div className="flex items-center justify-center">
-        {value ? (
-          <Badge variant="default" className="bg-green-600/80 hover:bg-green-600/80 text-xs">
-            ✓ {t('tenders.criteria.met')}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="border-red-200 text-red-600 text-xs">
-            ✗ {t('tenders.criteria.notMet')}
-          </Badge>
-        )}
+        <span className="text-muted-foreground text-xs">-</span>
       </div>
     );
-  };
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center cursor-help w-full">
+            {met ? (
+              <Badge variant="default" className="bg-green-600/80 hover:bg-green-600/80 text-xs w-full justify-center">
+                ✓ {t('tenders.criteria.met')}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-red-200 text-red-600 text-xs w-full justify-center">
+                ✗ {t('tenders.criteria.notMet')}
+              </Badge>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[350px]">
+          <div className="text-xs space-y-2">
+            <div>
+              <p className="font-medium">{column.criteriaName}</p>
+            </div>
+            {summary && (
+              <div className="border-t pt-2">
+                <p className="text-muted-foreground leading-relaxed">
+                  {summary.length > 200 ? `${summary.substring(0, 200)}...` : summary}
+                </p>
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
   const renderColumnCell = (column: ColumnConfig): React.ReactElement => {
     switch (column.type) {
       case 'source':
         return (
-          <TableCell 
-            className="relative font-medium" 
+          <TableCell
+            className="relative font-medium"
             style={getCellStyle(column)}
           >
             {!result.opened_at && (
@@ -195,10 +225,10 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
       case 'board_status':
         return (
           <TableCell style={getCellStyle(column)}>
-            <TenderBoardBadge 
-              result={result} 
-              getTenderBoards={getTenderBoards} 
-              boardsLoading={boardsLoading} 
+            <TenderBoardBadge
+              result={result}
+              getTenderBoards={getTenderBoards}
+              boardsLoading={boardsLoading}
             />
           </TableCell>
         );
@@ -267,7 +297,7 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
           {renderColumnCell(column)}
         </React.Fragment>
       ))}
-      
+
       {/* Column manager placeholder cell */}
       <TableCell className="w-10" />
     </TableRow>

@@ -376,11 +376,58 @@
     "loadFailedTitle": "Fehler"
   },
   "description": {
-      "title": "Beschreibung", 
-      "noDescription": "Keine Ausschreibungsbeschreibung verfügbar"
-    },
+    "title": "Beschreibung",
+    "noDescription": "Keine Ausschreibungsbeschreibung verfügbar"
+  },
   "info": {
-    "title": "Informationen", 
+    "title": "Informationen",
     "notSpecified": "Nicht angegeben"
+  },
+  "columns": {
+    "manageColumns": "Spalten verwalten",
+    "currentColumns": "Aktuelle Spalten",
+    "addCriteria": "Kriterien hinzufügen",
+    "searchCriteria": "Kriterien suchen...",
+    "visible": "Sichtbar",
+    "showAll": "Alle anzeigen",
+    "hideAll": "Optionale ausblenden",
+    "order": "Reihenfolge",
+    "width": "Breite",
+    "widthShort": "Br.",
+    "criteria": "Kriterium",
+    "add": "Hinzufügen",
+    "resetDefaults": "Auf Standard zurücksetzen",
+    "allCriteriaAdded": "Alle Kriterien hinzugefügt",
+    "allCriteriaAddedDesc": "Es sind keine weiteren Kriterien hinzuzufügen",
+    "noCriteriaAvailable": "Keine Kriterien verfügbar",
+    "noCriteriaAvailableDesc": "Für diese Analyse wurden keine Kriterien definiert",
+    "remove": "Entfernen",
+    "columnTypes": {
+      "source": "Quelle",
+      "name": "Name",
+      "organization": "Organisation",
+      "publication_date": "Veröffentlichungsdatum",
+      "deadline_progress": "Fristfortschritt",
+      "submission_deadline": "Einreichungsfrist",
+      "board_status": "Status",
+      "score": "Bewertung",
+      "actions": "Aktionen",
+      "criteria": "Kriterien"
+    },
+    "tooltips": {
+      "drag": "Ziehen zum Verschieben",
+      "visibility": "Spalte anzeigen/verbergen",
+      "width": "Spaltenbreite anpassen",
+      "remove": "Kriterien-Spalte entfernen",
+      "reset": "Standardeinstellungen wiederherstellen"
+    },
+    "messages": {
+      "widthUpdated": "Spaltenbreite aktualisiert",
+      "orderUpdated": "Spaltenreihenfolge aktualisiert",
+      "criteriaAdded": "Kriterium zur Tabelle hinzugefügt",
+      "criteriaRemoved": "Kriterium aus der Tabelle entfernt",
+      "resetComplete": "Spalten auf Standard zurückgesetzt",
+      "visibilityChanged": "Sichtbarkeit der Spalte geändert"
+    }
   }
 }
