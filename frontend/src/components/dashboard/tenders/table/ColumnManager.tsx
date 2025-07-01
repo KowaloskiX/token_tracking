@@ -19,7 +19,8 @@ import {
 } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     ColumnConfig,
     CriteriaColumnConfig,
@@ -43,7 +44,7 @@ interface ColumnManagerProps {
     onRemoveCriteriaColumn: (criteriaId: string) => void;
     onResetToDefaults: () => Promise<void>;
     onUpdateColumnWidth: (columnId: string, width: number) => void;
-    onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>; // Add this prop
+    onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>;
 }
 
 export const ColumnManager: React.FC<ColumnManagerProps> = ({
@@ -57,12 +58,13 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
     onRemoveCriteriaColumn,
     onResetToDefaults,
     onUpdateColumnWidth,
-    onSaveConfiguration, // Add this
+    onSaveConfiguration,
 }) => {
     const t = useTranslations();
     const tTenders = useTendersTranslations();
 
     const MIN_VISIBLE = 3;
+    const MAX_VISIBLE = 10;
 
     const [draftColumns, setDraftColumns] = useState<ColumnConfig[]>([]);
     const [searchCriteria, setSearchCriteria] = useState('');
@@ -70,11 +72,15 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveSuccess, setSaveSuccess] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             setDraftColumns(columns.map(c => ({ ...c })));
             setSearchCriteria('');
+            setSaveError(null);
+            setSaveSuccess(false);
         }
     }, [isOpen, columns]);
 
@@ -98,7 +104,13 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
             const next = prev.map(c =>
                 c.id === id ? { ...c, visible: !c.visible } : c
             );
-            if (next.filter(c => c.visible).length < MIN_VISIBLE) return prev;
+            const nextVisibleCount = next.filter(c => c.visible).length;
+            
+            // Prevent going below minimum or above maximum visible columns
+            if (nextVisibleCount < MIN_VISIBLE || nextVisibleCount > MAX_VISIBLE) {
+                return prev;
+            }
+            
             return next;
         });
     };
@@ -129,6 +141,13 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
             
             if (existingColumn) {
                 console.log(`Draft criteria column for ${name} already exists, skipping`);
+                return prev;
+            }
+
+            // Check if adding this column would exceed the maximum visible limit
+            const currentVisibleCount = prev.filter(c => c.visible).length;
+            if (currentVisibleCount >= MAX_VISIBLE) {
+                console.log(`Cannot add criteria column: maximum visible columns (${MAX_VISIBLE}) reached`);
                 return prev;
             }
 
@@ -187,16 +206,25 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
 
     const commitChanges = async () => {
         setIsSaving(true);
+        setSaveError(null);
+        setSaveSuccess(false);
+        
         try {
+            console.log('Saving table layout configuration...');
+            
             // First, save the configuration to backend
             await onSaveConfiguration(draftColumns);
 
-            // The onSaveConfiguration will handle updating the local state
-            // so we don't need to manually apply changes here
-            onClose();
+            console.log('Table layout saved successfully');
+            setSaveSuccess(true);
+            
+            // Close the dialog after a brief success message
+            setTimeout(() => {
+                onClose();
+            }, 1000);
         } catch (error) {
-            console.error('Failed to save column configuration:', error);
-            // You might want to show an error toast here
+            console.error('Failed to save table layout:', error);
+            setSaveError(error instanceof Error ? error.message : 'Failed to save table layout');
         } finally {
             setIsSaving(false);
         }
@@ -204,12 +232,17 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
 
     const handleReset = async () => {
         setIsResetting(true);
+        setSaveError(null);
+        setSaveSuccess(false);
+        
         try {
+            console.log('Resetting table layout to defaults...');
             await onResetToDefaults();
+            console.log('Table layout reset successfully');
             onClose();
         } catch (error) {
-            console.error('Failed to reset to defaults:', error);
-            // You might want to show an error toast here
+            console.error('Failed to reset table layout:', error);
+            setSaveError(error instanceof Error ? error.message : 'Failed to reset table layout');
         } finally {
             setIsResetting(false);
         }
@@ -222,10 +255,31 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                     <DialogTitle className="text-lg font-semibold">
                         {tTenders('columns.manageColumns')}
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                            ({visibleDraftCount}/{draftColumns.length} {tTenders('columns.visible')})
+                            ({visibleDraftCount}/{draftColumns.length} {tTenders('columns.visible')}, max {MAX_VISIBLE})
                         </span>
                     </DialogTitle>
                 </DialogHeader>
+
+                {/* Error/Success Messages */}
+                {(saveError || saveSuccess) && (
+                    <div className="px-1">
+                        {saveError && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{saveError}</AlertDescription>
+                            </Alert>
+                        )}
+                        {saveSuccess && (
+                            <Alert className="border-green-200 bg-green-50">
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                <AlertDescription className="text-green-800">
+                                    Table layout saved successfully!
+                                </AlertDescription>
+                            </Alert>
+                        )}
+                    </div>
+                )}
+
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0">
                     {/* Current Columns - Takes up 3/5 of the width */}
                     <div className="lg:col-span-3 flex flex-col min-h-0">
@@ -239,12 +293,20 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                         variant="outline"
                                         size="sm"
                                         onClick={() =>
-                                            setDraftColumns(prev =>
-                                                prev.map(c => ({ ...c, visible: true }))
-                                            )
+                                            setDraftColumns(prev => {
+                                                // Get columns sorted by importance (order)
+                                                const sortedCols = [...prev].sort((a, b) => a.order - b.order);
+                                                
+                                                // Show first MAX_VISIBLE columns, hide the rest
+                                                return prev.map(c => {
+                                                    const index = sortedCols.findIndex(sc => sc.id === c.id);
+                                                    return { ...c, visible: index < MAX_VISIBLE };
+                                                });
+                                            })
                                         }
+                                        disabled={isSaving || isResetting}
                                     >
-                                        {tTenders('columns.showAll')}
+                                        {tTenders('columns.showAll')} (max {MAX_VISIBLE})
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -260,6 +322,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                 );
                                             })
                                         }
+                                        disabled={isSaving || isResetting}
                                     >
                                         {tTenders('columns.hideAll')}
                                     </Button>
@@ -271,7 +334,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                         {sortedDraft.map((col, idx) => (
                                             <li
                                                 key={`column-${col.id}`}
-                                                draggable
+                                                draggable={!isSaving && !isResetting}
                                                 onDragStart={e => handleDragStart(e, idx)}
                                                 onDragOver={e => handleDragOver(e, idx)}
                                                 onDragEnd={finishDrag}
@@ -280,7 +343,8 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                     'relative flex items-center gap-4 rounded-lg border px-3 py-2 bg-card transition-colors',
                                                     col.visible ? 'opacity-100' : 'opacity-60',
                                                     dragOverIndex === idx && 'ring-2 ring-primary/30',
-                                                    draggedIndex === idx && 'opacity-40'
+                                                    draggedIndex === idx && 'opacity-40',
+                                                    (isSaving || isResetting) && 'cursor-not-allowed'
                                                 )}
                                             >
                                                 <span className="select-none cursor-grab text-muted-foreground">≡</span>
@@ -324,11 +388,17 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         max={col.maxWidth}
                                                         onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
                                                         className="w-16 h-7 text-xs"
+                                                        disabled={isSaving || isResetting}
                                                     />
                                                 </div>
                                                 <Switch
                                                     checked={col.visible}
                                                     onCheckedChange={() => toggleDraftVisibility(col.id)}
+                                                    disabled={
+                                                        isSaving || 
+                                                        isResetting || 
+                                                        (!col.visible && visibleDraftCount >= MAX_VISIBLE)
+                                                    }
                                                 />
                                                 {isCriteriaColumn(col) && (
                                                     <Button
@@ -336,6 +406,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         size="sm"
                                                         className="text-destructive hover:text-destructive"
                                                         onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
+                                                        disabled={isSaving || isResetting}
                                                     >
                                                         {tTenders('columns.remove')}
                                                     </Button>
@@ -361,6 +432,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                         value={searchCriteria}
                                         onChange={e => setSearchCriteria(e.target.value)}
                                         className="mt-2 h-8"
+                                        disabled={isSaving || isResetting}
                                     />
                                 )}
                             </CardHeader>
@@ -389,6 +461,16 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                             size="sm"
                                                             onClick={() => addDraftCriteria(c.id, c.name)}
                                                             className="shrink-0"
+                                                            disabled={
+                                                                isSaving || 
+                                                                isResetting || 
+                                                                visibleDraftCount >= MAX_VISIBLE
+                                                            }
+                                                            title={
+                                                                visibleDraftCount >= MAX_VISIBLE 
+                                                                    ? `Maximum ${MAX_VISIBLE} columns allowed` 
+                                                                    : undefined
+                                                            }
                                                         >
                                                             {tTenders('columns.add')}
                                                         </Button>
@@ -423,20 +505,41 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                 Resetting...
                             </>
                         ) : (
-                            t('columns.resetDefaults')
+                            t('tenders.columns.resetDefaults')
                         )}
                     </Button>
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                         {visibleDraftCount < MIN_VISIBLE && (
-                            <span className="text-destructive text-sm">Select at least {MIN_VISIBLE} columns</span>
+                            <span className="text-destructive text-sm">
+                                Select at least {MIN_VISIBLE} columns
+                            </span>
                         )}
-                        <Button variant="outline" onClick={onClose} disabled={isSaving}>
+                        {visibleDraftCount > MAX_VISIBLE && (
+                            <span className="text-destructive text-sm">
+                                Maximum {MAX_VISIBLE} columns allowed
+                            </span>
+                        )}
+                        {visibleDraftCount === MAX_VISIBLE && (
+                            <span className="text-amber-600 text-sm">
+                                Maximum columns reached ({MAX_VISIBLE}/{MAX_VISIBLE})
+                            </span>
+                        )}
+                        <Button 
+                            variant="outline" 
+                            onClick={onClose} 
+                            disabled={isSaving || isResetting}
+                        >
                             {t('common.cancel')}
                         </Button>
                         <Button
                             onClick={commitChanges}
                             className="bg-primary hover:bg-primary/90"
-                            disabled={visibleDraftCount < MIN_VISIBLE || isSaving}
+                            disabled={
+                                visibleDraftCount < MIN_VISIBLE || 
+                                visibleDraftCount > MAX_VISIBLE || 
+                                isSaving || 
+                                isResetting
+                            }
                         >
                             {isSaving ? (
                                 <>

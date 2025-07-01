@@ -1,5 +1,5 @@
 from typing import List, Optional
-from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult, AnalysisCriteria
+from minerva.core.models.extensions.tenders.tender_analysis import TableLayout, TenderAnalysisResult, AnalysisCriteria
 from minerva.core.models.utils import PyObjectId
 from pydantic import BaseModel
 
@@ -50,6 +50,7 @@ class TenderAnalysisUpdate(BaseModel):
     org_id: Optional[str] = None
     assigned_users: Optional[List[str]] = None
     email_recipients: Optional[List[str]] = None
+    table_layouts: Optional[List[TableLayout]] = None
 
 class TenderAnalysisResultUpdate(BaseModel):
     tender_url: Optional[str] = None

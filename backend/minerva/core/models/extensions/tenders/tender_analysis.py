@@ -2,7 +2,7 @@ from enum import Enum
 from minerva.core.models.file import File
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 from datetime import datetime
 from minerva.core.models.utils import PyObjectId
 from bson import ObjectId
@@ -59,6 +59,20 @@ class FileExtractionStatus(BaseModel):
     files_processed: int
     files_uploaded: int
     status: str
+
+class ColumnConfiguration(BaseModel):
+    column_id: str
+    width: int
+    visible: bool
+    order: int
+    criteria_id: Optional[str] = None  # Only for criteria columns
+
+class TableLayout(BaseModel):
+    """Table layout configuration per user for this analysis"""
+    user_id: str
+    columns: List[ColumnConfiguration]
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class TenderAnalysisResult(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -124,6 +138,9 @@ class TenderAnalysis(BaseModel):
     assigned_users: List[str] = Field(default_factory=list)  # Add this field
     email_recipients: List[str] = Field(default_factory=list)  # NEW: Users who receive email notifications
     
+    # NEW: Table layout configurations per user
+    table_layouts: Optional[List[TableLayout]] = Field(default_factory=list)
+    
     def get_email_recipients(self) -> List[str]:
         """Get users who should receive email notifications.
         
@@ -135,6 +152,28 @@ class TenderAnalysis(BaseModel):
         if not self.email_recipients:
             return self.assigned_users
         return self.email_recipients
+    
+    def get_user_table_layout(self, user_id: str) -> Optional[TableLayout]:
+        """Get table layout for a specific user"""
+        if not self.table_layouts:
+            return None
+        return next((layout for layout in self.table_layouts if layout.user_id == user_id), None)
+    
+    def set_user_table_layout(self, user_id: str, columns: List[ColumnConfiguration]) -> None:
+        """Set or update table layout for a specific user"""
+        if not self.table_layouts:
+            self.table_layouts = []
+        
+        # Remove existing layout for this user
+        self.table_layouts = [layout for layout in self.table_layouts if layout.user_id != user_id]
+        
+        # Add new layout
+        new_layout = TableLayout(
+            user_id=user_id,
+            columns=columns,
+            updated_at=datetime.utcnow()
+        )
+        self.table_layouts.append(new_layout)
     
     class Config:
         arbitrary_types_allowed = True
@@ -251,3 +290,17 @@ class TenderAnalysisResultSummary(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
+
+class ColumnConfigurationRequest(BaseModel):
+    column_id: str
+    width: int
+    visible: bool
+    order: int
+    criteria_id: Optional[str] = None
+
+class TableLayoutUpdate(BaseModel):
+    columns: List[ColumnConfigurationRequest]
+
+class TableLayoutResponse(BaseModel):
+    columns: List[ColumnConfiguration]
+    total_count: int

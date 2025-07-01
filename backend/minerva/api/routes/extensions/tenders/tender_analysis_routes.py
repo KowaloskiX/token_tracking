@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import logging
 from minerva.core.middleware.auth.jwt import get_current_user
-from minerva.core.models.extensions.tenders.tender_analysis import CriteriaAnalysisUpdate, AnalysisCriteria, FilterStage, TenderAnalysis, TenderAnalysisResult, FilteredTenderAnalysisResult, TenderAnalysisResultSummary
+from minerva.core.models.extensions.tenders.tender_analysis import CriteriaAnalysisUpdate, AnalysisCriteria, FilterStage, TenderAnalysis, TenderAnalysisResult, FilteredTenderAnalysisResult, TenderAnalysisResultSummary, TableLayout, ColumnConfiguration, ColumnConfigurationRequest, TableLayoutResponse, TableLayoutUpdate
 from minerva.core.models.request.tender_analysis import (
     TenderAnalysisCreate,
     TenderAnalysisResultUpdate,
@@ -3130,4 +3130,311 @@ async def cleanup_past_tender_results_for_user(
         raise HTTPException(
             status_code=500, 
             detail=f"Error cleaning up past tender results: {str(e)}"
+        )
+    
+@router.get("/tender-analysis/{analysis_id}/table-layout", response_model=TableLayoutResponse)
+async def get_table_layout(
+    analysis_id: PyObjectId,
+    current_user: User = Depends(get_current_user)
+):
+    """Get table layout configuration for a specific analysis and user"""
+    try:
+        logger.info(f"Getting table layout for analysis {analysis_id}, user {current_user.id}")
+        
+        # Check if analysis exists and user has access
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},  # User is creator
+                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+            ]
+        }
+        
+        analysis = await db.tender_analysis.find_one(query)
+        if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Tender analysis not found or you don't have access to it"
+            )
+        
+        # Convert to TenderAnalysis model to use helper methods
+        tender_analysis = TenderAnalysis(**analysis)
+        
+        # Get user's table layout
+        user_table_layout = tender_analysis.get_user_table_layout(str(current_user.id))
+        
+        if user_table_layout:
+            logger.info(f"Found table layout with {len(user_table_layout.columns)} columns")
+            return TableLayoutResponse(
+                columns=user_table_layout.columns,
+                total_count=len(user_table_layout.columns)
+            )
+        else:
+            logger.info("No table layout found for user, returning empty")
+            return TableLayoutResponse(
+                columns=[],
+                total_count=0
+            )
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error getting table layout: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting table layout: {str(e)}"
+        )
+
+@router.post("/tender-analysis/{analysis_id}/table-layout", response_model=TableLayoutResponse)
+async def save_table_layout(
+    analysis_id: PyObjectId,
+    layout_data: TableLayoutUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Save or update table layout configuration for a specific analysis and user"""
+    try:
+        logger.info(f"Saving table layout for analysis {analysis_id}, user {current_user.id}")
+        logger.info(f"Received {len(layout_data.columns)} columns to save")
+        
+        # Check if analysis exists and user has access
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},  # User is creator
+                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+            ]
+        }
+        
+        analysis = await db.tender_analysis.find_one(query)
+        if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Tender analysis not found or you don't have access to it"
+            )
+        
+        # Convert request data to simplified ColumnConfiguration objects
+        columns = [
+            ColumnConfiguration(
+                column_id=column_data.column_id,
+                width=column_data.width,
+                visible=column_data.visible,
+                order=column_data.order,
+                criteria_id=column_data.criteria_id
+            )
+            for column_data in layout_data.columns
+        ]
+        
+        # Convert to TenderAnalysis model to use helper methods
+        tender_analysis = TenderAnalysis(**analysis)
+        
+        # Set the user's table layout
+        tender_analysis.set_user_table_layout(str(current_user.id), columns)
+        tender_analysis.updated_at = datetime.utcnow()
+        
+        # Update the database with simplified structure
+        await db.tender_analysis.update_one(
+            {"_id": analysis_id},
+            {"$set": {
+                "table_layouts": [layout.dict() for layout in tender_analysis.table_layouts],
+                "updated_at": tender_analysis.updated_at
+            }}
+        )
+        
+        logger.info(f"Successfully saved simplified table layout with {len(columns)} columns")
+        
+        return TableLayoutResponse(
+            columns=columns,
+            total_count=len(columns)
+        )
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error saving table layout: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error saving table layout: {str(e)}"
+        )
+
+@router.delete("/tender-analysis/{analysis_id}/table-layout", response_model=dict)
+async def reset_table_layout(
+    analysis_id: PyObjectId,
+    current_user: User = Depends(get_current_user)
+):
+    """Reset table layout to defaults by removing user's saved configuration"""
+    try:
+        logger.info(f"Resetting table layout for analysis {analysis_id}, user {current_user.id}")
+        
+        # Check if analysis exists and user has access
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},  # User is creator
+                {"assigned_users": {"$in": [str(current_user.id)]}}  # User is assigned
+            ]
+        }
+        
+        analysis = await db.tender_analysis.find_one(query)
+        if not analysis:
+            logger.warning(f"Analysis {analysis_id} not found or no access for user {current_user.id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Tender analysis not found or you don't have access to it"
+            )
+        
+        # Remove user's table layout from the array
+        result = await db.tender_analysis.update_one(
+            {"_id": analysis_id},
+            {
+                "$pull": {"table_layouts": {"user_id": str(current_user.id)}},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+        
+        logger.info(f"Reset table layout - removed user's configuration")
+        
+        return {
+            "message": "Table layout reset to defaults",
+            "modified": result.modified_count > 0
+        }
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error resetting table layout: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error resetting table layout: {str(e)}"
+        )
+
+@router.get("/tender-analysis/{analysis_id}/table-layout/{column_id}", response_model=ColumnConfiguration)
+async def get_single_column_configuration(
+    analysis_id: PyObjectId,
+    column_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get a specific column configuration"""
+    try:
+        # Check if analysis exists and user has access
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},
+                {"assigned_users": {"$in": [str(current_user.id)]}}
+            ]
+        }
+        
+        analysis = await db.tender_analysis.find_one(query)
+        if not analysis:
+            raise HTTPException(
+                status_code=404,
+                detail="Tender analysis not found or you don't have access to it"
+            )
+        
+        # Convert to TenderAnalysis model and get user's layout
+        tender_analysis = TenderAnalysis(**analysis)
+        user_table_layout = tender_analysis.get_user_table_layout(str(current_user.id))
+        
+        if not user_table_layout:
+            raise HTTPException(
+                status_code=404,
+                detail="Table layout not found for user"
+            )
+        
+        # Find the specific column
+        column = next(
+            (col for col in user_table_layout.columns if col.column_id == column_id),
+            None
+        )
+        
+        if not column:
+            raise HTTPException(
+                status_code=404,
+                detail="Column configuration not found"
+            )
+        
+        return column
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error getting single column configuration: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting single column configuration: {str(e)}"
+        )
+
+@router.put("/tender-analysis/{analysis_id}/table-layout/{column_id}", response_model=ColumnConfiguration)
+async def update_single_column_configuration(
+    analysis_id: PyObjectId,
+    column_id: str,
+    column_data: ColumnConfigurationRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a specific column configuration"""
+    try:
+        # Check if analysis exists and user has access
+        query = {
+            "_id": analysis_id,
+            "$or": [
+                {"user_id": current_user.id},
+                {"assigned_users": {"$in": [str(current_user.id)]}}
+            ]
+        }
+        
+        analysis = await db.tender_analysis.find_one(query)
+        if not analysis:
+            raise HTTPException(
+                status_code=404,
+                detail="Tender analysis not found or you don't have access to it"
+            )
+        
+        # Convert to TenderAnalysis model
+        tender_analysis = TenderAnalysis(**analysis)
+        user_table_layout = tender_analysis.get_user_table_layout(str(current_user.id))
+        
+        # If no layout exists, create one with just this column
+        if not user_table_layout:
+            new_column = ColumnConfiguration(**column_data.dict())
+            tender_analysis.set_user_table_layout(str(current_user.id), [new_column])
+            updated_column = new_column
+        else:
+            # Find and update the specific column
+            column_found = False
+            for i, col in enumerate(user_table_layout.columns):
+                if col.column_id == column_id:
+                    user_table_layout.columns[i] = ColumnConfiguration(**column_data.dict())
+                    updated_column = user_table_layout.columns[i]
+                    column_found = True
+                    break
+            
+            if not column_found:
+                # Add new column if not found
+                new_column = ColumnConfiguration(**column_data.dict())
+                user_table_layout.columns.append(new_column)
+                updated_column = new_column
+            
+            # Update the layout timestamp
+            user_table_layout.updated_at = datetime.utcnow()
+        
+        # Update the database
+        await db.tender_analysis.update_one(
+            {"_id": analysis_id},
+            {"$set": {
+                "table_layouts": [layout.dict() for layout in tender_analysis.table_layouts],
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        return updated_column
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error updating single column configuration: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating single column configuration: {str(e)}"
         )
