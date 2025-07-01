@@ -399,8 +399,8 @@ const TendersList: React.FC<TendersListProps> = ({
             onDelete={handleDelete}
             onAddToKanban={handleAddToKanban}
             onPageChange={(page) => updateCurrentPage(page, true)}
-            onSortChange={(columnId, direction) => {
-              // Enhanced field mapping that covers all column types
+            onSortChange={(columnIdOrCriteriaName, direction) => {
+              // Enhanced field mapping that covers all standard column types
               const fieldMap: Record<string, string> = {
                 // Standard columns
                 'source': 'source',
@@ -414,21 +414,19 @@ const TendersList: React.FC<TendersListProps> = ({
                 'updated_at': 'updated_at'
               };
 
-              // Handle criteria columns dynamically
-              if (columnId.startsWith('criteria-')) {
-                // For criteria columns, we need to find the actual criteria name
-                const criteriaId = columnId.replace('criteria-', '');
-                const criteria = availableCriteria.find(c => c.id === criteriaId);
-                const field = criteria ? criteria.name : columnId; // Use criteria name for sorting
-
+              // Check if this is a criteria column by seeing if it's a criteria name
+              const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
+              
+              if (isCriteriaSort) {
+                // For criteria columns, use the criteria name directly as the field
                 if (direction) {
-                  setSortConfig({ field, direction });
+                  setSortConfig({ field: columnIdOrCriteriaName, direction });
                 } else {
                   setSortConfig(null);
                 }
               } else {
                 // For standard columns, use the field mapping
-                const field = fieldMap[columnId];
+                const field = fieldMap[columnIdOrCriteriaName];
                 if (field && direction) {
                   setSortConfig({ field, direction });
                 } else {

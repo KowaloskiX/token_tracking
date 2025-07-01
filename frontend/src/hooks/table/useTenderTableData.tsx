@@ -216,6 +216,19 @@ export const useTenderTableData = ({
     return diffDays;
   };
 
+  // Available criteria - moved before sortedResults to fix dependency order
+  const availableCriteria = useMemo(() => {
+    if (!selectedAnalysis?.criteria || selectedAnalysis.criteria.length === 0) {
+      return [];
+    }
+
+    return selectedAnalysis.criteria.map((criteria: any, index: number) => ({
+      id: criteria.name,
+      name: criteria.name,
+      description: criteria.description || criteria.instruction || `Weight: ${criteria.weight || 'N/A'}`,
+    }));
+  }, [selectedAnalysis?.criteria]);
+
   // Filter data
   const filteredResults = useMemo(() => {
     type VoivodeshipKey = keyof typeof filters.voivodeship;
@@ -369,22 +382,35 @@ export const useTenderTableData = ({
           return direction === 'asc' ? result : -result;
         };
 
-        // Handle criteria columns (start with 'criteria-')
-        if (sortConfig.field.startsWith('criteria-')) {
-          const criteriaId = sortConfig.field.replace('criteria-', '');
-          const criteriaA = a.criteria_analysis?.find(ca => ca.criteria === criteriaId);
-          const criteriaB = b.criteria_analysis?.find(cb => cb.criteria === criteriaId);
+        // Check if this is a criteria column by checking if the field matches any criteria name
+        const isCriteriaSort = availableCriteria.some((c: { id: string; name: string; description?: string }) => c.name === sortConfig.field);
+
+        if (isCriteriaSort) {
+          // This is a criteria column - sort by criteria
+          const criteriaName = sortConfig.field;
+          const criteriaA = a.criteria_analysis?.find(ca => ca.criteria === criteriaName);
+          const criteriaB = b.criteria_analysis?.find(cb => cb.criteria === criteriaName);
 
           // Sort by criteria met status first, then by confidence
           const metA = criteriaA?.analysis?.criteria_met;
           const metB = criteriaB?.analysis?.criteria_met;
 
-          if (metA !== metB) {
-            // Met criteria come first in ascending, last in descending
-            if (metA === true && metB !== true) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (metB === true && metA !== true) return sortConfig.direction === 'asc' ? 1 : -1;
-            if (metA === false && metB === null) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (metB === false && metA === null) return sortConfig.direction === 'asc' ? 1 : -1;
+          // Priority order: true > false > null (met > not met > no data)
+          const getMetPriority = (met: boolean | null | undefined): number => {
+            if (met === true) return 2;
+            if (met === false) return 1;
+            return 0; // null or undefined
+          };
+
+          const priorityA = getMetPriority(metA);
+          const priorityB = getMetPriority(metB);
+
+          if (priorityA !== priorityB) {
+            // For criteria sorting, we want "met" criteria to come first by default
+            // So in 'asc' mode: met > not met > no data
+            // In 'desc' mode: no data > not met > met
+            const result = priorityB - priorityA; // Higher priority first
+            return sortConfig.direction === 'asc' ? result : -result;
           }
 
           // If criteria met status is the same, sort by confidence level
@@ -536,7 +562,7 @@ export const useTenderTableData = ({
     }
 
     return sorted;
-  }, [filteredResults, sortConfig, calculateDaysRemaining, getTenderBoards]);
+  }, [filteredResults, sortConfig, calculateDaysRemaining, getTenderBoards, availableCriteria]);
 
   const availableSources = useMemo(() => {
     const sources = new Set<string>();
@@ -547,18 +573,6 @@ export const useTenderTableData = ({
     });
     return Array.from(sources);
   }, [allResults]);
-
-  const availableCriteria = useMemo(() => {
-    if (!selectedAnalysis?.criteria || selectedAnalysis.criteria.length === 0) {
-      return [];
-    }
-
-    return selectedAnalysis.criteria.map((criteria: any, index: number) => ({
-      id: criteria.name,
-      name: criteria.name,
-      description: criteria.description || criteria.instruction || `Weight: ${criteria.weight || 'N/A'}`,
-    }));
-  }, [selectedAnalysis?.criteria]);
 
   return {
     isLoading,

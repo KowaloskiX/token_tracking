@@ -436,10 +436,11 @@ const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string)
     }));
   }, []);
 
-  const setSortConfig = useCallback((columnId: string, direction: SortDirection) => {
+
+const setSortConfig = useCallback((columnIdOrCriteriaName: string, direction: SortDirection) => {
     setColumnState(prev => ({
       ...prev,
-      sortConfig: direction ? { columnId, direction } : null
+      sortConfig: direction ? { columnId: columnIdOrCriteriaName, direction } : null
     }));
   }, []);
 

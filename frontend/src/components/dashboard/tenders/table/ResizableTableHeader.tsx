@@ -40,44 +40,49 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
     const handleSort = (column: ColumnConfig) => {
         if (!column.sortable) return;
 
+        // For criteria columns, we need to use the criteria name as the sort identifier
+        // This matches what the data structure expects in useTenderTableData.tsx
+        const sortIdentifier = isCriteriaColumn(column) 
+            ? (column as CriteriaColumnConfig).criteriaName 
+            : column.id;
+
         let newDirection: SortDirection = 'asc';
 
-        // Create a column identifier for sorting
-        let columnIdentifier = column.id;
-        if (isCriteriaColumn(column)) {
-            // For criteria columns, use the criteria name for sorting
-            columnIdentifier = (column as CriteriaColumnConfig).criteriaName;
-        }
-
-        if (sortConfig?.columnId === columnIdentifier) {
+        if (sortConfig?.columnId === sortIdentifier) {
+            // Cycle through: asc → desc → null → asc
             if (sortConfig.direction === 'asc') {
                 newDirection = 'desc';
             } else if (sortConfig.direction === 'desc') {
                 newDirection = null;
+            } else {
+                newDirection = 'asc'; // null → asc (this handles the case when direction is null)
             }
         } else {
-            // Set default direction based on column type
-            if (column.type === 'score' || column.type === 'criteria') {
-                newDirection = 'desc'; // Scores and criteria default to descending (best first)
+            // Set default direction based on column type for first click
+            if (column.type === 'score') {
+                newDirection = 'desc'; // Scores default to descending (highest first)
+            } else if (column.type === 'criteria') {
+                newDirection = 'asc'; // Criteria default to ascending (met criteria first)
             } else if (column.id === 'updated_at' || column.id === 'created_at') {
                 newDirection = 'desc'; // Dates default to descending (newest first)
+            } else {
+                newDirection = 'asc'; // Everything else defaults to ascending
             }
         }
 
-        onSort(column.id, newDirection);
+        // Pass the sort identifier to the parent component
+        onSort(sortIdentifier, newDirection);
     };
-
 
     const getSortIcon = (column: ColumnConfig) => {
         if (!column.sortable) return null;
 
-        // Check if this column is currently being sorted
-        let columnIdentifier = column.id;
-        if (isCriteriaColumn(column)) {
-            columnIdentifier = (column as CriteriaColumnConfig).criteriaName;
-        }
+        // Check if this column is currently being sorted using the same identifier logic
+        const sortIdentifier = isCriteriaColumn(column) 
+            ? (column as CriteriaColumnConfig).criteriaName 
+            : column.id;
 
-        const isActive = sortConfig?.columnId === columnIdentifier;
+        const isActive = sortConfig?.columnId === sortIdentifier;
 
         if (!isActive) {
             return <ArrowUpDown className="h-3 w-3 opacity-50" />;
@@ -130,7 +135,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         if (isCriteriaColumn(column)) {
             const criteriaColumn = column as CriteriaColumnConfig;
             // Truncate long criteria names for header display
-            const maxLength = Math.floor(criteriaColumn.width / 1); // Approximate character width
+            const maxLength = Math.floor(criteriaColumn.width / 8); // Approximate character width
             const truncated = criteriaColumn.criteriaName.length > maxLength
                 ? criteriaColumn.criteriaName.substring(0, maxLength - 3) + '...'
                 : criteriaColumn.criteriaName;
@@ -169,12 +174,11 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                 {columns.map((column, index) => {
                     const isLastColumn = index === columns.length - 1;
 
-                    // Determine if this column is sorted (handling criteria columns)
-                    let columnIdentifier = column.id;
-                    if (isCriteriaColumn(column)) {
-                        columnIdentifier = (column as CriteriaColumnConfig).criteriaName;
-                    }
-                    const isSorted = sortConfig?.columnId === columnIdentifier;
+                    // Determine if this column is sorted using the same identifier logic as handleSort
+                    const sortIdentifier = isCriteriaColumn(column) 
+                        ? (column as CriteriaColumnConfig).criteriaName 
+                        : column.id;
+                    const isSorted = sortConfig?.columnId === sortIdentifier;
 
                     return (
                         <TableHead
