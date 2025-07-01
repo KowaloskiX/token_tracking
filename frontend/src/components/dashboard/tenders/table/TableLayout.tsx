@@ -126,7 +126,12 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
     const updateDraftWidth = (id: string, width: number) => {
         setDraftColumns(prev =>
-            prev.map(c => (c.id === id ? { ...c, width } : c))
+            prev.map(c => {
+                if (c.id !== id) return c;
+                // clamp to [minWidth, maxWidth]
+                const clamped = Math.max(c.minWidth, Math.min(c.maxWidth, width));
+                return { ...c, width: clamped };
+            })
         );
     };
 
@@ -440,16 +445,11 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                     key={`criteria-${c.id}`}
                                                     className="border rounded-lg p-4 hover:bg-muted/50 flex flex-col gap-3"
                                                 >
-                                                    <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex items-center justify-between gap-3">
                                                         <div className="flex-1 min-w-0">
                                                             <p className="font-medium text-sm leading-snug">
                                                                 {c.name}
                                                             </p>
-                                                            {c.description && (
-                                                                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                                                                    {c.description}
-                                                                </p>
-                                                            )}
                                                         </div>
                                                         <Button
                                                             variant="outline"
