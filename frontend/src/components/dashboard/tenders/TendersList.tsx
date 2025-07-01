@@ -30,7 +30,7 @@ import { AddToKanbanDialog } from "./AddToKanbanDialog";
 import { useTenderTablePagination } from "@/hooks/table/useTenderTablePagination";
 import { useTenderTableActions } from "@/hooks/table/useTenderTableActions";
 import { useTenderTableData } from "@/hooks/table/useTenderTableData";
-import { EnhancedTenderTable } from "./table/EnhancedTenderTable";
+import { TenderTable } from "./table/TenderTable";
 
 const LOCAL_ITEMS_PER_PAGE = 10;
 
@@ -378,7 +378,7 @@ const TendersList: React.FC<TendersListProps> = ({
         </CardHeader>
 
         <CardContent>
-          <EnhancedTenderTable
+          <TenderTable
             currentResults={currentResults}
             selectedResult={selectedResult}
             selectedAnalysis={selectedAnalysis}

@@ -6,7 +6,7 @@ import {
   StandardColumnConfig,
   CriteriaColumnConfig,
   TableColumnState,
-  ColumnManagerState,
+  TableLayoutState,
   DEFAULT_COLUMNS,
   RESPONSIVE_BREAKPOINTS,
   MOBILE_HIDDEN_COLUMNS,
@@ -51,7 +51,7 @@ export const useTableColumns = ({
   });
 
   // Column manager state
-  const [managerState, setManagerState] = useState<ColumnManagerState>({
+  const [managerState, setManagerState] = useState<TableLayoutState>({
     isOpen: false,
     draggedColumn: null,
     availableCriteria
@@ -447,11 +447,11 @@ const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string)
     await resetColumnsToDefaults();
   }, [resetColumnsToDefaults]);
 
-  const openColumnManager = useCallback(() => {
+  const openTableLayout = useCallback(() => {
     setManagerState(prev => ({ ...prev, isOpen: true }));
   }, []);
 
-  const closeColumnManager = useCallback(() => {
+  const closeTableLayout = useCallback(() => {
     setManagerState(prev => ({ ...prev, isOpen: false, draggedColumn: null }));
   }, []);
 
@@ -506,8 +506,8 @@ const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string)
     resetToDefaults,
 
     // Manager controls
-    openColumnManager,
-    closeColumnManager,
+    openTableLayout,
+    closeTableLayout,
 
     // Backend integration
     loadColumnsFromBackend,

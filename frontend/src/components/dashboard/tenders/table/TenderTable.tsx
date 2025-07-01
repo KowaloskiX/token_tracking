@@ -1,5 +1,3 @@
-// components/dashboard/tenders/table/EnhancedTenderTable.tsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody } from '@/components/ui/table';
 import { TenderAnalysisResult } from '@/types/tenders';
@@ -8,10 +6,10 @@ import { DynamicTableRow } from './DynamicTableRow';
 import { TenderTableLoading } from './TenderTableLoading';
 import { TenderTableEmpty } from './TenderTableEmpty';
 import { TenderTablePagination } from './TenderTablePagination';
-import { ColumnManager } from './ColumnManager';
+import { TableLayout } from './TableLayout';
 import { useTableColumns } from '@/hooks/table/useTableColumns';
 
-interface EnhancedTenderTableProps {
+interface TenderTableProps {
   currentResults: TenderAnalysisResult[];
   selectedResult: TenderAnalysisResult | null;
   selectedAnalysis: any;
@@ -39,7 +37,7 @@ interface EnhancedTenderTableProps {
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
 }
 
-export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
+export const TenderTable: React.FC<TenderTableProps> = ({
   currentResults,
   selectedResult,
   selectedAnalysis,
@@ -77,8 +75,8 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
     removeCriteriaColumn,
     setSortConfig,
     resetToDefaults,
-    openColumnManager,
-    closeColumnManager,
+    openTableLayout,
+    closeTableLayout,
     managerState,
     saveColumnsToBackend, // Add this
   } = useTableColumns({
@@ -126,7 +124,7 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
               sortConfig={columnState.sortConfig}
               onSort={handleSort}
               onColumnResize={handleColumnResize}
-              onOpenColumnManager={openColumnManager}
+              onOpenTableLayout={openTableLayout}
             />
             <TableBody>
               {isLoading ? (
@@ -180,9 +178,9 @@ export const EnhancedTenderTable: React.FC<EnhancedTenderTableProps> = ({
       />
 
       {/* Column Manager */}
-      <ColumnManager
+      <TableLayout
         isOpen={managerState.isOpen}
-        onClose={closeColumnManager}
+        onClose={closeTableLayout}
         columns={columnState.columns}
         availableCriteria={availableCriteria}
         onToggleVisibility={toggleColumnVisibility}

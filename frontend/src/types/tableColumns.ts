@@ -48,7 +48,7 @@ export interface TableColumnState {
   } | null;
 }
 
-export interface ColumnManagerState {
+export interface TableLayoutState {
   isOpen: boolean;
   draggedColumn: string | null;
   availableCriteria: Array<{

@@ -29,7 +29,7 @@ import {
 import { useTendersTranslations, useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
 
-interface ColumnManagerProps {
+interface TableLayoutProps {
     isOpen: boolean;
     onClose: () => void;
     columns: ColumnConfig[];
@@ -47,7 +47,7 @@ interface ColumnManagerProps {
     onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>;
 }
 
-export const ColumnManager: React.FC<ColumnManagerProps> = ({
+export const TableLayout: React.FC<TableLayoutProps> = ({
     isOpen,
     onClose,
     columns,
@@ -273,7 +273,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                             <Alert className="border-green-200 bg-green-50">
                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                                 <AlertDescription className="text-green-800">
-                                    Table layout saved successfully!
+                                    {t('tenders.columns.tableLayoutSaved')}
                                 </AlertDescription>
                             </Alert>
                         )}
@@ -369,11 +369,6 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                                                         <span>
                                                             {tTenders('columns.width')}: {col.width}px
                                                         </span>
-                                                        {isCriteriaColumn(col) && (
-                                                            <span className="text-primary">
-                                                                ✓ Criteria Column
-                                                            </span>
-                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1">
@@ -502,7 +497,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                         {isResetting ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Resetting...
+                                {t('tenders.columns.resetting')}
                             </>
                         ) : (
                             t('tenders.columns.resetDefaults')
@@ -511,17 +506,17 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                         {visibleDraftCount < MIN_VISIBLE && (
                             <span className="text-destructive text-sm">
-                                Select at least {MIN_VISIBLE} columns
+                                {t('tenders.columns.selectMinColumns', { min: MIN_VISIBLE })}
                             </span>
                         )}
                         {visibleDraftCount > MAX_VISIBLE && (
                             <span className="text-destructive text-sm">
-                                Maximum {MAX_VISIBLE} columns allowed
+                                {t('tenders.columns.maxColumnsReached', { max: MAX_VISIBLE })}
                             </span>
                         )}
                         {visibleDraftCount === MAX_VISIBLE && (
                             <span className="text-amber-600 text-sm">
-                                Maximum columns reached ({MAX_VISIBLE}/{MAX_VISIBLE})
+                                {t('tenders.columns.maxColumnsReachedStatus', { current: MAX_VISIBLE, max: MAX_VISIBLE })}
                             </span>
                         )}
                         <Button 
@@ -544,7 +539,7 @@ export const ColumnManager: React.FC<ColumnManagerProps> = ({
                             {isSaving ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Saving...
+                                    {t('tenders.columns.saving')}
                                 </>
                             ) : (
                                 t('common.save')

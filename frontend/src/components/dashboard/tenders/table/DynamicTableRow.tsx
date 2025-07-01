@@ -1,5 +1,3 @@
-// components/dashboard/tenders/table/DynamicTableRow.tsx
-
 import React from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';

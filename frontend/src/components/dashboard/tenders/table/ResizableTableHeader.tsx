@@ -1,5 +1,3 @@
-// components/dashboard/tenders/table/ResizableTableHeader.tsx
-
 import React, { useState, useRef, useCallback } from 'react';
 import { TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -23,7 +21,7 @@ interface ResizableTableHeaderProps {
     } | null;
     onSort: (columnId: string, direction: SortDirection) => void;
     onColumnResize: (columnId: string, newWidth: number) => void;
-    onOpenColumnManager: () => void;
+    onOpenTableLayout: () => void;
 }
 
 export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
@@ -31,7 +29,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
     sortConfig,
     onSort,
     onColumnResize,
-    onOpenColumnManager,
+    onOpenTableLayout,
 }) => {
     const t = useTendersTranslations();
     const [resizing, setResizing] = useState<string | null>(null);
@@ -132,7 +130,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         if (isCriteriaColumn(column)) {
             const criteriaColumn = column as CriteriaColumnConfig;
             // Truncate long criteria names for header display
-            const maxLength = Math.floor(criteriaColumn.width / 8); // Approximate character width
+            const maxLength = Math.floor(criteriaColumn.width / 1); // Approximate character width
             const truncated = criteriaColumn.criteriaName.length > maxLength
                 ? criteriaColumn.criteriaName.substring(0, maxLength - 3) + '...'
                 : criteriaColumn.criteriaName;
@@ -206,7 +204,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                                 </TooltipTrigger>
                                                 <TooltipContent side="bottom" className="max-w-[300px]">
                                                     <p className="text-xs font-medium">{(column as CriteriaColumnConfig).criteriaName}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">Click to sort by criteria result</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">{t('columns.clickToSort')}</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -254,7 +252,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={onOpenColumnManager}
+                        onClick={onOpenTableLayout}
                         className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
                         title={t('columns.manageColumns')}
                     >

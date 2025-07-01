@@ -56,8 +56,9 @@ export const useTenderTableData = ({
     const fetchPage = async (page: number, limit: number) => {
       const token = localStorage.getItem("token") || "";
       const historicalParam = includeHistorical ? "&include_historical=true" : "";
+      const criteriaParam = "&include_criteria_for_filtering=true"; // This triggers the new projection
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}&include_criteria_for_filtering=true`,
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}${criteriaParam}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

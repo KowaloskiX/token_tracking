@@ -131,6 +131,38 @@ def _get_projection_for_results(include_criteria_for_filtering: bool) -> dict:
             "pinecone_config": 0,
             "parsed_deadline": 0  # Remove temporary field if it exists
         }
+    
+def _get_table_projection_with_criteria() -> dict:
+    """
+    Get projection for table view that includes criteria summaries for immediate display.
+    This includes all fields needed for the table plus criteria analysis details.
+    """
+    return {
+        "_id": 1,
+        "analysis_id": 1,
+        "tender_analysis_id": 1,  # Make sure this is included
+        "tender_metadata": 1,
+        "tender_score": 1,
+        "tender_url": 1,
+        "status": 1,
+        "created_at": 1,
+        "updated_at": 1,
+        "opened_at": 1,
+        "initiation_date": 1,
+        "submission_deadline": 1,
+        "qualified": 1,
+        "location": 1,
+        "source": 1,
+        "source_type": 1,  # Include source_type as well
+        "order_number": 1,
+        "user_id": 1,  # Include user_id
+        # Include full criteria analysis for table display
+        "criteria_analysis.criteria": 1,
+        "criteria_analysis.analysis.criteria_met": 1,
+        "criteria_analysis.analysis.summary": 1,
+        "criteria_analysis.analysis.confidence_level": 1,
+        "criteria_analysis.analysis.weight": 1,  # Include weight too
+    }
 
 class TenderAnalysisResultSummary(BaseModel):
     id: PyObjectId = Field(alias="_id")
@@ -653,7 +685,7 @@ async def get_tender_analysis_results(
                 },
                 # Apply projection to exclude heavy fields
                 {
-                    "$project": _get_projection_for_results(include_criteria_for_filtering)
+                    "$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)
                 },
                 # Sort by creation date
                 {"$sort": {"created_at": -1}},
@@ -747,7 +779,7 @@ async def get_tender_analysis_results(
                 },
                 # Remove the temporary parsed_deadline field and apply projection
                 {
-                    "$project": _get_projection_for_results(include_criteria_for_filtering)
+                    "$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)
                 },
                 # Sort by creation date
                 {"$sort": {"created_at": -1}},
