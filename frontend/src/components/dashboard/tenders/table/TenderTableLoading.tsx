@@ -7,18 +7,20 @@ interface TenderTableLoadingProps {
   tableWidth: number;
   totalFetched: number;
   totalTendersCount: number | null;
+  columnCount: number; // Added missing prop
 }
 
 export const TenderTableLoading: React.FC<TenderTableLoadingProps> = ({
   tableWidth,
   totalFetched,
-  totalTendersCount
+  totalTendersCount,
+  columnCount // Added missing prop
 }) => {
   const t = useTendersTranslations();
 
   return (
     <TableRow>
-      <TableCell colSpan={tableWidth >= 700 ? 9 : 6} className="h-[500px]">
+      <TableCell colSpan={columnCount} className="h-[500px]">
         <div className="flex flex-col w-full h-full items-center justify-center space-y-2">
           <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
           <p className="text-sm text-muted-foreground">

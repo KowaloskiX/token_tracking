@@ -250,10 +250,11 @@ export const useTableColumns = ({
     }));
   }, []);
 
-  const saveColumnsToBackend = useCallback(async (columnsToSave?: ColumnConfig[]) => {
+  // FIXED: Changed return type to Promise<void> instead of Promise<boolean>
+  const saveColumnsToBackend = useCallback(async (columnsToSave?: ColumnConfig[]): Promise<void> => {
     if (!selectedAnalysisId) {
       console.log('No selected analysis ID, skipping save');
-      return false;
+      return;
     }
 
     const columns = columnsToSave || columnState.columns;
@@ -295,8 +296,6 @@ export const useTableColumns = ({
           );
           setLastSavedColumns(columnsString);
         }
-        
-        return true;
       }
     } catch (error) {
       console.error('Failed to save table layout:', error);

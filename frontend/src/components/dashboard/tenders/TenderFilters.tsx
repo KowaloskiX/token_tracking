@@ -61,16 +61,18 @@ interface TenderFiltersProps {
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   searchQuery: string;
-  setSearchQuery: (query: string) => void;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   selectedDate: Date | undefined;
-  setSelectedDate: (date: Date | undefined) => void;
+  setSelectedDate: React.Dispatch<React.SetStateAction<Date | undefined>>;
   dateFilterType: 'initiation_date' | 'submission_deadline';
-  setDateFilterType: (type: 'initiation_date' | 'submission_deadline') => void;
+  setDateFilterType: React.Dispatch<React.SetStateAction<'initiation_date' | 'submission_deadline'>>;
+  
   sortConfig: {
-    field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date';
+    field: string;
     direction: 'asc' | 'desc';
   } | null;
-  handleSort: (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date') => void;
+  
+  handleSort: (field: string) => void;
   availableSources: string[];
   availableCriteria: string[];
 }

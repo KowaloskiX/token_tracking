@@ -8,6 +8,7 @@ import { TenderTableEmpty } from './TenderTableEmpty';
 import { TenderTablePagination } from './TenderTablePagination';
 import { TableLayout } from './TableLayout';
 import { useTableColumns } from '@/hooks/table/useTableColumns';
+import { ColumnConfig } from '@/types/tableColumns';
 
 interface TenderTableProps {
   currentResults: TenderAnalysisResult[];
@@ -78,7 +79,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     openTableLayout,
     closeTableLayout,
     managerState,
-    saveColumnsToBackend, // Add this
+    saveColumnsToBackend,
   } = useTableColumns({
     selectedAnalysisId: selectedAnalysis?._id,
     availableCriteria,
@@ -105,6 +106,11 @@ export const TenderTable: React.FC<TenderTableProps> = ({
 
   const handleColumnResize = (columnId: string, newWidth: number) => {
     updateColumnWidth(columnId, newWidth);
+  };
+
+  // FIXED: Create a wrapper function that matches the expected signature
+  const handleSaveConfiguration = async (columns: ColumnConfig[]): Promise<void> => {
+    await saveColumnsToBackend(columns);
   };
 
   // Determine if horizontal scrolling is needed
@@ -189,7 +195,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         onRemoveCriteriaColumn={removeCriteriaColumn}
         onResetToDefaults={resetToDefaults}
         onUpdateColumnWidth={updateColumnWidth}
-        onSaveConfiguration={saveColumnsToBackend}
+        onSaveConfiguration={handleSaveConfiguration}
       />
     </div>
   );

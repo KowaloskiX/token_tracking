@@ -106,8 +106,9 @@ const TendersList: React.FC<TendersListProps> = ({
   const [kanbanBoards, setKanbanBoards] = useState<KanbanBoard[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
 
+  // FIXED: Changed sortConfig type to allow string instead of restrictive union
   const [sortConfig, setSortConfig] = useState<{
-    field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date';
+    field: string; // Changed from restrictive union to string
     direction: 'asc' | 'desc';
   } | null>(null);
 
@@ -260,7 +261,8 @@ const TendersList: React.FC<TendersListProps> = ({
     currentPage * LOCAL_ITEMS_PER_PAGE
   );
 
-  const handleSort = (field: 'submission_deadline' | 'tender_score' | 'updated_at' | 'created_at' | 'initiation_date' | string) => {
+  // FIXED: Updated handleSort to work with flexible field types
+  const handleSort = (field: string) => {
     setSortConfig(current => {
       if (current?.field === field) {
         return { field, direction: current.direction === 'asc' ? 'desc' : 'asc' };

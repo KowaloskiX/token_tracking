@@ -6,12 +6,14 @@ interface TenderTableEmptyProps {
   tableWidth: number;
   allResultsLength: number;
   selectedAnalysis: any;
+  columnCount: number; // Added missing prop
 }
 
 export const TenderTableEmpty: React.FC<TenderTableEmptyProps> = ({
   tableWidth,
   allResultsLength,
-  selectedAnalysis
+  selectedAnalysis,
+  columnCount // Added missing prop
 }) => {
   const t = useTendersTranslations();
 
@@ -28,7 +30,7 @@ export const TenderTableEmpty: React.FC<TenderTableEmptyProps> = ({
   return (
     <TableRow>
       <TableCell 
-        colSpan={tableWidth >= 700 ? 9 : 6} 
+        colSpan={columnCount} 
         className="text-center text-muted-foreground py-20"
       >
         {getMessage()}
