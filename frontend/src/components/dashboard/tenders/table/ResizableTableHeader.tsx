@@ -21,6 +21,7 @@ interface ResizableTableHeaderProps {
     onSort: (columnId: string, direction: SortDirection) => void;
     onColumnResize: (columnId: string, newWidth: number) => void;
     onOpenTableLayout: () => void;
+    isResizeDisabled?: boolean; // NEW: Add prop to disable resizing
 }
 
 export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
@@ -29,6 +30,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
     onSort,
     onColumnResize,
     onOpenTableLayout,
+    isResizeDisabled = false, // NEW: Default to false
 }) => {
     const t = useTendersTranslations();
     const [resizing, setResizing] = useState<string | null>(null);
@@ -110,6 +112,9 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
+        // Don't allow resizing if disabled (when sidebar is open)
+        if (isResizeDisabled) return;
+
         const column = columns.find(col => col.id === columnId);
         if (!column || !column.resizable) return;
 
@@ -164,7 +169,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
 
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
-    }, [columns, onColumnResize]);
+    }, [columns, onColumnResize, isResizeDisabled]); // NEW: Add isResizeDisabled to dependencies
 
     const getColumnLabel = (column: ColumnConfig): string => {
         // For criteria columns, show the criteria name with a tooltip indicator
@@ -223,7 +228,8 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 "text-xs font-medium relative select-none group bg-card",
                                 column.sortable && "cursor-pointer hover:bg-muted/50 transition-colors",
                                 isSorted && "bg-muted",
-                                resizing === column.id && "bg-muted"
+                                resizing === column.id && "bg-muted",
+                                isResizeDisabled && "resize-disabled" // NEW: Add class when resize is disabled
                             )}
                             style={{
                                 width: `${column.width}px`,
@@ -231,14 +237,16 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 maxWidth: `${column.maxWidth}px`
                             }}
                             onClick={(e) => {
-                                // Don't sort if clicking on the resize handle area
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const clickX = e.clientX - rect.left;
-                                const cellWidth = rect.width;
-                                
-                                // If clicking in the rightmost 6px of the cell (resize handle area), don't sort
-                                if (clickX > cellWidth - 6 && column.resizable && !isLastColumn) {
-                                    return;
+                                // Don't sort if clicking on the resize handle area (and resizing is not disabled)
+                                if (!isResizeDisabled) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const clickX = e.clientX - rect.left;
+                                    const cellWidth = rect.width;
+                                    
+                                    // If clicking in the rightmost 6px of the cell (resize handle area), don't sort
+                                    if (clickX > cellWidth - 6 && column.resizable && !isLastColumn) {
+                                        return;
+                                    }
                                 }
                                 
                                 handleSort(column);
@@ -258,6 +266,9 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                                 <TooltipContent side="bottom" className="max-w-[300px] border-border bg-card">
                                                     <p className="text-xs font-medium text-foreground">{(column as CriteriaColumnConfig).criteriaName}</p>
                                                     <p className="text-xs text-muted-foreground mt-1">{t('columns.clickToSort')}</p>
+                                                    {isResizeDisabled && (
+                                                        <p className="text-xs text-amber-600 mt-1">Resize disabled in compact view</p>
+                                                    )}
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -280,20 +291,30 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 )}
                             </div>
 
-                            {/* Resize handle - Clean and subtle */}
+                            {/* Resize handle - Modified to show disabled state */}
                             {column.resizable && !isLastColumn && (
                                 <div
                                     className={cn(
-                                        "absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-10",
-                                        "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                        "hover:bg-border active:bg-muted",
-                                        resizing === column.id && "opacity-100 bg-muted"
+                                        "absolute top-0 right-0 w-1.5 h-full z-10",
+                                        isResizeDisabled 
+                                            ? "cursor-not-allowed opacity-30" // NEW: Disabled state
+                                            : "cursor-col-resize opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-border active:bg-muted",
+                                        resizing === column.id && !isResizeDisabled && "opacity-100 bg-muted"
                                     )}
                                     onMouseDown={(e) => handleResizeStart(e, column.id)}
-                                    title="Drag to resize column"
+                                    title={
+                                        isResizeDisabled 
+                                            ? "Resizing disabled in compact view" 
+                                            : "Drag to resize column"
+                                    }
                                 >
                                     {/* Subtle resize indicator */}
-                                    <div className="absolute top-1/2 left-1/2 w-0.5 h-4 bg-muted-foreground transform -translate-x-1/2 -translate-y-1/2 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                    <div className={cn(
+                                        "absolute top-1/2 left-1/2 w-0.5 h-4 bg-muted-foreground transform -translate-x-1/2 -translate-y-1/2 transition-opacity",
+                                        isResizeDisabled 
+                                            ? "opacity-30" 
+                                            : "opacity-60 group-hover:opacity-100"
+                                    )} />
                                 </div>
                             )}
                         </TableHead>

@@ -165,7 +165,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 visible: true,
                 width: 160,
                 minWidth: 120,
-                maxWidth: 400,
+                maxWidth: 220,
                 sortable: true,
                 resizable: true,
                 criteriaName: name,

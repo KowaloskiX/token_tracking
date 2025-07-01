@@ -64,7 +64,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  // Use the table columns hook
+  // Use the table columns hook with selectedResult for sidebar-aware column sizing
   const {
     columnState,
     visibleColumns,
@@ -84,6 +84,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     selectedAnalysisId: selectedAnalysis?._id,
     availableCriteria,
     tableWidth,
+    selectedResult, // NEW: Pass selectedResult to enable sidebar-aware column sizing
   });
 
   // Monitor table container width
@@ -105,10 +106,10 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   };
 
   const handleColumnResize = (columnId: string, newWidth: number) => {
+    // Always allow resizing - the width adjustment happens automatically in the hook
     updateColumnWidth(columnId, newWidth);
   };
 
-  // FIXED: Create a wrapper function that matches the expected signature
   const handleSaveConfiguration = async (columns: ColumnConfig[]): Promise<void> => {
     await saveColumnsToBackend(columns);
   };
@@ -119,7 +120,9 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   return (
     <div className="w-full max-w-full">
       <div
-        className="rounded-md border shadow-sm overflow-hidden"
+        className={`rounded-md border shadow-sm overflow-hidden ${
+          selectedResult ? 'transition-all duration-200 ease-in-out' : ''
+        }`}
         ref={tableContainerRef}
       >
         {/* Scrollable table container with strict width constraints */}
@@ -131,6 +134,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               onSort={handleSort}
               onColumnResize={handleColumnResize}
               onOpenTableLayout={openTableLayout}
+              isResizeDisabled={!!selectedResult} // Only disable when sidebar is actually open
             />
             <TableBody>
               {isLoading ? (
@@ -173,6 +177,13 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         {/* Horizontal scroll indicator */}
         {needsHorizontalScroll && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent pointer-events-none" />
+        )}
+
+        {/* Sidebar state indicator */}
+        {selectedResult && (
+          <div className="absolute top-0 right-0 bg-primary/10 text-primary text-xs px-2 py-1 rounded-bl-md">
+            Compact View
+          </div>
         )}
       </div>
 

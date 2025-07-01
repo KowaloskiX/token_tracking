@@ -12,6 +12,7 @@ import {
   SortDirection,
   isCriteriaColumn
 } from '@/types/tableColumns';
+import { TenderAnalysisResult } from '@/types/tenders';
 
 interface UseTableColumnsProps {
   selectedAnalysisId?: string;
@@ -21,6 +22,7 @@ interface UseTableColumnsProps {
     description?: string;
   }>;
   tableWidth: number;
+  selectedResult?: TenderAnalysisResult | null; // NEW: Add selectedResult prop
 }
 
 // Simplified backend structure - only stores user preferences
@@ -40,7 +42,8 @@ interface TableLayoutResponse {
 export const useTableColumns = ({
   selectedAnalysisId,
   availableCriteria,
-  tableWidth
+  tableWidth,
+  selectedResult // NEW: Accept selectedResult
 }: UseTableColumnsProps) => {
   // Column state
   const [columnState, setColumnState] = useState<TableColumnState>({
@@ -68,10 +71,27 @@ export const useTableColumns = ({
     }));
   }, [availableCriteria]);
 
-  // Responsive column visibility logic (same as before)
+  // NEW: Compute columns with adjusted widths based on sidebar state
+  const adjustedColumns = useMemo(() => {
+    const isSidebarOpen = !!selectedResult;
+    
+    return columnState.columns.map(column => {
+      if (isSidebarOpen) {
+        // When sidebar is open, use minimum width for all columns
+        return {
+          ...column,
+          width: column.minWidth
+        };
+      }
+      // When sidebar is closed, use normal width
+      return column;
+    });
+  }, [columnState.columns, selectedResult]);
+
+  // Responsive column visibility logic (updated to use adjustedColumns)
   const responsiveColumns = useMemo(() => {
     const availableWidth = tableWidth;
-    let columnsToShow = [...columnState.columns];
+    let columnsToShow = [...adjustedColumns]; // Use adjustedColumns instead of columnState.columns
 
     const hidePriority = [
       'deadline_progress',
@@ -118,7 +138,7 @@ export const useTableColumns = ({
 
       return { ...column, visible };
     });
-  }, [columnState.columns, tableWidth]);
+  }, [adjustedColumns, tableWidth]); // Use adjustedColumns instead of columnState.columns
 
   const visibleColumns = useMemo(() => {
     return responsiveColumns
@@ -147,7 +167,7 @@ export const useTableColumns = ({
             label: criteria.name,
             width: simpleCol.width,
             minWidth: 120,
-            maxWidth: 400,
+            maxWidth: 240,
             visible: simpleCol.visible,
             sortable: true,
             resizable: true,
@@ -248,7 +268,6 @@ export const useTableColumns = ({
     }));
   }, []);
 
-  // FIXED: Changed return type to Promise<void> instead of Promise<boolean>
   const saveColumnsToBackend = useCallback(async (columnsToSave?: ColumnConfig[]): Promise<void> => {
     if (!selectedAnalysisId) {
       console.log('No selected analysis ID, skipping save');
@@ -342,7 +361,7 @@ export const useTableColumns = ({
     }
   }, [selectedAnalysisId]);
 
-  // Rest of the functions remain the same (updateColumnWidth, toggleColumnVisibility, etc.)
+  // Rest of the functions remain the same but should operate on the base columns (not adjusted ones)
   const updateColumnWidth = useCallback((columnId: string, newWidth: number) => {
     setColumnState(prev => ({
       ...prev,
@@ -381,46 +400,46 @@ export const useTableColumns = ({
     });
   }, []);
 
-const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
-  setColumnState(prev => {
-    const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    
-    const existingColumn = prev.columns.find(col => 
-      col.id === columnId ||
-      (col.type === 'criteria' && 
-       isCriteriaColumn(col) && 
-       (col as CriteriaColumnConfig).criteriaName === criteriaName)
-    );
-    
-    if (existingColumn) {
-      console.log(`Criteria column for ${criteriaName} already exists, skipping`);
-      return prev;
-    }
+  const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
+    setColumnState(prev => {
+      const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      
+      const existingColumn = prev.columns.find(col => 
+        col.id === columnId ||
+        (col.type === 'criteria' && 
+         isCriteriaColumn(col) && 
+         (col as CriteriaColumnConfig).criteriaName === criteriaName)
+      );
+      
+      if (existingColumn) {
+        console.log(`Criteria column for ${criteriaName} already exists, skipping`);
+        return prev;
+      }
 
-    const newColumn: CriteriaColumnConfig = {
-      id: columnId,
-      type: 'criteria',
-      key: `criteria_analysis.${criteriaName}`,
-      label: criteriaName,
-      width: 250, // Increased from 160 to accommodate text
-      minWidth: 200, // Increased from 120
-      maxWidth: 500, // Increased from 400
-      visible: true,
-      sortable: true,
-      resizable: true,
-      order: prev.columns.length,
-      criteriaName: criteriaName,
-      criteriaId: criteriaId,
-    };
+      const newColumn: CriteriaColumnConfig = {
+        id: columnId,
+        type: 'criteria',
+        key: `criteria_analysis.${criteriaName}`,
+        label: criteriaName,
+        width: 160,
+        minWidth: 120,
+        maxWidth: 240,
+        visible: true,
+        sortable: true,
+        resizable: true,
+        order: prev.columns.length,
+        criteriaName: criteriaName,
+        criteriaId: criteriaId,
+      };
 
-    console.log('Adding criteria column:', newColumn);
-    
-    return {
-      ...prev,
-      columns: [...prev.columns, newColumn]
-    };
-  });
-}, []);
+      console.log('Adding criteria column:', newColumn);
+      
+      return {
+        ...prev,
+        columns: [...prev.columns, newColumn]
+      };
+    });
+  }, []);
 
   const removeCriteriaColumn = useCallback((criteriaId: string) => {
     setColumnState(prev => ({
@@ -433,8 +452,7 @@ const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string)
     }));
   }, []);
 
-
-const setSortConfig = useCallback((columnIdOrCriteriaName: string, direction: SortDirection) => {
+  const setSortConfig = useCallback((columnIdOrCriteriaName: string, direction: SortDirection) => {
     setColumnState(prev => ({
       ...prev,
       sortConfig: direction ? { columnId: columnIdOrCriteriaName, direction } : null
