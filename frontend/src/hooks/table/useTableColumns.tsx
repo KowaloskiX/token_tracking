@@ -384,46 +384,46 @@ export const useTableColumns = ({
     });
   }, []);
 
-  const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
-    setColumnState(prev => {
-      const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      
-      const existingColumn = prev.columns.find(col => 
-        col.id === columnId ||
-        (col.type === 'criteria' && 
-         isCriteriaColumn(col) && 
-         (col as CriteriaColumnConfig).criteriaName === criteriaName)
-      );
-      
-      if (existingColumn) {
-        console.log(`Criteria column for ${criteriaName} already exists, skipping`);
-        return prev;
-      }
+const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
+  setColumnState(prev => {
+    const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    const existingColumn = prev.columns.find(col => 
+      col.id === columnId ||
+      (col.type === 'criteria' && 
+       isCriteriaColumn(col) && 
+       (col as CriteriaColumnConfig).criteriaName === criteriaName)
+    );
+    
+    if (existingColumn) {
+      console.log(`Criteria column for ${criteriaName} already exists, skipping`);
+      return prev;
+    }
 
-      const newColumn: CriteriaColumnConfig = {
-        id: columnId,
-        type: 'criteria',
-        key: `criteria_analysis.${criteriaName}`,
-        label: criteriaName,
-        width: 160,
-        minWidth: 120,
-        maxWidth: 400,
-        visible: true,
-        sortable: true,
-        resizable: true,
-        order: prev.columns.length,
-        criteriaName: criteriaName,
-        criteriaId: criteriaId,
-      };
+    const newColumn: CriteriaColumnConfig = {
+      id: columnId,
+      type: 'criteria',
+      key: `criteria_analysis.${criteriaName}`,
+      label: criteriaName,
+      width: 250, // Increased from 160 to accommodate text
+      minWidth: 200, // Increased from 120
+      maxWidth: 500, // Increased from 400
+      visible: true,
+      sortable: true,
+      resizable: true,
+      order: prev.columns.length,
+      criteriaName: criteriaName,
+      criteriaId: criteriaId,
+    };
 
-      console.log('Adding criteria column:', newColumn);
-      
-      return {
-        ...prev,
-        columns: [...prev.columns, newColumn]
-      };
-    });
-  }, []);
+    console.log('Adding criteria column:', newColumn);
+    
+    return {
+      ...prev,
+      columns: [...prev.columns, newColumn]
+    };
+  });
+}, []);
 
   const removeCriteriaColumn = useCallback((criteriaId: string) => {
     setColumnState(prev => ({

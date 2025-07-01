@@ -88,7 +88,7 @@ const getCriteriaValue = (criteriaName: string): { met: boolean | null; summary:
 const renderCriteriaCell = (column: CriteriaColumnConfig) => {
   const { met, summary, confidence } = getCriteriaValue(column.criteriaName);
   
-  if (met === null) {
+  if (met === null || !summary) {
     return (
       <div className="flex items-center justify-center">
         <span className="text-muted-foreground text-xs">-</span>
@@ -96,31 +96,49 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
     );
   }
 
+  // Truncate summary based on column width
+  const maxLength = Math.floor(column.width / 2); // Approximate character width
+  const truncatedSummary = summary.length > maxLength 
+    ? `${summary.substring(0, maxLength - 3)}...` 
+    : summary;
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center justify-center cursor-help w-full">
-            {met ? (
-              <Badge variant="default" className="bg-green-600/80 hover:bg-green-600/80 text-xs w-full justify-center">
-                ✓ {t('tenders.criteria.met')}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="border-red-200 text-red-600 text-xs w-full justify-center">
-                ✗ {t('tenders.criteria.notMet')}
-              </Badge>
-            )}
+          <div className="flex items-start gap-1 p-1 cursor-help w-full">
+            {/* Status indicator */}
+            <div className="flex-shrink-0 mt-0.5">
+              {met ? (
+                <div className="w-2 h-2 rounded-full bg-green-600/80" />
+              ) : (
+                <div className="w-2 h-2 rounded-full bg-red-400/80" />
+              )}
+            </div>
+            
+            {/* Criteria text */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs leading-tight text-left">
+                {truncatedSummary}
+              </p>
+            </div>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[350px]">
+        <TooltipContent side="top" className="max-w-[400px]">
           <div className="text-xs space-y-2">
-            <div>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${met ? 'bg-green-600' : 'bg-red-400'}`} />
               <p className="font-medium">{column.criteriaName}</p>
             </div>
-            {summary && (
+            <div className="border-t pt-2">
+              <p className="text-muted-foreground leading-relaxed">
+                {summary}
+              </p>
+            </div>
+            {confidence > 0 && (
               <div className="border-t pt-2">
-                <p className="text-muted-foreground leading-relaxed">
-                  {summary.length > 200 ? `${summary.substring(0, 200)}...` : summary}
+                <p className="text-muted-foreground text-[10px]">
+                  Confidence: {(confidence * 100).toFixed(0)}%
                 </p>
               </div>
             )}
