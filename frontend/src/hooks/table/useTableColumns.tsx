@@ -1,5 +1,3 @@
-// Updated useTableColumns.tsx - works with simplified backend structure
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ColumnConfig,
