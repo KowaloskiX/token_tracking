@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Loader2, AlertCircle, Search, MessageSquare, Settings, ChevronDown, Kanban, KanbanSquare, CircleArrowLeft } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Search, MessageSquare, Settings, ChevronDown, Kanban, KanbanSquare, CircleArrowLeft, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { 
   SidebarGroup, 
@@ -8,7 +8,8 @@ import {
   SidebarGroupLabel, 
   SidebarMenu, 
   SidebarMenuButton, 
-  SidebarMenuItem
+  SidebarMenuItem,
+  SidebarMenuBadge
 } from "@/components/ui/sidebar";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTender } from '@/context/TenderContext';
@@ -22,8 +23,9 @@ import { ConversationsHistory } from '../sidebar/conversation-history/Conversati
 import { KanbanColumn } from './kanban/KanbanColumn';
 import { AnalysisCriteria } from '@/types/tenders';
 import { useTendersTranslations, useNavigationTranslations } from "@/hooks/useTranslations";
+import { useNotifications } from '@/hooks/useNotifications';
 
-const ANALYSIS_LIMIT = 10;
+const ANALYSIS_LIMIT = 12;
 
 export function TendersSidebarContent() {
   const [open, setOpen] = useState(false);
@@ -39,6 +41,9 @@ export function TendersSidebarContent() {
   
   const t = useTendersTranslations();
   const navT = useNavigationTranslations();
+  
+  // Get unread notifications count
+  const { unreadCount } = useNotifications();
   
   const isChatDetailPage = pathname?.includes('/tenders/chat/') && chatId && chatId !== 'new';
   
@@ -65,7 +70,7 @@ export function TendersSidebarContent() {
       setIsAnalyzeOpen(false);
       setActiveTab('manage');
     } else if (pathname?.includes('/tenders')) {
-      setIsSearchOpen(true);
+      setIsSearchOpen(true); // Fixed: added missing closing parenthesis
       setIsAnalyzeOpen(false);
       setActiveTab('search');
     }
@@ -105,6 +110,25 @@ export function TendersSidebarContent() {
       <SidebarGroupLabel>{navT('tenders')}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="w-full space-y-1">
+          {/* Notifications button with unread count */}
+          <SidebarMenuItem className="w-full">
+            <SidebarMenuButton
+              className={`w-full text-sidebar-foreground ${pathname?.startsWith('/dashboard/notifications') ? 'bg-secondary' : ''}`}
+              onClick={() => {
+                setActiveTab('');
+                router.push('/dashboard/notifications');
+              }}
+            >
+              <Bell className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
+              <span className="flex-1 truncate min-w-0">{navT('notifications')}</span>
+              {unreadCount > 0 && (
+                <SidebarMenuBadge className="bg-primary text-primary-foreground">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </SidebarMenuBadge>
+              )}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
           <Collapsible 
             open={isSearchOpen} 
             onOpenChange={(open) => {

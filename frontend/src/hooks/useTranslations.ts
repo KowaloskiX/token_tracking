@@ -47,3 +47,7 @@ export function useErrorsTranslations() {
 export function useApiTranslations() {
   return useNextIntlTranslations('api');
 }
+
+export function useNotificationsTranslations() {
+  return useNextIntlTranslations('notifications');
+}

@@ -367,7 +367,30 @@
     "loadingFullData": "Vollständige Ausschreibungsdaten werden geladen...",
     "downloadFullData": "Vollständige Daten herunterladen",
     "noAnalysis": "Keine Kriterienanalyse verfügbar. Dateien wurden nicht von der Ausschreibungsquelle heruntergeladen.",
-    "noCommentsError": "Kommentare können nicht geladen werden - fehlende Ausschreibungskennung"
+    "noCommentsError": "Kommentare können nicht geladen werden - fehlende Ausschreibungskennung",
+    "completion": {
+      "title": "Vergabeergebnisse",
+      "loadingData": "Lade Vergabedaten...",
+      "completionStatus": "Vergabestatus",
+      "winnerInformation": "Informationen zum Gewinner",
+      "winner": "Gewinner",
+      "location": "Standort",
+      "companySize": "Unternehmensgröße",
+      "winningPrice": "Gewinnerpreis",
+      "contractDetails": "Vertragsdetails",
+      "contractValue": "Vertragswert",
+      "contractDate": "Vertragsdatum",
+      "realizationPeriod": "Realisierungszeitraum",
+      "biddingStatistics": "Ausschreibungsstatistiken",
+      "totalOffers": "Gesamtzahl der Angebote",
+      "smeOffers": "KMU-Angebote",
+      "highestPrice": "Höchster Preis",
+      "lowestPrice": "Niedrigster Preis",
+      "cpvCodes": "CPV-Codes",
+      "mainCpv": "Haupt-CPV",
+      "additionalCpv": "Zusätzliche CPV",
+      "viewOriginalTender": "Originalausschreibung anzeigen"
+    }
   },
   "errors": {
     "notFound": "Ausschreibung nicht gefunden",

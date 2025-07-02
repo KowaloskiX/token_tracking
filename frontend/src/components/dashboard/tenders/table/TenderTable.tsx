@@ -178,13 +178,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         {needsHorizontalScroll && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent pointer-events-none" />
         )}
-
-        {/* Sidebar state indicator */}
-        {selectedResult && (
-          <div className="absolute top-0 right-0 bg-primary/10 text-primary text-xs px-2 py-1 rounded-bl-md">
-            Compact View
-          </div>
-        )}
       </div>
 
       {/* Pagination */}

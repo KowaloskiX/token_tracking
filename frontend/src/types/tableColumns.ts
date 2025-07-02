@@ -95,7 +95,7 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     label: 'Order',
     width: 160,
     minWidth: 150,
-    maxWidth: 200,
+    maxWidth: 250,
     visible: true,
     sortable: true,
     resizable: true,

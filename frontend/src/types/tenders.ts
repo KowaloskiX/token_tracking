@@ -68,6 +68,7 @@ export interface TenderAnalysisResult {
   created_at: string;
   opened_at: string;
   order_number: string;
+  finished_id?: string;
 }
 
 export interface TenderAnalysis {

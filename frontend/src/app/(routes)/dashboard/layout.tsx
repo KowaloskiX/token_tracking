@@ -5,6 +5,7 @@ import SidebarComponent from "@/components/dashboard/sidebar/DashboardSidebar";
 import { Toaster } from "@/components/Toaster";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TenderProvider } from "@/context/TenderContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 import LoginForm from "@/components/auth/LoginForm";
 import { useDashboard } from "@/hooks/useDashboard";
 
@@ -70,13 +71,15 @@ export default function DashboardLayout({
   return (
     <SidebarProvider>
       <TenderProvider>
-        <div className="w-full flex h-[100svh] sm:h-screen overflow-hidden">
-          <SidebarComponent />
-          <div className="flex h-[100svh] sm:h-screen w-full relative">
-            {children}
+        <NotificationProvider>
+          <div className="w-full flex h-[100svh] sm:h-screen overflow-hidden">
+            <SidebarComponent />
+            <div className="flex h-[100svh] sm:h-screen w-full relative">
+              {children}
+            </div>
           </div>
-        </div>
-        <Toaster />
+          <Toaster />
+        </NotificationProvider>
       </TenderProvider>
     </SidebarProvider>
   );

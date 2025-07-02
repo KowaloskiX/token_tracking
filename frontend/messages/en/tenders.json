@@ -367,7 +367,30 @@
     "loadingFullData": "Loading full tender details...",
     "downloadFullData": "Download full data",
     "noAnalysis": "No criteria analysis available. Files were not downloaded from the tender source.",
-    "noCommentsError": "Cannot load comments - missing tender identifier"
+    "noCommentsError": "Cannot load comments - missing tender identifier",
+    "completion": {
+      "title": "Award Results",
+      "loadingData": "Loading award data...",
+      "completionStatus": "Award status",
+      "winnerInformation": "Winner information",
+      "winner": "Winner",
+      "location": "Location",
+      "companySize": "Company size",
+      "winningPrice": "Winning price",
+      "contractDetails": "Contract details",
+      "contractValue": "Contract value",
+      "contractDate": "Contract date",
+      "realizationPeriod": "Realization period",
+      "biddingStatistics": "Tender statistics",
+      "totalOffers": "Total number of offers",
+      "smeOffers": "SME offers",
+      "highestPrice": "Highest price",
+      "lowestPrice": "Lowest price",
+      "cpvCodes": "CPV codes",
+      "mainCpv": "Main CPV",
+      "additionalCpv": "Additional CPV",
+      "viewOriginalTender": "View original tender"
+    }
   },
   "errors": {
     "notFound": "Tender not found",

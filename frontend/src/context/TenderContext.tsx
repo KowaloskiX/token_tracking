@@ -74,6 +74,7 @@ interface TenderContextType {
   setSelectedAnalysis: (analysis: TenderAnalysis | null) => void;
   clearError: () => void;
   reset: () => void;
+  fetchHistoricalTenderByPineconeId: (pineconeId: string) => Promise<any | null>;
 }
 
 const TenderContext = createContext<TenderContextType | undefined>(undefined);
@@ -492,6 +493,37 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Fetch historical tender data from Pinecone by its Pinecone ID (finished_id).
+   * Returns the full tender object as stored in Pinecone.
+   */
+  const fetchHistoricalTenderByPineconeId = useCallback(
+    async (pineconeId: string) => {
+      try {
+        setIsLoading(true);
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('Authentication token not found');
+        const response = await fetch(`${serverUrl}/historical-tenders/historical-tender-by-pinecone-id`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ pinecone_id: pineconeId }),
+        });
+        if (!response.ok) throw new Error('Failed to fetch historical tender from Pinecone');
+        const data = await response.json();
+        return data; // This is the full tender object from Pinecone
+      } catch (err) {
+        handleError(err);
+        return null;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
   // Fetch a single tender result with full details
   const fetchTenderResultById = useCallback(async (resultId: string): Promise<TenderAnalysisResult | null> => {
     try {
@@ -595,6 +627,8 @@ export function TenderProvider({ children }: { children: React.ReactNode }) {
     setSelectedResult,
     clearError,
     reset,
+
+    fetchHistoricalTenderByPineconeId,
   };
 
   return <TenderContext.Provider value={value}>{children}</TenderContext.Provider>;
