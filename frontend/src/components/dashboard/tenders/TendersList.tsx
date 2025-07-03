@@ -245,7 +245,8 @@ const TendersList: React.FC<TendersListProps> = ({
     drawerRef,
     currentPage,
     getTenderBoards,
-    setLastKnownPage
+    setLastKnownPage,
+    onDrawerVisibilityChange
   });
 
   // Fetch kanban boards when component mounts
