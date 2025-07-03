@@ -67,17 +67,21 @@ interface KanbanBoard {
 }
 
 interface TendersListProps {
-  drawerRef: React.RefObject<{ setVisibility: (value: boolean) => void }>;
   allResults: TenderAnalysisResult[];
   setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
+  drawerRef: React.RefObject<{ setVisibility: (value: boolean) => void }>;
   setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
+  isDrawerVisible: boolean; // NEW: Add this prop
+  onDrawerVisibilityChange: (visible: boolean) => void; // NEW: Add this prop
 }
 
 const TendersList: React.FC<TendersListProps> = ({
   drawerRef,
   allResults,
   setAllResults,
-  setCurrentTenderBoardStatus
+  setCurrentTenderBoardStatus,
+  isDrawerVisible, // NEW: Accept this prop
+  onDrawerVisibilityChange // NEW: Accept this prop
 }) => {
   const t = useTendersTranslations();
   const commonT = useCommonTranslations();
@@ -398,6 +402,8 @@ const TendersList: React.FC<TendersListProps> = ({
             onRowClick={handleRowClick}
             onStatusChange={handleStatusChange}
             onUnopened={handleUnopened}
+            isDrawerVisible={isDrawerVisible}
+            onDrawerVisibilityChange={onDrawerVisibilityChange}
             onDelete={handleDelete}
             onAddToKanban={handleAddToKanban}
             onPageChange={(page) => updateCurrentPage(page, true)}
@@ -418,7 +424,7 @@ const TendersList: React.FC<TendersListProps> = ({
 
               // Check if this is a criteria column by seeing if it's a criteria name
               const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
-              
+
               if (isCriteriaSort) {
                 // For criteria columns, use the criteria name directly as the field
                 if (direction) {

@@ -87,6 +87,7 @@ interface TenderResultSidebarProps {
     setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
     onFilePreview?: (file: FileData, citationsForFile: string[]) => void;
     tenderBoardStatus?: string | null;
+    onVisibilityChange?: (visible: boolean) => void; // NEW: Add this prop
 }
 
 interface UpdateSummary {
@@ -126,7 +127,8 @@ interface HistoricalTenderData {
   };
 }
 
-const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawerRef, allResults, setAllResults, onFilePreview,tenderBoardStatus }) => {
+const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawerRef, allResults, setAllResults, onFilePreview,tenderBoardStatus ,    onVisibilityChange // NEW: Accept this prop
+}) => {
     const t = useTendersTranslations();
     const commonT = useCommonTranslations();
     
@@ -774,7 +776,8 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
             <MagicDrawer 
                 ref={drawerRef}
                 forceExpanded={false}
-                maxWidth={800} 
+                maxWidth={800}
+                onVisibilityChange={onVisibilityChange} // NEW: Pass the callback
             >
                 <div className="flex flex-col h-full relative w-full overflow-hidden">
                     {/* Show skeleton loader when fetch is in progress or when awaiting full result details */}

@@ -36,6 +36,8 @@ interface TenderTableProps {
   onAddToKanban: (result: TenderAnalysisResult) => void;
   onPageChange: (page: number) => void;
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
+  isDrawerVisible?: boolean; // NEW: Add this prop
+  onDrawerVisibilityChange?: (visible: boolean) => void; // NEW: Add this prop
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -60,6 +62,8 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onAddToKanban,
   onPageChange,
   onSortChange,
+  isDrawerVisible, // NEW: Accept this prop
+  onDrawerVisibilityChange, // NEW: Accept this prop
 }) => {
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -120,9 +124,8 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   return (
     <div className="w-full max-w-full">
       <div
-        className={`rounded-md border shadow-sm overflow-hidden ${
-          selectedResult ? 'transition-all duration-200 ease-in-out' : ''
-        }`}
+        className={`rounded-md border shadow-sm overflow-hidden ${selectedResult ? 'transition-all duration-200 ease-in-out' : ''
+          }`}
         ref={tableContainerRef}
       >
         {/* Scrollable table container with strict width constraints */}
@@ -134,7 +137,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               onSort={handleSort}
               onColumnResize={handleColumnResize}
               onOpenTableLayout={openTableLayout}
-              isResizeDisabled={!!selectedResult} // Only disable when sidebar is actually open
+              isResizeDisabled={isDrawerVisible} // NEW: Use drawer visibility instead of !!selectedResult
             />
             <TableBody>
               {isLoading ? (
