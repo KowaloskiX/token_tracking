@@ -75,6 +75,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     totalTableWidth,
     updateColumnWidth,
     toggleColumnVisibility,
+    updateCriteriaDisplayMode, // NEW: Get the new function from the hook
     reorderColumns,
     addCriteriaColumn,
     removeCriteriaColumn,
@@ -124,7 +125,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   return (
     <div className="w-full max-w-full">
       <div
-        className={`rounded-md border shadow-sm overflow-hidden ${
+        className={`rounded-md border shadow-sm overflow-visible relative ${
           selectedResult ? 'transition-all duration-200 ease-in-out' : ''
         }`}
         ref={tableContainerRef}
@@ -203,6 +204,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         onRemoveCriteriaColumn={removeCriteriaColumn}
         onResetToDefaults={resetToDefaults}
         onUpdateColumnWidth={updateColumnWidth}
+        onUpdateCriteriaDisplayMode={updateCriteriaDisplayMode}
         onSaveConfiguration={handleSaveConfiguration}
       />
     </div>

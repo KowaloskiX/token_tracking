@@ -14,6 +14,9 @@ export type ColumnType =
 
 export type SortDirection = 'asc' | 'desc' | null;
 
+// Display modes for criteria columns
+export type CriteriaDisplayMode = 'text' | 'indicator';
+
 export interface BaseColumnConfig {
   id: string;
   type: ColumnType;
@@ -36,6 +39,7 @@ export interface CriteriaColumnConfig extends BaseColumnConfig {
   type: 'criteria';
   criteriaName: string; // The specific criteria this column represents
   criteriaId: string;
+  displayMode: CriteriaDisplayMode; // NEW: How to display the criteria (text summary or simple indicator)
 }
 
 export type ColumnConfig = StandardColumnConfig | CriteriaColumnConfig;
@@ -68,6 +72,7 @@ export interface BackendColumnConfig {
   visible: boolean;
   order: number;
   criteria_id?: string; // For criteria columns
+  display_mode?: string; // NEW: For criteria display mode
   user_id: string;
   analysis_id: string;
   created_at: string;

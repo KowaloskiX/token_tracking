@@ -321,7 +321,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                 })}
 
                 {/* Column manager button */}
-                <TableHead className="w-1 text-center bg-card">
+                <TableHead className="w-7 text-center bg-card">
                     <Button
                         variant="ghost"
                         size="sm"

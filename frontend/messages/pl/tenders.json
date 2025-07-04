@@ -8,7 +8,7 @@
       "companyDescriptionPlaceholder": "Opisz jakich przetargów szukasz oraz swoją firmę, aby AI wiedziało co Cię interesuje...",
       "companyDescriptionTooltip": "Opisz swoją firmę, branżę i rodzaj usług/produktów, które oferujesz. AI będzie używało tych informacji do preselekcji przetargów na podstawie ich tytułów.",
       "searchPhraseLabel": "Słowa kluczowe",
-      "searchPhrasePlaceholder": "Np. Budowa infrastruktury drogowej", 
+      "searchPhrasePlaceholder": "Np. Budowa infrastruktury drogowej",
       "searchPhraseTooltip": "Wprowadź główne słowa kluczowe, które występują w tytułach przetargów, które cię interesują. AI będzie używało tych informacji do wyszukiwania przetargów.",
       "sourcesLabel": "Źródła",
       "selectSources": "Wybierz źródła...",
@@ -26,7 +26,7 @@
       "weightLabel": "Waga (1-5)",
       "disqualifying": "Kryterium dyskwalifikujące",
       "disqualifyingDescription": "Niespełnienie tego kryterium dyskwalifikuje przetarg",
-      "excludeFromScore": "Wyklucz z oceny", 
+      "excludeFromScore": "Wyklucz z oceny",
       "excludeFromScoreDescription": "Nie uwzględniaj przy wyliczaniu relewantności",
       "showOptional": "Pokaż opcjonalne",
       "hideOptional": "Ukryj opcjonalne",
@@ -437,7 +437,7 @@
     "columnTypes": {
       "source": "Źródło",
       "name": "Nazwa",
-      "organization": "Organizacja", 
+      "organization": "Organizacja",
       "publication_date": "Data publikacji",
       "deadline_progress": "Postęp terminu",
       "submission_deadline": "Termin składania",
@@ -445,6 +445,10 @@
       "score": "Ocena",
       "actions": "Akcje",
       "criteria": "Kryterium"
+    },
+    "displayMode": {
+      "text": "Tekst",
+      "indicator": "Czy spełnione"
     },
     "tooltips": {
       "drag": "Przeciągnij, aby zmienić kolejność",
@@ -455,7 +459,7 @@
     },
     "messages": {
       "widthUpdated": "Szerokość kolumny zaktualizowana",
-      "orderUpdated": "Kolejność kolumn zaktualizowana", 
+      "orderUpdated": "Kolejność kolumn zaktualizowana",
       "criteriaAdded": "Kryterium dodane do tabeli",
       "criteriaRemoved": "Kryterium usunięte z tabeli",
       "resetComplete": "Kolumny przywrócone do ustawień domyślnych",

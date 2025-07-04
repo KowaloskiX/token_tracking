@@ -10,7 +10,8 @@ import {
   MOBILE_HIDDEN_COLUMNS,
   TABLET_HIDDEN_COLUMNS,
   SortDirection,
-  isCriteriaColumn
+  isCriteriaColumn,
+  CriteriaDisplayMode
 } from '@/types/tableColumns';
 import { TenderAnalysisResult } from '@/types/tenders';
 
@@ -22,7 +23,7 @@ interface UseTableColumnsProps {
     description?: string;
   }>;
   tableWidth: number;
-  selectedResult?: TenderAnalysisResult | null; // NEW: Add selectedResult prop
+  selectedResult?: TenderAnalysisResult | null;
 }
 
 // Simplified backend structure - only stores user preferences
@@ -32,6 +33,7 @@ interface SimplifiedColumnConfig {
   visible: boolean;
   order: number;
   criteria_id?: string;
+  display_mode?: string; // NEW: Add display mode for criteria columns
 }
 
 interface TableLayoutResponse {
@@ -43,7 +45,7 @@ export const useTableColumns = ({
   selectedAnalysisId,
   availableCriteria,
   tableWidth,
-  selectedResult // NEW: Accept selectedResult
+  selectedResult
 }: UseTableColumnsProps) => {
   // Column state
   const [columnState, setColumnState] = useState<TableColumnState>({
@@ -71,7 +73,7 @@ export const useTableColumns = ({
     }));
   }, [availableCriteria]);
 
-  // NEW: Compute columns with adjusted widths based on sidebar state
+  // Compute columns with adjusted widths based on sidebar state
   const adjustedColumns = useMemo(() => {
     const isSidebarOpen = !!selectedResult;
     
@@ -91,7 +93,7 @@ export const useTableColumns = ({
   // Responsive column visibility logic (updated to use adjustedColumns)
   const responsiveColumns = useMemo(() => {
     const availableWidth = tableWidth;
-    let columnsToShow = [...adjustedColumns]; // Use adjustedColumns instead of columnState.columns
+    let columnsToShow = [...adjustedColumns];
 
     const hidePriority = [
       'deadline_progress',
@@ -138,7 +140,7 @@ export const useTableColumns = ({
 
       return { ...column, visible };
     });
-  }, [adjustedColumns, tableWidth]); // Use adjustedColumns instead of columnState.columns
+  }, [adjustedColumns, tableWidth]);
 
   const visibleColumns = useMemo(() => {
     return responsiveColumns
@@ -174,6 +176,7 @@ export const useTableColumns = ({
             order: simpleCol.order,
             criteriaName: criteria.name,
             criteriaId: simpleCol.criteria_id,
+            displayMode: (simpleCol.display_mode as CriteriaDisplayMode) || 'text', // NEW: Handle display mode
           };
           reconstructed.push(criteriaColumn);
         }
@@ -265,6 +268,7 @@ export const useTableColumns = ({
       visible: col.visible,
       order: col.order,
       criteria_id: col.type === 'criteria' ? (col as CriteriaColumnConfig).criteriaId : undefined,
+      display_mode: col.type === 'criteria' ? (col as CriteriaColumnConfig).displayMode : undefined, // NEW: Include display mode
     }));
   }, []);
 
@@ -361,7 +365,6 @@ export const useTableColumns = ({
     }
   }, [selectedAnalysisId]);
 
-  // Rest of the functions remain the same but should operate on the base columns (not adjusted ones)
   const updateColumnWidth = useCallback((columnId: string, newWidth: number) => {
     setColumnState(prev => ({
       ...prev,
@@ -379,6 +382,19 @@ export const useTableColumns = ({
       columns: prev.columns.map(col =>
         col.id === columnId ? { ...col, visible: !col.visible } : col
       )
+    }));
+  }, []);
+
+  // NEW: Function to update criteria display mode
+  const updateCriteriaDisplayMode = useCallback((columnId: string, displayMode: CriteriaDisplayMode) => {
+    setColumnState(prev => ({
+      ...prev,
+      columns: prev.columns.map(col => {
+        if (col.id === columnId && isCriteriaColumn(col)) {
+          return { ...col, displayMode };
+        }
+        return col;
+      })
     }));
   }, []);
 
@@ -430,6 +446,7 @@ export const useTableColumns = ({
         order: prev.columns.length,
         criteriaName: criteriaName,
         criteriaId: criteriaId,
+        displayMode: 'text', // NEW: Default to text mode
       };
 
       console.log('Adding criteria column:', newColumn);
@@ -480,7 +497,7 @@ export const useTableColumns = ({
     }
   }, [selectedAnalysisId, loadColumnsFromBackend]);
 
-  // Auto-save logic (same as before)
+  // Auto-save logic
   useEffect(() => {
     if (!isLoadedFromBackend || isLoading) return;
 
@@ -515,6 +532,7 @@ export const useTableColumns = ({
     // Column manipulation
     updateColumnWidth,
     toggleColumnVisibility,
+    updateCriteriaDisplayMode, // NEW: Export the new function
     reorderColumns,
     addCriteriaColumn,
     removeCriteriaColumn,

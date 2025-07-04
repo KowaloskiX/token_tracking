@@ -446,6 +446,10 @@
       "actions": "Actions",
       "criteria": "Criteria"
     },
+    "displayMode": {
+      "text":      "Text",
+      "indicator": "Is met"
+    },
     "tooltips": {
       "drag": "Drag to reorder",
       "visibility": "Show/Hide column",

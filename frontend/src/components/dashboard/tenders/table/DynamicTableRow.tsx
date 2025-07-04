@@ -1,7 +1,7 @@
 import React from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, CheckCircle, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TenderAnalysisResult } from '@/types/tenders';
 import { ColumnConfig, CriteriaColumnConfig, isCriteriaColumn } from '@/types/tableColumns';
@@ -82,11 +82,61 @@ const getCriteriaValue = (criteriaName: string): { met: boolean | null; summary:
   };
 };
 
-
 const renderCriteriaCell = (column: CriteriaColumnConfig) => {
   const { met, summary, confidence } = getCriteriaValue(column.criteriaName);
   
-  if (met === null || !summary) {
+  if (met === null) {
+    return (
+      <div className="flex items-center justify-center">
+        <span className="text-muted-foreground text-xs">-</span>
+      </div>
+    );
+  }
+
+  // Handle different display modes
+  if (column.displayMode === 'indicator') {
+    // Simple indicator mode - just show met/not met with icon
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center justify-center gap-2 p-1 cursor-help">
+              {met ? (
+                <CheckCircle className="w-4 h-4 text-green-600" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-400" />
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[400px]">
+            <div className="text-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${met ? 'bg-green-600' : 'bg-red-400'}`} />
+                <p className="font-medium">{column.criteriaName}</p>
+              </div>
+              {summary && (
+                <div className="border-t pt-2">
+                  <p className="text-muted-foreground leading-relaxed">
+                    {summary}
+                  </p>
+                </div>
+              )}
+              {confidence > 0 && (
+                <div className="border-t pt-2">
+                  <p className="text-muted-foreground text-[10px]">
+                    Confidence: {(confidence * 100).toFixed(0)}%
+                  </p>
+                </div>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Text mode - show summary text (original behavior)
+  if (!summary) {
     return (
       <div className="flex items-center justify-center">
         <span className="text-muted-foreground text-xs">-</span>

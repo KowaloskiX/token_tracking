@@ -446,6 +446,10 @@
       "actions": "Aktionen",
       "criteria": "Kriterien"
     },
+    "displayMode": {
+      "text":      "Text",
+      "indicator": "Ist erfüllt?"
+    },
     "tooltips": {
       "drag": "Ziehen zum Verschieben",
       "visibility": "Spalte anzeigen/verbergen",
