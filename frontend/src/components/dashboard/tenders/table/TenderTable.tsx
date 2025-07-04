@@ -36,8 +36,8 @@ interface TenderTableProps {
   onAddToKanban: (result: TenderAnalysisResult) => void;
   onPageChange: (page: number) => void;
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
-  isDrawerVisible?: boolean; // NEW: Add this prop
-  onDrawerVisibilityChange?: (visible: boolean) => void; // NEW: Add this prop
+  isDrawerVisible?: boolean; // Keep for backward compatibility but not used for resize logic
+  onDrawerVisibilityChange?: (visible: boolean) => void;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -62,8 +62,8 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onAddToKanban,
   onPageChange,
   onSortChange,
-  isDrawerVisible, // NEW: Accept this prop
-  onDrawerVisibilityChange, // NEW: Accept this prop
+  isDrawerVisible, // Keep for backward compatibility
+  onDrawerVisibilityChange,
 }) => {
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -88,7 +88,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     selectedAnalysisId: selectedAnalysis?._id,
     availableCriteria,
     tableWidth,
-    selectedResult, // NEW: Pass selectedResult to enable sidebar-aware column sizing
+    selectedResult,
   });
 
   // Monitor table container width
@@ -124,8 +124,9 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   return (
     <div className="w-full max-w-full">
       <div
-        className={`rounded-md border shadow-sm overflow-hidden ${selectedResult ? 'transition-all duration-200 ease-in-out' : ''
-          }`}
+        className={`rounded-md border shadow-sm overflow-hidden ${
+          selectedResult ? 'transition-all duration-200 ease-in-out' : ''
+        }`}
         ref={tableContainerRef}
       >
         {/* Scrollable table container with strict width constraints */}
@@ -137,7 +138,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               onSort={handleSort}
               onColumnResize={handleColumnResize}
               onOpenTableLayout={openTableLayout}
-              isResizeDisabled={isDrawerVisible} // NEW: Use drawer visibility instead of !!selectedResult
+              isResizeDisabled={!!selectedResult} // Use selectedResult instead of isDrawerVisible
             />
             <TableBody>
               {isLoading ? (

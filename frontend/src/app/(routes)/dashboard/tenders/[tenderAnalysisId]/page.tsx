@@ -40,30 +40,22 @@ const TenderAnalysis = () => {
         console.log("[TenderAnalysis] Drawer visibility changed to:", visible);
         setIsDrawerVisible(visible);
 
-        if (visible) {
-            // Drawer is opening - no need to delay anything
+        if (!visible) {
+            // Drawer is closing - clear selectedResult immediately for better UX
+            if (selectedResult) {
+                console.log("[TenderAnalysis] Clearing selected result immediately");
+                setSelectedResult(null);
+
+                // Update URL to remove tenderId
+                const params = new URLSearchParams(window.location.search);
+                params.delete("tenderId");
+                router.replace(`?${params.toString()}`, { scroll: false });
+            }
             setIsDrawerAnimating(false);
         } else {
-            // Drawer is closing - start animation and delay clearing selectedResult
-            setIsDrawerAnimating(true);
-
-            // Wait for drawer animation to complete (300ms as per ExpandableDrawer CSS)
-            setTimeout(() => {
-                setIsDrawerAnimating(false);
-
-                // Only clear if drawer is still not visible (user didn't reopen it)
-                if (!isDrawerVisible && selectedResult) {
-                    console.log("[TenderAnalysis] Clearing selected result after animation complete");
-                    setSelectedResult(null);
-
-                    // Also update URL to remove tenderId
-                    const params = new URLSearchParams(window.location.search);
-                    params.delete("tenderId");
-                    router.replace(`?${params.toString()}`, { scroll: false });
-                }
-            }, 320); // Slightly longer than the 300ms animation to ensure it's complete
+            setIsDrawerAnimating(false);
         }
-    }, [selectedResult, setSelectedResult, router, isDrawerVisible]);
+    }, [selectedResult, setSelectedResult, router]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -119,7 +111,7 @@ const TenderAnalysis = () => {
                             setAllResults={setAllResults}
                             drawerRef={drawerRef}
                             setCurrentTenderBoardStatus={setCurrentTenderBoardStatus}
-                            isDrawerVisible={isDrawerVisible || isDrawerAnimating} 
+                            isDrawerVisible={isDrawerVisible || isDrawerAnimating}
                             onDrawerVisibilityChange={handleDrawerVisibilityChange}
                         />
                     </div>
