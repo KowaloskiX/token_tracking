@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { NotificationHeader } from '@/components/dashboard/notifications/NotificationHeader';
 import { NotificationList } from '@/components/dashboard/notifications/NotificationList';
 import { NotificationContent } from '@/components/dashboard/notifications/NotificationContent';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -104,12 +103,12 @@ export default function NotificationsPage() {
     return (
         <div className="w-full flex h-[100svh] overflow-hidden">
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <div className="flex-none">
+                {/* <div className="flex-none">
                     <NotificationHeader 
                         unreadCount={loading ? 0 : unreadCount} 
                         onMarkAllAsRead={loading ? () => {} : handleMarkAllAsRead} 
                     />
-                </div>
+                </div> */}
                 <div className="flex-1 overflow-auto scrollbar-hide">
                     <div className="sm:px-8 sm:py-3 py-2 h-full">
                         <div className="rounded-none sm:rounded-lg shadow border bg-background h-full">

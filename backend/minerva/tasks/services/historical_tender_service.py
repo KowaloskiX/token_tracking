@@ -1,12 +1,16 @@
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 from minerva.tasks.services.tender_insert_service import TenderInsertConfig
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig, UpsertTool
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.tasks.sources.ezamowienia.extract_historical_tenders import HistoricalTenderExtractor, HistoricalTender
+from minerva.core.database.database import db
+from minerva.core.helpers.biznespolska_oferent_shared import is_same_tender
 
 logger = logging.getLogger("minerva.tasks.historical_tenders")
 
-class HistoricalTenderInsertService:    
+class HistoricalTenderService:    
     def __init__(self, config: TenderInsertConfig):
         self.config = config
         self.extractor = HistoricalTenderExtractor()
@@ -47,6 +51,273 @@ class HistoricalTenderInsertService:
         except Exception as e:
             logger.error(f"Error processing historical tenders: {e}")
             raise e
+
+    async def query_multipart_tenders(
+        self, 
+        query: str, 
+        top_k: int = 20, 
+        embedding_model: Optional[str] = None,
+        score_threshold: float = 0.0
+    ) -> Dict[str, Any]:
+        """Query historical tenders specifically filtering for multi-part tenders"""
+        try:
+            query_tool = QueryTool(config=QueryConfig(
+                index_name="historical-tenders",
+                embedding_model=embedding_model or "text-embedding-3-large"
+            ))
+            
+            filter_conditions = {"total_parts": {"$gt": 1}}
+            
+            results = await query_tool.query_by_text(
+                query_text=query,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=filter_conditions
+            )
+            
+            return {
+                "matches": results["matches"],
+                "total_results": len(results["matches"]),
+                "filters_applied": results.get("filter_applied"),
+                "query": query,
+                "index": "historical-tenders",
+                "filter_note": "Filtered for multi-part tenders only (total_parts > 1)"
+            }
+        except Exception as e:
+            logger.error(f"Error querying multi-part historical tenders: {e}")
+            raise e
+
+    async def query_by_initiation_date(
+        self,
+        initiation_date: str,
+        top_k: int = 1000,
+        embedding_model: Optional[str] = None,
+        score_threshold: float = 0.0
+    ) -> Dict[str, Any]:
+        """Query all historical tenders with a given initiation_date"""
+        try:
+            # Validate date format
+            datetime.strptime(initiation_date, "%Y-%m-%d")
+            
+            query_tool = QueryTool(config=QueryConfig(
+                index_name="historical-tenders",
+                embedding_model=embedding_model or "text-embedding-3-large"
+            ))
+
+            filter_conditions = {"initiation_date": {"$eq": initiation_date}}
+
+            results = await query_tool.query_by_text(
+                query_text="",  # Empty query to return all matches for the filter
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=filter_conditions
+            )
+
+            return {
+                "matches": results["matches"],
+                "total_results": len(results["matches"]),
+                "filters_applied": results.get("filter_applied"),
+                "query": f"All tenders with initiation_date={initiation_date}",
+                "index": "historical-tenders"
+            }
+        except ValueError:
+            raise ValueError("Invalid initiation_date format. Use YYYY-MM-DD.")
+        except Exception as e:
+            logger.error(f"Error querying historical tenders by initiation_date: {e}")
+            raise e
+
+    async def query_by_initiation_date_and_update_finished_id(
+        self,
+        initiation_date: str,
+        top_k: int = 1000,
+        embedding_model: Optional[str] = None,
+        score_threshold: float = 0.0
+    ) -> Dict[str, Any]:
+        """
+        Query all historical tenders with a given initiation_date, and for each result, find the corresponding
+        tender_analysis_results in MongoDB by tender_url (matching original_tender_url), and set finished_id to Pinecone object id.
+        """
+        try:
+            # Validate date format
+            datetime.strptime(initiation_date, "%Y-%m-%d")
+            
+            # Query historical tenders
+            hist_tool = QueryTool(QueryConfig(
+                index_name="historical-tenders",
+                embedding_model=embedding_model or "text-embedding-3-large",
+            ))
+            filter_conditions = {"initiation_date": {"$eq": initiation_date}}
+            hist_results = await hist_tool.query_by_text(
+                query_text="",       # empty → match all with the filter
+                top_k=top_k,
+                score_threshold=score_threshold,
+                filter_conditions=filter_conditions,
+            )
+
+            # Process matches and update MongoDB
+            update_result = await self._update_finished_ids(hist_results["matches"], embedding_model)
+            
+            return {
+                "matches": hist_results["matches"],
+                "total_results": len(hist_results["matches"]),
+                "updated_with_url": update_result["updated_with_url"],
+                "updated_without_url": update_result["updated_without_url"],
+                "not_matched_primary": update_result["not_matched_primary"],
+                "not_matched_fallback": update_result["not_matched_fallback"],
+                "updated_tender_analysis_ids": update_result["updated_tender_analysis_ids"],
+                "filters_applied": hist_results.get("filter_applied"),
+                "query": f"All tenders with initiation_date={initiation_date}",
+                "index": "historical-tenders",
+            }
+        except ValueError:
+            raise ValueError("Invalid initiation_date format. Use YYYY-MM-DD.")
+        except Exception as e:
+            logger.error(f"Error querying and updating historical tenders: {e}")
+            raise e
+
+    async def get_by_pinecone_id(
+        self, 
+        pinecone_id: str, 
+        embedding_model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Return all data from Pinecone for a finished tender by its Pinecone id"""
+        try:
+            query_tool = QueryTool(config=QueryConfig(
+                index_name="historical-tenders",
+                embedding_model=embedding_model or "text-embedding-3-large"
+            ))
+            
+            results = await query_tool.query_by_id(pinecone_id)
+            if not results or not results.get("matches"):
+                raise ValueError("Tender not found in Pinecone.")
+            
+            return results["matches"][0]
+        except Exception as e:
+            logger.error(f"Error fetching tender from Pinecone: {e}")
+            raise e
+
+    async def _update_finished_ids(self, matches: List[Dict], embedding_model: Optional[str] = None) -> Dict[str, Any]:
+        """Update finished_id in MongoDB tender_analysis_results for matched historical tenders"""
+        not_matched_primary: List[str] = []
+        not_matched_fallback: List[Dict] = []
+        updated_with_url: List[str] = []
+        updated_without_url: List[Dict] = []
+        updated_tender_analysis_ids: List[str] = []  # Track actual tender analysis result IDs
+
+        # Source mapping for fallback search
+        SOURCE_MAP = {
+            "ezamowienia.gov.pl": "ezamowienia",
+            "ted.europa.eu": "ted",
+            "egospodarka.pl": "egospodarka",
+            "eb2b.com.pl": "eb2b",
+            "ezamawiajacy.pl": "ezamawiajacy",
+            "logintrade.pl": "logintrade",
+            "smartpzp.pl": "smartpzp",
+            "epropublico.pl": "epropublico_main",
+            "platformazakupowa.pl": "platformazakupowa",
+            "bazakonkurencyjnosci.funduszeeuropejskie.gov.pl": "bazakonkurencyjnosci",
+            "connect.orlen.pl": "orlenconnect",
+            "pge.pl": "pge",
+        }
+
+        for hist in matches:
+            hist_id = hist["id"]
+            hist_meta = hist.get("metadata", {}) or {}
+            url = hist_meta.get("original_tender_url")
+            name = (hist_meta.get("name") or "").strip()
+            organization = (hist_meta.get("organization") or "").strip()
+
+            # Try primary URL match
+            mongo_doc = None
+            with_url = False
+            if url:
+                mongo_doc = await db.tender_analysis_results.find_one(
+                    {"tender_url": url}
+                )
+                if mongo_doc:
+                    with_url = True
+
+            # Fallback: semantic search by name + org
+            if not mongo_doc and (name or organization):
+                query_text = f"{name} {organization}".strip()
+
+                # Determine source_type from url if possible
+                source_type = None
+                if url:
+                    for k, v in SOURCE_MAP.items():
+                        if k in url:
+                            source_type = v
+                            break
+                if source_type == "ezamowienia":
+                    continue
+                
+                tenders_tool = QueryTool(QueryConfig(
+                    index_name="tenders",
+                    embedding_model=embedding_model or "text-embedding-3-large",
+                ))
+                filter_conditions = None
+                if source_type:
+                    filter_conditions = {"source_type": {"$eq": source_type}}
+
+                cand_results = await tenders_tool.query_by_text(
+                    query_text=query_text,
+                    top_k=3,
+                    score_threshold=0.45,
+                    filter_conditions=filter_conditions,
+                )
+
+                for cand in cand_results["matches"]:
+                    cand_meta = cand.get("metadata", {}) or {}
+                    a = {
+                        "id": cand_meta.get("details_url"),
+                        "name": cand_meta.get("name"),
+                        "organization": cand_meta.get("organization"),
+                    }
+                    b = {
+                        "id": hist_meta.get("original_tender_url"),
+                        "name": hist_meta.get("name"),
+                        "organization": hist_meta.get("organization"),
+                    }
+                    if is_same_tender(a, b):
+                        cand_url = (
+                            cand_meta.get("details_url")
+                            or cand_meta.get("original_tender_url")
+                        )
+                        if cand_url:
+                            mongo_doc = await db.tender_analysis_results.find_one(
+                                {"tender_url": cand_url}
+                            )
+                            if mongo_doc:
+                                updated_without_url.append({"a": a, "b": b})
+                                break
+
+                # Record diagnostics when fallback couldn't find anything
+                if not mongo_doc:
+                    not_matched_fallback.append(
+                        {"hist_id": hist_id, "query": query_text}
+                    )
+
+            # Persist when we finally have a Mongo document
+            if mongo_doc:
+                await db.tender_analysis_results.update_one(
+                    {"_id": mongo_doc["_id"]},
+                    {"$set": {"finished_id": hist_id}},
+                )
+                # Track the tender analysis result ID for notifications
+                updated_tender_analysis_ids.append(str(mongo_doc["_id"]))
+                
+                if with_url:
+                    updated_with_url.append(url)
+            else:
+                not_matched_primary.append(url or f"(no-url) {hist_id}")
+
+        return {
+            "updated_with_url": updated_with_url,
+            "updated_without_url": updated_without_url,
+            "not_matched_primary": not_matched_primary,
+            "not_matched_fallback": not_matched_fallback,
+            "updated_tender_analysis_ids": updated_tender_analysis_ids,  # Return the actual IDs for notifications
+        }
     
     def _convert_historical_tender_to_dict(self, tender: HistoricalTender) -> Dict[str, Any]:
         """Convert HistoricalTender object to dictionary for embedding"""

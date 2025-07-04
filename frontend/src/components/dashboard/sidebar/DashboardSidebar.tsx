@@ -44,22 +44,6 @@ const ChatSidebarContent = () => (
   </SidebarGroup>
 )
 
-const ProjectsSidebarContent = () => (
-  <SidebarGroup>
-    <SidebarGroupContent>
-      <SidebarMenu>
-        {/* <SidebarMenuButton className="w-full text-sidebar-foreground">
-          <span className="flex-1 truncate min-w-0">Recent Projects</span>
-        </SidebarMenuButton>
-        <SidebarMenuButton className="w-full text-sidebar-foreground">
-          <span className="flex-1 truncate min-w-0">Archived Projects</span>
-        </SidebarMenuButton> */}
-      </SidebarMenu>
-    </SidebarGroupContent>
-  </SidebarGroup>
-)
-
-
 interface SidebarComponentProps {
   defaultCollapsed?: boolean;
 }
@@ -112,47 +96,33 @@ export default function SidebarComponent({ defaultCollapsed }: SidebarComponentP
   
   // Function to render header content based on current route and sidebar state
   const renderHeaderContent = () => {
-    if (isTenders) {
-      return (
-        <SidebarMenuButton
-          onClick={() => router.push('/dashboard/tenders')}
-          className="cursor-pointer py-6 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-        >
-          {/* Different logos for collapsed vs expanded states */}
-          <div className="flex items-center">
-            {open ? (
-              <Image 
-                src="/images/asystent_ai_logo_brown_long.png" 
-                width={520}
-                height={280}
-                alt="Asystent AI" 
-                className="w-auto h-8" 
-              />
-            ) : (
-              <Image 
-                src="/images/asystent_ai_logo_black.png" 
-                width={280}
-                height={280}
-                alt="Asystent AI" 
-                className="w-auto h-4" 
-              />
-            )}
-          </div>
-        </SidebarMenuButton>
-      )
-    } else {
-      return (
-        <SidebarMenuButton
-          onClick={() => router.push('/dashboard/tenders/chat')}
-          className="cursor-pointer py-6 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground border-b border-neutral-200"
-        >
-          <LibraryBig strokeWidth={2.2} className="w-5 h-5 size-5" />
-          <span className="truncate font-semibold text-lg ml-2">
-            {t('projects')}
-          </span>
-        </SidebarMenuButton>
-      )
-    }
+    return (
+      <SidebarMenuButton
+      onClick={() => router.push('/dashboard/tenders')}
+      className="cursor-pointer py-6 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+    >
+      {/* Different logos for collapsed vs expanded states */}
+      <div className="flex items-center">
+        {open ? (
+          <Image 
+            src="/images/asystent_ai_logo_brown_long.png" 
+            width={520}
+            height={280}
+            alt="Asystent AI" 
+            className="w-auto h-8" 
+          />
+        ) : (
+          <Image 
+            src="/images/asystent_ai_logo_black.png" 
+            width={280}
+            height={280}
+            alt="Asystent AI" 
+            className="w-auto h-4" 
+          />
+        )}
+      </div>
+    </SidebarMenuButton>
+    )
   }
   
   return (

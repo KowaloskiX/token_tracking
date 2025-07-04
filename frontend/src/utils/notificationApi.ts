@@ -1,7 +1,7 @@
 import { handleResponse } from './api';
 import { Notification } from '@/types/notification';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:8000';
 const NOTIFICATIONS_ENDPOINT = `${API_BASE}/notifications`;
 
 // Get auth token from localStorage

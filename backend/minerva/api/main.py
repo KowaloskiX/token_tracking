@@ -1,9 +1,9 @@
 # minerva/main.py (updated sections)
 import os
 from pathlib import Path
-from minerva.api.routes import ai_routes, assistant_routes, conversation_routes, file_routes, folder_routes, notification_routes, organization_routes, scraping_routes, user_routes, waitlist_routes, retrieval_routes, kanban_board_routes, invitation_routes, comment_routes, reset_password_routes, api_key_routes, cost_tracking_routes, analytics_routes
+from minerva.api.routes import ai_routes, assistant_routes, contact_routes, conversation_routes, file_routes, folder_routes, organization_routes, scraping_routes, user_routes, waitlist_routes, retrieval_routes, kanban_board_routes, invitation_routes, comment_routes, reset_password_routes, api_key_routes, cost_tracking_routes, analytics_routes, user_notification_routes, test_notification_routes
 from minerva.api.routes.api import results_routes
-from minerva.api.routes.extensions.tenders import tender_analysis_routes, tender_description_filter_routes, tender_extract_routes, tender_monitoring_routes, tender_search_routes, tender_initial_ai_filtering_routes, tender_file_extraction_routes, tender_description_generation_routes, tender_criteria_analysis_routes, analysis_queue_routes
+from minerva.api.routes.extensions.tenders import tender_analysis_routes, tender_description_filter_routes, tender_extract_routes, tender_monitoring_routes, tender_search_routes, tender_initial_ai_filtering_routes, tender_file_extraction_routes, tender_description_generation_routes, tender_criteria_analysis_routes, analysis_queue_routes, tender_historical_routes
 from minerva.api.routes.api import results_routes
 from minerva.api.routes.stripe import stripe_routes, stripe_webhooks
 from minerva.config import logging_config
@@ -36,6 +36,7 @@ app = FastAPI(redirect_slashes=False)
 
 origins = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
     "https://www.asystent.ai",
     "https://asystent-ai-ebon.vercel.app",
@@ -64,7 +65,7 @@ app.include_router(tender_extract_routes.router, prefix="/tender-extract", tags=
 app.include_router(stripe_webhooks.router, prefix="/stripe/webhooks", tags=["stripe"]) 
 app.include_router(stripe_routes.router, prefix="/stripe", tags=["stripe"])
 app.include_router(retrieval_routes.router)
-app.include_router(notification_routes.router)
+app.include_router(contact_routes.router)
 app.include_router(tender_analysis_routes.router)
 app.include_router(tender_monitoring_routes.router)
 app.include_router(tender_search_routes.router)
@@ -72,6 +73,7 @@ app.include_router(tender_initial_ai_filtering_routes.router)
 app.include_router(tender_description_filter_routes.router)
 app.include_router(tender_file_extraction_routes.router)
 app.include_router(tender_description_generation_routes.router)
+app.include_router(tender_historical_routes.router, prefix="/historical-tenders", tags=["historical-tenders"])
 app.include_router(tender_criteria_analysis_routes.router)
 app.include_router(analysis_queue_routes.router, prefix="/analysis-queue", tags=["analysis-queue"])
 app.include_router(ai_routes.router)
@@ -83,6 +85,8 @@ app.include_router(api_key_routes.router, prefix="/api-keys", tags=["api-keys"])
 app.include_router(results_routes.router, prefix="/api", tags=["api"])
 app.include_router(cost_tracking_routes.router, prefix="/cost-tracking", tags=["cost-tracking"])
 app.include_router(analytics_routes.router, tags=["analytics"])
+app.include_router(user_notification_routes.router, prefix="/notifications", tags=["notifications"])
+app.include_router(test_notification_routes.router, tags=["test-notifications"])
 
 @app.get("/")
 async def read_root():

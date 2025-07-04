@@ -35,7 +35,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
     const t = useTendersTranslations();
     const [resizing, setResizing] = useState<string | null>(null);
     const headerRef = useRef<HTMLTableRowElement>(null);
-
+    
     // Use refs to track resizing state for event handlers
     const resizingRef = useRef<string | null>(null);
     const resizeStartXRef = useRef<number>(0);
@@ -44,7 +44,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
 
     const handleSort = (column: ColumnConfig) => {
         if (!column.sortable) return;
-
+        
         // Prevent sorting if we just finished resizing
         if (justFinishedResizingRef.current) {
             justFinishedResizingRef.current = false;
@@ -53,8 +53,8 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
 
         // For criteria columns, we need to use the criteria name as the sort identifier
         // This matches what the data structure expects in useTenderTableData.tsx
-        const sortIdentifier = isCriteriaColumn(column)
-            ? (column as CriteriaColumnConfig).criteriaName
+        const sortIdentifier = isCriteriaColumn(column) 
+            ? (column as CriteriaColumnConfig).criteriaName 
             : column.id;
 
         let newDirection: SortDirection = 'asc';
@@ -89,8 +89,8 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         if (!column.sortable) return null;
 
         // Check if this column is currently being sorted using the same identifier logic
-        const sortIdentifier = isCriteriaColumn(column)
-            ? (column as CriteriaColumnConfig).criteriaName
+        const sortIdentifier = isCriteriaColumn(column) 
+            ? (column as CriteriaColumnConfig).criteriaName 
             : column.id;
 
         const isActive = sortConfig?.columnId === sortIdentifier;
@@ -113,10 +113,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         e.stopPropagation();
 
         // Don't allow resizing if disabled (when sidebar is open)
-        if (isResizeDisabled) {
-            console.log('Column resizing is disabled while sidebar is open');
-            return;
-        }
+        if (isResizeDisabled) return;
 
         const column = columns.find(col => col.id === columnId);
         if (!column || !column.resizable) return;
@@ -130,12 +127,6 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         const handleMouseMove = (e: MouseEvent) => {
             // Use ref instead of state to avoid closure issues
             if (!resizingRef.current) return;
-
-            // Double-check that resizing is still allowed
-            if (isResizeDisabled) {
-                handleMouseUp();
-                return;
-            }
 
             const deltaX = e.clientX - resizeStartXRef.current;
             const newWidth = Math.max(
@@ -155,12 +146,12 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                     justFinishedResizingRef.current = false;
                 }, 50);
             }
-
+            
             setResizing(null);
             resizingRef.current = null;
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
-
+            
             // Add visual feedback that resize is complete
             if (headerRef.current) {
                 headerRef.current.style.userSelect = '';
@@ -178,7 +169,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
 
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
-    }, [columns, onColumnResize, isResizeDisabled]);
+    }, [columns, onColumnResize, isResizeDisabled]); // NEW: Add isResizeDisabled to dependencies
 
     const getColumnLabel = (column: ColumnConfig): string => {
         // For criteria columns, show the criteria name with a tooltip indicator
@@ -219,14 +210,14 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
     };
 
     return (
-        <TableHeader className="bg-card border-b sticky top-0 z-10">
+        <TableHeader className="bg-card border-b sticky top-0">
             <TableRow ref={headerRef}>
                 {columns.map((column, index) => {
                     const isLastColumn = index === columns.length - 1;
 
                     // Determine if this column is sorted using the same identifier logic as handleSort
-                    const sortIdentifier = isCriteriaColumn(column)
-                        ? (column as CriteriaColumnConfig).criteriaName
+                    const sortIdentifier = isCriteriaColumn(column) 
+                        ? (column as CriteriaColumnConfig).criteriaName 
                         : column.id;
                     const isSorted = sortConfig?.columnId === sortIdentifier;
 
@@ -251,13 +242,13 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const clickX = e.clientX - rect.left;
                                     const cellWidth = rect.width;
-
+                                    
                                     // If clicking in the rightmost 6px of the cell (resize handle area), don't sort
                                     if (clickX > cellWidth - 6 && column.resizable && !isLastColumn) {
                                         return;
                                     }
                                 }
-
+                                
                                 handleSort(column);
                             }}
                         >
@@ -300,27 +291,28 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 )}
                             </div>
 
+                            {/* Resize handle - Modified to show disabled state */}
                             {column.resizable && !isLastColumn && (
                                 <div
                                     className={cn(
                                         "absolute top-0 right-0 w-1.5 h-full z-10",
-                                        isResizeDisabled
-                                            ? "cursor-not-allowed opacity-30"
+                                        isResizeDisabled 
+                                            ? "cursor-not-allowed opacity-30" // NEW: Disabled state
                                             : "cursor-col-resize opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-border active:bg-muted",
                                         resizing === column.id && !isResizeDisabled && "opacity-100 bg-muted"
                                     )}
                                     onMouseDown={(e) => handleResizeStart(e, column.id)}
                                     title={
-                                        isResizeDisabled
-                                            ? "Column resizing is disabled while sidebar is open"
+                                        isResizeDisabled 
+                                            ? "Resizing disabled in compact view" 
                                             : "Drag to resize column"
                                     }
                                 >
                                     {/* Subtle resize indicator */}
                                     <div className={cn(
                                         "absolute top-1/2 left-1/2 w-0.5 h-4 bg-muted-foreground transform -translate-x-1/2 -translate-y-1/2 transition-opacity",
-                                        isResizeDisabled
-                                            ? "opacity-30"
+                                        isResizeDisabled 
+                                            ? "opacity-30" 
                                             : "opacity-60 group-hover:opacity-100"
                                     )} />
                                 </div>
@@ -330,12 +322,12 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                 })}
 
                 {/* Column manager button */}
-                <TableHead className="w-10 text-center bg-card">
+                <TableHead className="w-1 text-center bg-card">
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={onOpenTableLayout}
-                        className="h-6 w-6 p-0 opacity-60 hover:opacity-100 hover:bg-muted transition-all"
+                        className="h-6 w-6 -ml-4 p-0 opacity-60 hover:opacity-100 cursor-pointer hover:bg-none transition-all"
                         title={t('columns.manageColumns')}
                     >
                         <Settings className="h-3 w-3" />

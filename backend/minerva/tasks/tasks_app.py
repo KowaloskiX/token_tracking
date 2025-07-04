@@ -7,6 +7,7 @@ from minerva.config.logging_config import setup_logging
 from minerva.tasks.scraping_runner import main as scraping_main
 from minerva.tasks.monitoring_runner import main as monitoring_main
 from minerva.tasks.cleanup_runner import main as cleanup_main
+from minerva.tasks.historical_runner import main as historical_main
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
@@ -69,8 +70,8 @@ def configure_scheduler(loop):
     # Schedule jobs based on worker type
     if worker_type == "scraping":
         scheduler.add_job(
-            lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, "2025-06-27", None)),
-            trigger=CronTrigger(hour=11, minute=12, day_of_week='mon-sun', timezone="Europe/Warsaw"),
+            lambda: run_coroutine(scraping_main(worker_index, total_scraping_workers, get_today(), None)),
+            trigger=CronTrigger(hour=19, minute=45, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"scraping_worker_{worker_index}",
             replace_existing=True
         )
@@ -78,18 +79,22 @@ def configure_scheduler(loop):
         from minerva.tasks.analyses.analysis_task_producer import main as producer_main
         scheduler.add_job(
             lambda: run_coroutine(producer_main()),
-            trigger=CronTrigger(hour=22, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            trigger=CronTrigger(hour=23, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name="analysis_task_producer",
             replace_existing=True
         )
-    elif worker_type == "analysis":
-        # NEW: Analysis workers run continuously, no cron needed
-        logger.info("Analysis workers now run continuously via simple_analysis_worker")
     elif worker_type == "monitoring" and worker_index == 0:
         scheduler.add_job(
             lambda: run_coroutine(monitoring_main(0, 1, None)),
             trigger=CronTrigger(hour=19, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name="monitoring_worker_0",
+            replace_existing=True
+        )
+    elif worker_type == "historical" and worker_index == 0:
+        scheduler.add_job(
+            lambda: run_coroutine(historical_main(get_today(), None)),
+            trigger=CronTrigger(hour=20, minute=30, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name="historical_worker_0",
             replace_existing=True
         )
     elif worker_type == "cleanup":

@@ -42,7 +42,7 @@ export const TenderRowActions: React.FC<TenderRowActionsProps> = ({
         <Button 
           variant="ghost" 
           size="sm" 
-          className="h-6 w-6 p-0" 
+          className="h-4 w-4 p-0" 
           onClick={(e) => e.stopPropagation()}
         >
           <MoreVertical className="h-3 w-3" />

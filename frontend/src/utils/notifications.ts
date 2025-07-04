@@ -31,7 +31,7 @@ export const getNotificationTypeText = (type: string, t: any) => {
     case 'error': return t('types.error');
     case 'info': return t('types.info');
     case 'update': return t('types.update');
-    case 'results': return t('types.results');
+    case 'outcome': return t('types.outcome');
     default: return t('types.info');
   }
 };

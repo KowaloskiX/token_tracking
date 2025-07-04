@@ -28,7 +28,7 @@
         "error": "Error",
         "info": "Information",
         "update": "Update",
-        "results": "Results"
+        "outcome": "Outcome"
     },
     "toast": {
         "failed_to_load": "Failed to load notifications",

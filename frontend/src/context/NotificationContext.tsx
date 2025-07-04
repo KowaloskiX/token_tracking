@@ -262,15 +262,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [fetchNotifications, user, t]);
 
   // Auto-refresh notifications every 2 minutes in background (SILENT)
-  useEffect(() => {
-    if (!user) return;
+  // DISABLED: Notifications are sent only once a day, no need for frequent polling
+  // useEffect(() => {
+  //   if (!user) return;
 
-    const interval = setInterval(() => {
-      fetchNotificationsSilent(); // Silent background refresh
-    }, 120000); // 2 minutes (120,000 ms)
+  //   const interval = setInterval(() => {
+  //     fetchNotificationsSilent(); // Silent background refresh
+  //   }, 120000); // 2 minutes (120,000 ms)
 
-    return () => clearInterval(interval);
-  }, [fetchNotificationsSilent, user]);
+  //   return () => clearInterval(interval);
+  // }, [fetchNotificationsSilent, user]);
 
   // Calculate unread count
   const unreadCount = notifications.filter(n => !n.is_read).length;

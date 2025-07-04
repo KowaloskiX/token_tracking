@@ -100,6 +100,7 @@ class TenderAnalysisResult(BaseModel):
     opened_at: Optional[datetime] = None
     order_number: Optional[int] = None
     language: Optional[str] = None
+    finished_id: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True

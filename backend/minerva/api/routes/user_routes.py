@@ -4,7 +4,7 @@ from minerva.config.constants import UserRole
 from minerva.core.models.subscription import UserSubscription
 from minerva.core.middleware.auth.jwt import create_access_token, get_current_user
 from minerva.core.models.conversation import Conversation
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from minerva.core.database.database import db
 from minerva.core.models.user import User
 from bson import ObjectId
@@ -45,6 +45,7 @@ class UserResponse(BaseModel):
     role: str
     subscription: Optional[UserSubscription] = None
     created_at: datetime
+    preferred_language: Optional[str] = None  # User's preferred language (pl, en, de)
     marketing_consent: dict[str, bool] = Field(
         default_factory=lambda: {
             "communication_emails": False,
@@ -56,6 +57,9 @@ class UserResponse(BaseModel):
     total_tokens: Optional[int] = 0
     daily_tokens: Optional[int] = 0
     last_token_reset: Optional[datetime] = None
+    # Login tracking fields (optional for backward compatibility)
+    last_login: Optional[datetime] = None
+    login_count: Optional[int] = 0
 
     class Config:
         allow_population_by_field_name = True
@@ -126,7 +130,7 @@ async def register(user_data: UserCreate):
 
 
 @router.post("/login")
-async def login(user_data: UserLogin):
+async def login(user_data: UserLogin, request: Request):
     user_doc = await db["users"].find_one({"email": user_data.email})
     if not user_doc:
         raise HTTPException(
@@ -151,6 +155,11 @@ async def login(user_data: UserLogin):
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email}
     )
+    
+    # Record login event for analytics tracking
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("User-Agent")
+    await user.record_login("email_password", ip_address, user_agent)
     
     # Create response dict explicitly with the ID
     user_response_dict = {
@@ -200,6 +209,7 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     org_id: Optional[str] = None
     role: Optional[str] = None
+    preferred_language: Optional[str] = None  # User's preferred language (pl, en, de)
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
@@ -342,7 +352,7 @@ class GoogleAuthRequest(BaseModel):
     credential: str
 
 @router.post("/auth/google")
-async def google_auth(request: GoogleAuthRequest):
+async def google_auth(request: GoogleAuthRequest, http_request: Request):
     try:
         request_obj = google_requests.Request()
         idinfo = id_token.verify_oauth2_token(
@@ -441,6 +451,21 @@ async def google_auth(request: GoogleAuthRequest):
             result = await db["users"].insert_one(new_user_dict)
             new_user_dict["_id"] = str(result.inserted_id)
             user_response_dict = new_user_dict
+
+        # Record login event for analytics tracking
+        if existing_user:
+            # For existing users, get the User object to call record_login
+            user_obj = User(**existing_user)
+            ip_address = http_request.client.host if http_request.client else None
+            user_agent = http_request.headers.get("User-Agent")
+            await user_obj.record_login("google_oauth", ip_address, user_agent)
+        else:
+            # For new users, we'll record the login after creation
+            # Create a User object from the new user dict
+            user_obj = User(**{**new_user_dict, "_id": ObjectId(new_user_dict["_id"])})
+            ip_address = http_request.client.host if http_request.client else None
+            user_agent = http_request.headers.get("User-Agent")
+            await user_obj.record_login("google_oauth", ip_address, user_agent)
 
         # Create access token
         access_token = create_access_token(
@@ -838,3 +863,72 @@ async def verify_password(
         raise HTTPException(status_code=401, detail="Incorrect password.")
     
     return {"message": "Password verified successfully."}
+
+@router.post("/migrate-login-tracking", status_code=200)
+async def migrate_login_tracking(current_user: User = Depends(get_current_user)):
+    """
+    Initialize login tracking fields for existing users.
+    This should be run once after deploying the login tracking feature.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only admin users can run migrations"
+        )
+    
+    try:
+        # Update all users to have login tracking fields if they don't exist
+        result = await db["users"].update_many(
+            {
+                "$or": [
+                    {"last_login": {"$exists": False}},
+                    {"login_history": {"$exists": False}},
+                    {"login_count": {"$exists": False}}
+                ]
+            },
+            {
+                "$set": {
+                    "last_login": None,
+                    "login_count": 0,
+                    "login_history": []
+                }
+            }
+        )
+        
+        return {
+            "message": "Login tracking migration completed",
+            "matched_count": result.matched_count,
+            "modified_count": result.modified_count
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Migration failed: {str(e)}"
+        )
+
+@router.get("/test-login-tracking", response_model=dict)
+async def test_login_tracking(current_user: User = Depends(get_current_user)):
+    """
+    Test endpoint to verify login tracking is working for the current user.
+    """
+    # Get the user from database to see current login tracking data
+    user_doc = await db["users"].find_one({"_id": ObjectId(current_user.id)})
+    
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "user_email": user_doc.get("email"),
+        "has_login_tracking_fields": {
+            "last_login": "last_login" in user_doc,
+            "login_history": "login_history" in user_doc,
+            "login_count": "login_count" in user_doc
+        },
+        "login_data": {
+            "last_login": user_doc.get("last_login"),
+            "login_count": user_doc.get("login_count", 0),
+            "login_history_length": len(user_doc.get("login_history", [])),
+            "recent_logins": user_doc.get("login_history", [])[-3:] if user_doc.get("login_history") else []
+        }
+    }

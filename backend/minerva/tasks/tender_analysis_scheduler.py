@@ -3,8 +3,12 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-from minerva.tasks.analysis_runner import run_tender_analysis_for_user_and_date
+from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag
+from minerva.core.database.database import db
+from minerva.core.models.user import User
+from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis
 from minerva.config.logging_config import setup_logging
+from bson import ObjectId
 
 setup_logging()
 logger = logging.getLogger("minerva.tender_analysis_scheduler")
@@ -25,6 +29,89 @@ DATES = [
     "2025-06-26",
     "2025-06-27"
 ]  #dates, run all concurrently
+
+# --- HELPER FUNCTION ---
+
+async def run_tender_analysis_for_user_and_date(
+    user_id: str,
+    analysis_id: str,
+    target_date: str
+):
+    """Run tender analysis for a specific user, analysis, and target date."""
+    try:
+        # Fetch user from database
+        user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+        if not user_doc:
+            error_msg = f"User not found for ID: {user_id}"
+            logger.error(error_msg)
+            return {"error": error_msg, "success": False}
+
+        current_user = User(**user_doc)
+
+        # Fetch analysis from database
+        analysis_doc = await db.tender_analysis.find_one({"_id": ObjectId(analysis_id)})
+        if not analysis_doc:
+            error_msg = f"Analysis not found for ID: {analysis_id}"
+            logger.error(error_msg)
+            return {"error": error_msg, "success": False}
+
+        tender_analysis = TenderAnalysis(**analysis_doc)
+        criteria_definitions = tender_analysis.criteria
+
+        # Set up filter conditions for the target date
+        filter_conditions = [
+            {"field": "initiation_date", "op": "eq", "value": target_date}
+        ]
+        
+        # Add source filters if specified in the analysis
+        if analysis_doc.get("sources"):
+            filter_conditions.append({
+                "field": "source_type",
+                "op": "in",
+                "value": analysis_doc["sources"]
+            })
+
+        logger.info(f"Running analysis {analysis_id} for user {user_id} on date {target_date}")
+
+        # Run the analysis
+        result = await analyze_relevant_tenders_with_our_rag(
+            analysis_id=analysis_id,
+            tender_names_index_name="tenders",
+            rag_index_name="files-rag-23-04-2025",
+            embedding_model="text-embedding-3-large",
+            elasticsearch_index_name="tenders",
+            score_threshold=0.5,
+            top_k=30,
+            current_user=current_user,
+            filter_conditions=filter_conditions,
+            criteria_definitions=criteria_definitions
+        )
+
+        # Update the analysis last_run timestamp
+        current_time = datetime.utcnow()
+        await db.tender_analysis.update_one(
+            {"_id": ObjectId(analysis_id)},
+            {"$set": {
+                "last_run": current_time,
+                "updated_at": current_time
+            }}
+        )
+
+        logger.info(f"Analysis {analysis_id} completed successfully. Analyzed {result.total_tenders_analyzed} tenders for date {target_date}")
+
+        return {
+            "success": True,
+            "analysis_id": analysis_id,
+            "user_id": user_id,
+            "target_date": target_date,
+            "total_tenders_analyzed": result.total_tenders_analyzed,
+            "query": result.query
+        }
+
+    except Exception as e:
+        error_msg = f"Error running analysis {analysis_id} for user {user_id} on date {target_date}: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return {"error": error_msg, "success": False}
 
 # --- MAIN SCHEDULER LOGIC ---
 

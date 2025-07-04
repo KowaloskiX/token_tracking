@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Mail, Filter, Check, ChevronDown } from 'lucide-react';
+import { Mail, Filter, Check, ChevronDown, Bell } from 'lucide-react';
 import { NotificationItem } from './NotificationItem';
 import { Notification } from '@/types/notification';
 import { useNotificationsTranslations } from '@/hooks/useTranslations';
@@ -17,7 +17,7 @@ interface NotificationListProps {
   onDelete: (id: string) => void;
 }
 
-type FilterType = 'all' | 'info' | 'warning' | 'success' | 'error' | 'update' | 'results';
+type FilterType = 'all' | 'info' | 'warning' | 'success' | 'error' | 'update' | 'outcome';
 
 export function NotificationList({ 
   notifications, 
@@ -39,7 +39,7 @@ export function NotificationList({
       case 'success':
       case 'error':
       case 'update':
-      case 'results':
+      case 'outcome':
         return notification.type.toLowerCase() === filter;
       default:
         return true;
@@ -55,13 +55,13 @@ export function NotificationList({
     }
   };
 
-  const filterOptions: FilterType[] = ['all', 'info', 'warning', 'success', 'error', 'update', 'results'];
+  const filterOptions: FilterType[] = ['all', 'info', 'warning', 'success', 'error', 'update', 'outcome'];
 
   return (
     <div className="w-96 border-r flex-shrink-0">
       <div className="p-4 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium">{t('sidebar_title')}</h2>
+          <h2 className="text-lg font-medium flex gap-2 items-center"><Bell className="h-4 w-4" />{t('sidebar_title')}</h2>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 px-3 gap-1">

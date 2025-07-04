@@ -23,7 +23,6 @@ interface UseTableColumnsProps {
   }>;
   tableWidth: number;
   selectedResult?: TenderAnalysisResult | null; // NEW: Add selectedResult prop
-  isDrawerVisible?: boolean; // NEW: Add explicit drawer visibility prop
 }
 
 // Simplified backend structure - only stores user preferences
@@ -44,8 +43,7 @@ export const useTableColumns = ({
   selectedAnalysisId,
   availableCriteria,
   tableWidth,
-  selectedResult, // NEW: Accept selectedResult
-  isDrawerVisible = false // NEW: Accept drawer visibility with default
+  selectedResult // NEW: Accept selectedResult
 }: UseTableColumnsProps) => {
   // Column state
   const [columnState, setColumnState] = useState<TableColumnState>({
@@ -73,10 +71,10 @@ export const useTableColumns = ({
     }));
   }, [availableCriteria]);
 
+  // NEW: Compute columns with adjusted widths based on sidebar state
   const adjustedColumns = useMemo(() => {
-    // Use explicit drawer visibility instead of !!selectedResult
-    const isSidebarOpen = isDrawerVisible;
-
+    const isSidebarOpen = !!selectedResult;
+    
     return columnState.columns.map(column => {
       if (isSidebarOpen) {
         // When sidebar is open, use minimum width for all columns
@@ -88,7 +86,7 @@ export const useTableColumns = ({
       // When sidebar is closed, use normal width
       return column;
     });
-  }, [columnState.columns, isDrawerVisible]);
+  }, [columnState.columns, selectedResult]);
 
   // Responsive column visibility logic (updated to use adjustedColumns)
   const responsiveColumns = useMemo(() => {
@@ -155,7 +153,7 @@ export const useTableColumns = ({
   // Reconstruct full columns from simplified backend data + defaults + criteria
   const reconstructColumns = useCallback((simplifiedColumns: SimplifiedColumnConfig[]): ColumnConfig[] => {
     const reconstructed: ColumnConfig[] = [];
-
+    
     // First, add all columns from simplified data
     for (const simpleCol of simplifiedColumns) {
       if (simpleCol.criteria_id) {
@@ -193,7 +191,7 @@ export const useTableColumns = ({
         }
       }
     }
-
+    
     // Add any missing default columns that weren't in the simplified data
     for (const defaultCol of DEFAULT_COLUMNS) {
       const exists = reconstructed.find(rc => rc.id === defaultCol.id);
@@ -201,7 +199,7 @@ export const useTableColumns = ({
         reconstructed.push({ ...defaultCol });
       }
     }
-
+    
     return reconstructed.sort((a, b) => a.order - b.order);
   }, [availableCriteria]);
 
@@ -211,7 +209,7 @@ export const useTableColumns = ({
     setIsLoading(true);
     try {
       console.log(`Loading simplified table layout for analysis: ${selectedAnalysisId}`);
-
+      
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/table-layout`,
         {
@@ -232,12 +230,12 @@ export const useTableColumns = ({
             ...prev,
             columns: reconstructedColumns
           }));
-
+          
           const columnsString = JSON.stringify(
             reconstructedColumns.map(col => ({ id: col.id, width: col.width }))
           );
           setLastSavedColumns(columnsString);
-
+          
           console.log('Applied reconstructed columns:', reconstructedColumns);
         } else {
           console.log('No saved table layout found, using defaults');
@@ -281,7 +279,7 @@ export const useTableColumns = ({
 
     try {
       console.log('Saving simplified table layout for analysis:', selectedAnalysisId);
-
+      
       const simplifiedColumns = convertToSimplified(columns);
       console.log('Converted to simplified format:', simplifiedColumns);
 
@@ -304,7 +302,7 @@ export const useTableColumns = ({
       } else {
         const result = await response.json();
         console.log('Simplified table layout saved successfully:', result);
-
+        
         if (columnsToSave) {
           setColumnState(prev => ({
             ...prev,
@@ -332,7 +330,7 @@ export const useTableColumns = ({
     setIsLoading(true);
     try {
       console.log('Resetting table layout to defaults');
-
+      
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysisId}/table-layout`,
         {
@@ -405,14 +403,14 @@ export const useTableColumns = ({
   const addCriteriaColumn = useCallback((criteriaId: string, criteriaName: string) => {
     setColumnState(prev => {
       const columnId = `criteria-${criteriaName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-
-      const existingColumn = prev.columns.find(col =>
+      
+      const existingColumn = prev.columns.find(col => 
         col.id === columnId ||
-        (col.type === 'criteria' &&
-          isCriteriaColumn(col) &&
-          (col as CriteriaColumnConfig).criteriaName === criteriaName)
+        (col.type === 'criteria' && 
+         isCriteriaColumn(col) && 
+         (col as CriteriaColumnConfig).criteriaName === criteriaName)
       );
-
+      
       if (existingColumn) {
         console.log(`Criteria column for ${criteriaName} already exists, skipping`);
         return prev;
@@ -435,7 +433,7 @@ export const useTableColumns = ({
       };
 
       console.log('Adding criteria column:', newColumn);
-
+      
       return {
         ...prev,
         columns: [...prev.columns, newColumn]
@@ -489,7 +487,7 @@ export const useTableColumns = ({
     const currentColumnsString = JSON.stringify(
       columnState.columns.map(col => ({ id: col.id, width: col.width }))
     );
-
+    
     if (currentColumnsString === lastSavedColumns) return;
 
     const timeoutId = setTimeout(() => {

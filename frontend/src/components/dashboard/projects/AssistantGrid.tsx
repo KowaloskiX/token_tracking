@@ -67,8 +67,8 @@ const AssistantGrid = () => {
   const [editingId, setEditingId] = useState<string | undefined | null>(null);
   const [editingName, setEditingName] = useState('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    type: null,
-    direction: 'asc'
+    type: 'date',
+    direction: 'desc'
   });
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
@@ -263,7 +263,7 @@ const AssistantGrid = () => {
       <div className="p-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold">{t('title')}</h1>
+            <h1 className="text-2xl font-medium">{t('title')}</h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="p-2 hover:bg-secondary outline-none rounded-md text-sm flex items-center gap-2">
@@ -300,7 +300,7 @@ const AssistantGrid = () => {
             </DropdownMenu>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
             {/* Create New Card */}
             <Card 
               className="group cursor-pointer rounded-xl transition-all duration-300 ease-in-out border-2 border-dashed border-body-text/50 hover:border-body-text flex flex-col items-center justify-center py-6"
@@ -317,11 +317,11 @@ const AssistantGrid = () => {
             </Card>
 
             {getSortedAssistants().map((assistant) => (
-              <Card 
-                key={assistant._id}
-                className="group cursor-pointer bg-white/40 transition-all duration-300 hover:scale-102 hover:shadow-md py-2 rounded-xl"
-                onClick={() => openAssistant(assistant)}
-              >
+                          <Card 
+              key={assistant._id}
+              className="group cursor-pointer bg-white/40 transition-all duration-300 hover:scale-102 hover:shadow-md py-1 px-1 rounded-xl flex flex-col"
+              onClick={() => openAssistant(assistant)}
+            >
                 <CardHeader className="p-3 pb-2 space-y-0">
                   <div className="flex items-center justify-between mb-2">
                     <div className="p-2 bg-secondary rounded-md group-hover:bg-secondary-hover transition-colors">
@@ -380,7 +380,7 @@ const AssistantGrid = () => {
                     </DropdownMenu>
                     )}
                   </div>
-                  <CardTitle className="text-sm font-semibold truncate relative group">
+                  <CardTitle className="text-sm font-semibold line-clamp-3 relative group">
                     {editingId === assistant._id ? (
                       <input
                         ref={editInputRef}
@@ -408,13 +408,13 @@ const AssistantGrid = () => {
                     )}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-3 pt-0 relative">
+                <CardContent className="p-3 pt-0 relative flex flex-col flex-1">
                   {assistant.description && (
                     <p className="text-xs text-foreground mb-1 line-clamp-2">
                       {assistant.description}
                     </p>
                   )}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mt-auto">
                     <p className="text-xs text-foreground">
                       <span className="hidden sm:block">{t('created')}</span> {formatDate(assistant.created_at)}
                     </p>

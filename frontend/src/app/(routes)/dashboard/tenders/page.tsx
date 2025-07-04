@@ -1,7 +1,6 @@
 "use client"
 import { SetStateAction, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import TenderHeader from "@/components/dashboard/tenders/TenderHeader";
 import TendersList from "@/components/dashboard/tenders/TendersList";
 import { Button } from "@/components/ui/button";
 import { useTender } from "@/context/TenderContext";
@@ -113,16 +112,15 @@ const Tenders = () => {
     return (
         <div>
             <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-none">
-                    <TenderHeader />
-                </div>
                 <div className="flex-1 overflow-auto scrollbar-hide">
                     <TendersList 
-                    drawerRef={drawerRef} allResults={[]} 
-                    setAllResults={function (value: SetStateAction<TenderAnalysisResult[]>): void {
-                        console.log("")
-                    } } 
-                    setCurrentTenderBoardStatus={setCurrentTenderBoardStatus} />
+                        drawerRef={drawerRef} allResults={[]}
+                        setAllResults={function (value: SetStateAction<TenderAnalysisResult[]>): void {
+                            console.log("");
+                        } }
+                        setCurrentTenderBoardStatus={setCurrentTenderBoardStatus} isDrawerVisible={false} onDrawerVisibilityChange={function (visible: boolean): void {
+                            throw new Error("Function not implemented.");
+                        } } />
                 </div>
             </div>
         </div>

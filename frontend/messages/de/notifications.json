@@ -28,7 +28,7 @@
         "error": "Fehler",
         "info": "Information",
         "update": "Aktualisierung",
-        "results": "Ergebnisse"
+        "outcome": "Ergebnis"
     },
     "toast": {
         "failed_to_load": "Benachrichtigungen konnten nicht geladen werden",

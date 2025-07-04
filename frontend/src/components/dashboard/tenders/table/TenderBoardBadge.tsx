@@ -38,7 +38,7 @@ export const TenderBoardBadge: React.FC<TenderBoardBadgeProps> = ({
     return (
       <Badge
         variant="outline"
-        className="border-transparent bg-secondary-hover text-primary shadow"
+        className="border-transparent bg-secondary-hover text-center text-primary shadow"
         title={boardNames.length > 1 ? `${t('tenders.board.management')}: ${boardNames.join(', ')}` : boardNames[0]}
       >
         {displayText}

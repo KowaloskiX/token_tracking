@@ -116,7 +116,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
             
             {/* Criteria text */}
             <div className="flex-1 min-w-0">
-              <p className="text-xs leading-tight text-left">
+              <p className="text-xs font-medium leading-tight text-left">
                 {truncatedSummary}
               </p>
             </div>
@@ -179,9 +179,9 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
         return (
           <TableCell style={getCellStyle(column)}>
             <div className="flex flex-col">
-              <div className="flex items-center overflow-hidden">
-                <span className="truncate">
-                  {truncateText(result.tender_metadata.name, Math.floor(column.width / 8))}
+            <div className="flex items-start overflow-hidden">
+                <span className="line-clamp-3 font-medium">
+                  {result.tender_metadata.name}
                 </span>
               </div>
               <div className="text-xs text-foreground/50 font-medium mt-0.5 flex gap-2 items-center">
@@ -195,7 +195,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
       case 'organization':
         return (
           <TableCell style={getCellStyle(column)}>
-            <span className="truncate block">
+            <span className="truncate block font-medium">
               {truncateText(result.tender_metadata.organization, Math.floor(column.width / 8))}
             </span>
           </TableCell>
@@ -267,7 +267,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
 
       case 'actions':
         return (
-          <TableCell className="p-1" style={getCellStyle(column)}>
+          <TableCell className="p-0" style={getCellStyle(column)}>
             <TenderRowActions
               result={result}
               onStatusChange={onStatusChange}

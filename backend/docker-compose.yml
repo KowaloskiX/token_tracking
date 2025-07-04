@@ -485,6 +485,38 @@ services:
       - tasks_network
     restart: always
 
+  # Historical Worker (Deployed on Droplet #2)
+  historical-worker-0:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    depends_on:
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
+      - TZ=Europe/Warsaw
+      - WORKER_INDEX=0
+      - TOTAL_HISTORICAL_WORKERS=${TOTAL_HISTORICAL_WORKERS}
+      - WORKER_TYPE=historical
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
   # Cleanup Worker (Deployed on Droplet #2)
   cleanup-worker-0:
     image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
@@ -689,6 +721,39 @@ services:
       - tasks_network
     restart: always
 
+  analysis-worker-5:
+    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+    command: python -m minerva.tasks.analyses.analysis_worker
+    depends_on:
+      - redis-analysis
+      - log-init
+    volumes:
+      - ./logs:/app/logs
+      - /var/huggingface_cache:/app/.cache/huggingface
+    environment:
+      - WORKER_ID=analysis-5
+      - REDIS_URL=redis://redis-analysis:6379/1
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - TZ=Europe/Warsaw
+      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+    networks:
+      - tasks_network
+    restart: always
+
 
   # Analysis Task Producer (runs once daily via scheduler)
   analysis-task-producer:
@@ -741,38 +806,38 @@ services:
     restart: always
 
   # Tender Analysis Scheduler Workers (Deployed on Droplet #2)
-  tender-analysis-worker-0:
-    image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
-    depends_on:
-      - log-init
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
-      - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
-      - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
-      - TZ=Europe/Warsaw
-      - WORKER_INDEX=0
-      - WORKER_TYPE=tender_analysis_scheduler
-      - USER_ID=6841db8e05c692b0289a70e0
-      - ANALYSIS_ID=6841e02305c692b0289a70e1
-    command: python -m minerva.tasks.tender_analysis_scheduler
-    networks:
-      - tasks_network
-    restart: always
+  # tender-analysis-worker-0:
+  #   image: ${REGISTRY}/${TASKS_IMAGE_NAME}:${GITHUB_SHA}
+  #   depends_on:
+  #     - log-init
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   environment:
+  #     - MONGODB_URI=${MONGODB_URI}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - PINECONE_API_KEY=${PINECONE_API_KEY}
+  #     - RESEND_API_KEY=${RESEND_API_KEY}
+  #     - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  #     - AWS_REGION=${AWS_REGION}
+  #     - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY}
+  #     - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
+  #     - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+  #     - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+  #     - ONEPLACE_EMAIL=${ONEPLACE_EMAIL}
+  #     - ONEPLACE_PASSWORD=${ONEPLACE_PASSWORD}
+  #     - TZ=Europe/Warsaw
+  #     - WORKER_INDEX=0
+  #     - WORKER_TYPE=tender_analysis_scheduler
+  #     - USER_ID=6841db8e05c692b0289a70e0
+  #     - ANALYSIS_ID=6841e02305c692b0289a70e1
+  #   command: python -m minerva.tasks.tender_analysis_scheduler
+  #   networks:
+  #     - tasks_network
+  #   restart: always
 
 
 networks:

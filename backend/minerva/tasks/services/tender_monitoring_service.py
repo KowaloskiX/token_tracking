@@ -14,6 +14,7 @@ from minerva.core.models.file import File
 from minerva.core.models.request.ai import LLMSearchRequest
 from minerva.core.services.deep_search_service import extract_text_from_files
 from minerva.core.services.llm_logic import ask_llm_logic
+from minerva.core.services.tender_notification_service import notify_tender_updates
 from minerva.tasks.services.analyze_tender_files import RAGManager
 from minerva.tasks.sources.source_types import TenderSourceType
 import tiktoken
@@ -183,6 +184,14 @@ class TenderMonitoringService:
                 })
         finally:
             print("")
+        
+        # Send notifications to users for the updates
+        try:
+            if updates_summary:
+                notification_results = await notify_tender_updates(updates_summary)
+                logger.info(f"Notification results: {notification_results}")
+        except Exception as e:
+            logger.error(f"Failed to send notifications for tender updates: {str(e)}")
         
         return updates_summary
     

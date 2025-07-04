@@ -21,9 +21,9 @@ from minerva.tasks.sources.ezamowienia.extract_tenders import TenderExtractor
 from minerva.tasks.sources.egospodarka.extract_tenders import EGospodarkaTenderExtractor
 from minerva.tasks.sources.logintrade.extract_tenders import LoginTradeExtractor
 from minerva.tasks.services.scraping_service import scrape_and_embed_all_sources
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Any, Dict, List, Optional, Union
-from minerva.core.models.request.tender_extract import ExtractionRequest, HistoricalExtractionRequest
+from minerva.core.models.request.tender_extract import ExtractionRequest
 from minerva.core.services.vectorstore.pinecone.upsert import EmbeddingConfig
 from minerva.tasks.services.tender_insert_service import TenderInsertConfig, TenderInsertService
 from minerva.tasks.sources.ezamawiajacy.extract_tenders import EzamawiajacyTenderExtractor
@@ -273,92 +273,6 @@ async def compare_scraping_results(request: CompareScrapingRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error comparing scraping results: {str(e)}")
 
-@router.post("/fetch-and-embed-historical")
-async def fetch_and_embed_historical_tenders(request: HistoricalExtractionRequest) -> Dict:
-    try:
-        try:
-            datetime.strptime(request.start_date, '%Y-%m-%d')
-            datetime.strptime(request.end_date, '%Y-%m-%d')
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid date format. Please use YYYY-MM-DD format."
-            )
-
-        historical_config = TenderInsertConfig.create_default(
-            pinecone_index="historical-tenders",
-            pinecone_namespace="",
-            embedding_model="text-embedding-3-large",
-            elasticsearch_index="historical-tenders"
-        )
-        
-        from minerva.tasks.services.historical_tender_service import HistoricalTenderInsertService
-        
-        historical_service = HistoricalTenderInsertService(config=historical_config)
-
-        inputs = {
-            'start_date': request.start_date,
-            'end_date': request.end_date,
-            'max_pages': request.max_pages
-        }
-
-        result = await historical_service.process_historical_tenders(inputs)
-        
-        metadata = result.get("metadata")
-        if metadata:
-            total_tenders = metadata.total_tenders if hasattr(metadata, 'total_tenders') else 0
-            pages_scraped = metadata.pages_scraped if hasattr(metadata, 'pages_scraped') else 0
-        else:
-            total_tenders = 0
-            pages_scraped = 0
-        
-        return {
-            "result": result,
-            "summary": {
-                "historical_tenders_found": total_tenders,
-                "pages_scraped": pages_scraped,
-                "pinecone_processed": result.get("embedding_result", {}).get("processed_count", 0),
-                "elasticsearch_processed": result.get("elasticsearch_result", {}).get("stored_count", 0),
-                "date_range": f"{request.start_date} to {request.end_date}"
-            }
-        }
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting historical tenders: {str(e)}")
-
-@router.post("/query-historical")
-async def query_historical_multipart_tenders(search_request: SearchRequest):
-    """
-    Query historical tenders specifically filtering for multi-part tenders
-    """
-    try:
-        query_tool = QueryTool(config=QueryConfig(
-            index_name="historical-tenders",
-            embedding_model=search_request.embedding_model or "text-embedding-3-large"
-        ))
-        
-        filter_conditions = {"total_parts": {"$gt": 1}}
-        
-        results = await query_tool.query_by_text(
-            query_text=search_request.query,
-            top_k=search_request.top_k,
-            score_threshold=search_request.score_threshold,
-            filter_conditions=filter_conditions
-        )
-        
-        return {
-            "matches": results["matches"],
-            "total_results": len(results["matches"]),
-            "filters_applied": results.get("filter_applied"),
-            "query": search_request.query,
-            "index": "historical-tenders",
-            "filter_note": "Filtered for multi-part tenders only (total_parts > 1)"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error querying multi-part historical tenders: {str(e)}")
-    
 
 class ExtractionRequest(BaseModel):
     # Existing oferent extraction parameters

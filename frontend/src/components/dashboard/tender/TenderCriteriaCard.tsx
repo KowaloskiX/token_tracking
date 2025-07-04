@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import EditableCriteriaItem from '@/components/dashboard/tenders/EditableCriteriaItem';
 import { TenderAnalysisResult, CriteriaAnalysisResult } from '@/types/tenders';
+import { FileData } from '@/types'; // NEW: Add this import
 import { useTendersTranslations, useCommonTranslations } from '@/hooks/useTranslations';
 
 interface TenderCriteriaCardProps {
@@ -18,13 +19,15 @@ interface TenderCriteriaCardProps {
   markdownComponents: Components;
   onCriteriaUpdate: (criteriaName: string, newSummary: string) => void;
   onExportCriteria: (criteria: CriteriaAnalysisResult[], fileName: string) => void;
+  onFilePreview?: (file: FileData, citationsForFile: string[]) => void; // NEW: Add this prop
 }
 
 export default function TenderCriteriaCard({ 
   tender, 
   markdownComponents, 
   onCriteriaUpdate, 
-  onExportCriteria 
+  onExportCriteria,
+  onFilePreview // NEW: Accept this prop
 }: TenderCriteriaCardProps) {
   const t = useTendersTranslations();
   const commonT = useCommonTranslations();
@@ -155,7 +158,7 @@ export default function TenderCriteriaCard({
                         onUpdate={(newSummary) => {
                           onCriteriaUpdate(item.criteria, newSummary);
                         }}
-                        onFilePreview={() => {}} // No file preview for now
+                        onFilePreview={onFilePreview} // NEW: Pass the file preview handler
                         allCitations={allCitations}
                       />
                     </div>

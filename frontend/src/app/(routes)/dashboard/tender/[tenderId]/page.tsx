@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { useMemo } from 'react';
 import { TenderAnalysisResult, TenderAnalysisUpdate } from '@/types/tenders';
+import { FileData } from '@/types'; // NEW: Add this import
 import { useTender } from '@/context/TenderContext';
 import { KanbanProvider } from '@/context/KanbanContext';
 import { useToast } from '@/hooks/use-toast';
@@ -40,7 +41,18 @@ import TenderDescriptionCard from '@/components/dashboard/tender/TenderDescripti
 import TenderUpdatesCard from '@/components/dashboard/tender/TenderUpdatesCard';
 import TenderFilesCard from '@/components/dashboard/tender/TenderFilesCard';
 import TenderCommentsCard from '@/components/dashboard/tender/TenderCommentsCard';
+import { FilePreview } from "@/components/dashboard/FilePreview"; // NEW: Add this import
 import JSZip from 'jszip';
+
+// NEW: Add interface for preview file
+interface PreviewFile {
+  _id: string;
+  name: string;
+  type: string;
+  url: string;
+  blob_url?: string;
+  citations?: string[];
+}
 
 interface UpdateSummary {
   update_id: string;
@@ -72,7 +84,31 @@ function TenderDetailsPageContent() {
   const [addToKanbanSuccess, setAddToKanbanSuccess] = useState<boolean | null>(null);
   const [addedToBoardId, setAddedToBoardId] = useState<string | null>(null);
 
+  // NEW: File preview state
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
   const { updateTenderStatus, fetchTenderResultById } = useTender();
+
+  // NEW: File preview handlers
+  const openFilePreview = (file: FileData, citationsForFile: string[]) => {
+    const previewFile: PreviewFile = {
+      _id: file._id || file.filename,
+      name: file.filename,
+      type: file.type,
+      url: file.url || '',
+      blob_url: file.blob_url,
+      citations: citationsForFile
+    };
+
+    setPreviewFile(previewFile);
+    setIsPreviewOpen(true);
+  };
+
+  const closeFilePreview = () => {
+    setIsPreviewOpen(false);
+    setPreviewFile(null);
+  };
 
   // Markdown components for rendering
   const markdownComponents: Components = useMemo(() => ({
@@ -449,7 +485,7 @@ function TenderDetailsPageContent() {
         {/* Main Content */}
         <div className="w-full">
           <div className="container mx-auto px-4 py-6">
-            <div className="max-w-4xl mx-auto space-y-6 pb-32"> {/* Increased bottom padding for fixed buttons */}
+            <div className="max-w-4xl mx-auto space-y-6 pb-32">
               <TenderDescriptionCard 
                 tender={tender}
                 markdownComponents={markdownComponents}
@@ -467,6 +503,7 @@ function TenderDetailsPageContent() {
                 markdownComponents={markdownComponents}
                 onCriteriaUpdate={handleCriteriaUpdate}
                 onExportCriteria={exportCriteriaToXls}
+                onFilePreview={openFilePreview} // NEW: Pass the file preview handler
               />
 
               <TenderUpdatesCard
@@ -479,13 +516,10 @@ function TenderDetailsPageContent() {
               <TenderFilesCard tender={tender} />
 
               <TenderCommentsCard tender={tender} />
-
-              {/* Remove TenderActionButtons from here - it's now fixed at bottom */}
             </div>
           </div>
         </div>
 
-        {/* Fixed Action Buttons - outside the scrollable content */}
         <TenderActionButtons
           tender={tender}
           localStatus={localStatus}
@@ -495,7 +529,15 @@ function TenderDetailsPageContent() {
         />
       </div>
 
-      {/* Dialogs - existing code stays the same */}
+      {/* NEW: File Preview Modal */}
+      {isPreviewOpen && previewFile && (
+        <FilePreview
+          file={previewFile}
+          onClose={closeFilePreview}
+        />
+      )}
+
+      {/* Existing dialogs remain the same */}
       {showAddToKanban && tender && (
         <AddToKanbanDialog 
           open={showAddToKanban}
@@ -515,7 +557,6 @@ function TenderDetailsPageContent() {
         />
       )}
 
-      {/* Popup Sukcesu/Błędu */}
       {popupOpen && (
         <Dialog open={popupOpen} onOpenChange={setPopupOpen}>
           <DialogContent className="sm:max-w-[425px]">

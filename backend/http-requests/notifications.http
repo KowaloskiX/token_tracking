@@ -1,0 +1,83 @@
+@host = http://localhost:8000
+
+
+
+###
+
+
+
+# Get all notifications for current user
+// @prompt access_token
+
+GET {{host}}/notifications/
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Get only unread notifications for current user
+// @prompt access_token
+
+GET {{host}}/notifications/?unread_only=true
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Mark a notification as read
+// @prompt access_token
+// @prompt notification_id
+
+POST {{host}}/notifications/mark-read/{{notification_id}}
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Mark all notifications as read
+// @prompt access_token
+
+POST {{host}}/notifications/mark-all-read
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Delete a notification
+// @prompt access_token
+// @prompt notification_id
+
+DELETE {{host}}/notifications/{{notification_id}}
+Authorization: Bearer {{access_token}}
+
+
+
+###
+
+
+
+# Create a notification
+// @prompt access_token
+
+POST {{host}}/notifications/
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+    "user_id": "67b4831ce1bf3b16f923e890",
+    "title": "Test notification",
+    "content": "<b>This</b> is a <i>test</i> notification.",
+    "type": "update"
+}

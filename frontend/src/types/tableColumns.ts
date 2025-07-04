@@ -184,9 +184,9 @@ export const DEFAULT_COLUMNS: StandardColumnConfig[] = [
     type: 'actions',
     key: 'actions',
     label: '',
-    width: 40,
-    minWidth: 30,
-    maxWidth: 50,
+    width: 10,
+    minWidth: 10,
+    maxWidth: 24,
     visible: true,
     sortable: false, // Actions column should not be sortable
     resizable: false,

@@ -110,25 +110,6 @@ export function TendersSidebarContent() {
       <SidebarGroupLabel>{navT('tenders')}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="w-full space-y-1">
-          {/* Notifications button with unread count */}
-          <SidebarMenuItem className="w-full">
-            <SidebarMenuButton
-              className={`w-full text-sidebar-foreground ${pathname?.startsWith('/dashboard/notifications') ? 'bg-secondary' : ''}`}
-              onClick={() => {
-                setActiveTab('');
-                router.push('/dashboard/notifications');
-              }}
-            >
-              <Bell className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
-              <span className="flex-1 truncate min-w-0">{navT('notifications')}</span>
-              {unreadCount > 0 && (
-                <SidebarMenuBadge className="bg-primary text-primary-foreground">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </SidebarMenuBadge>
-              )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
           <Collapsible 
             open={isSearchOpen} 
             onOpenChange={(open) => {
@@ -142,7 +123,7 @@ export function TendersSidebarContent() {
           >
             <CollapsibleTrigger asChild>
               <SidebarMenuButton 
-                className={`w-full text-sidebar-foreground ${activeTab === 'search' ? 'bg-secondary' : ''}`}
+                className={`w-full text-sidebar-foreground ${activeTab === 'search' ? 'bg-white/20 shadow-sm' : ''}`}
               >
                 <Search className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
                 <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.search')}</span>
@@ -210,7 +191,7 @@ export function TendersSidebarContent() {
             >
               <CollapsibleTrigger asChild>
                 <SidebarMenuButton 
-                  className={`w-full text-sidebar-foreground ${activeTab === 'analyze' ? 'bg-secondary' : ''}`}
+                  className={`w-full text-sidebar-foreground ${activeTab === 'analyze' ? 'bg-white/20 shadow-sm' : ''}`}
                 >
                   <MessageSquare className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
                   <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.analyze')}</span>
@@ -235,7 +216,7 @@ export function TendersSidebarContent() {
             // Show as simple menu item that navigates to chat page when not on a specific chat
             <SidebarMenuItem className="w-full">
               <SidebarMenuButton 
-                className={`w-full text-sidebar-foreground ${activeTab === 'analyze' ? 'bg-secondary' : ''}`}
+                className={`w-full text-sidebar-foreground ${activeTab === 'analyze' ? 'bg-white/20 shadow-sm' : ''}`}
                 onClick={() => {
                   router.push('/dashboard/tenders/chat');
                   setActiveTab('analyze');
@@ -250,7 +231,7 @@ export function TendersSidebarContent() {
           {/* Zarządzaj as a simple button */}
           <SidebarMenuItem className="w-full">
             <SidebarMenuButton 
-              className={`w-full text-sidebar-foreground ${activeTab === 'manage' ? 'bg-secondary' : ''}`}
+              className={`w-full text-sidebar-foreground ${activeTab === 'manage' ? 'bg-white/20 shadow-sm' : ''}`}
               onClick={() => {
                 router.push('/dashboard/tenders/management');
                 setActiveTab('manage');
@@ -258,6 +239,25 @@ export function TendersSidebarContent() {
             >
               <KanbanSquare className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
               <span className="flex-1 truncate min-w-0">{t('tenders.sidebar.manage')}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          {/* Notifications button with unread count */}
+          <SidebarMenuItem className="w-full">
+            <SidebarMenuButton
+              className={`w-full text-sidebar-foreground ${pathname?.startsWith('/dashboard/notifications') ? 'bg-white/20 shadow-sm' : ''}`}
+              onClick={() => {
+                setActiveTab('');
+                router.push('/dashboard/notifications');
+              }}
+            >
+              <Bell className="shrink-0 text-sidebar-foreground h-4 w-4 mr-2" />
+              <span className="flex-1 truncate min-w-0">{navT('notifications')}</span>
+              {unreadCount > 0 && (
+                <SidebarMenuBadge className="bg-primary mr-2 text-[0.55rem] text-primary-foreground">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </SidebarMenuBadge>
+              )}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

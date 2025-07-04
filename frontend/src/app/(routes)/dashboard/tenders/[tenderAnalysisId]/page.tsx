@@ -41,23 +41,29 @@ const TenderAnalysis = () => {
         setIsDrawerVisible(visible);
 
         if (visible) {
-            // Drawer is opening
+            // Drawer is opening - no need to delay anything
             setIsDrawerAnimating(false);
         } else {
-            // Drawer is closing - do everything immediately for smooth transition
-            setIsDrawerAnimating(false); // No need to animate this anymore
+            // Drawer is closing - start animation and delay clearing selectedResult
+            setIsDrawerAnimating(true);
 
-            if (selectedResult) {
-                console.log("[TenderAnalysis] Clearing selected result immediately");
-                setSelectedResult(null);
+            // Wait for drawer animation to complete (300ms as per ExpandableDrawer CSS)
+            setTimeout(() => {
+                setIsDrawerAnimating(false);
 
-                // Also clean up URL immediately - modern browsers handle this smoothly
-                const params = new URLSearchParams(window.location.search);
-                params.delete("tenderId");
-                router.replace(`?${params.toString()}`, { scroll: false });
-            }
+                // Only clear if drawer is still not visible (user didn't reopen it)
+                if (!isDrawerVisible && selectedResult) {
+                    console.log("[TenderAnalysis] Clearing selected result after animation complete");
+                    setSelectedResult(null);
+
+                    // Also update URL to remove tenderId
+                    const params = new URLSearchParams(window.location.search);
+                    params.delete("tenderId");
+                    router.replace(`?${params.toString()}`, { scroll: false });
+                }
+            }, 320); // Slightly longer than the 300ms animation to ensure it's complete
         }
-    }, [selectedResult, setSelectedResult, router]);
+    }, [selectedResult, setSelectedResult, router, isDrawerVisible]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -103,10 +109,9 @@ const TenderAnalysis = () => {
 
     return (
         <>
-            <div className="w-full flex h-[100svh] overflow-hidden">
+            <div className="flex h-[100svh] flex-1 overflow-hidden min-w-0">
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                     <div className="flex-none">
-                        <TenderHeader />
                     </div>
                     <div className="flex-1 overflow-auto scrollbar-hide">
                         <TendersList
@@ -114,7 +119,7 @@ const TenderAnalysis = () => {
                             setAllResults={setAllResults}
                             drawerRef={drawerRef}
                             setCurrentTenderBoardStatus={setCurrentTenderBoardStatus}
-                            isDrawerVisible={isDrawerVisible || isDrawerAnimating}
+                            isDrawerVisible={isDrawerVisible || isDrawerAnimating} 
                             onDrawerVisibilityChange={handleDrawerVisibilityChange}
                         />
                     </div>

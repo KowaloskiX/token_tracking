@@ -74,7 +74,7 @@ export default function DashboardLayout({
         <NotificationProvider>
           <div className="w-full flex h-[100svh] sm:h-screen overflow-hidden">
             <SidebarComponent />
-            <div className="flex h-[100svh] sm:h-screen w-full relative">
+            <div className="flex h-[100svh] sm:h-screen flex-1 relative min-w-0">
               {children}
             </div>
           </div>

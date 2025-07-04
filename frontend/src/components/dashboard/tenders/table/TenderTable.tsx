@@ -89,7 +89,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     availableCriteria,
     tableWidth,
     selectedResult, // NEW: Pass selectedResult to enable sidebar-aware column sizing
-    isDrawerVisible, // NEW: Pass the actual drawer visibility
   });
 
   // Monitor table container width

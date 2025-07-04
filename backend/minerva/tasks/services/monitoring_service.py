@@ -2,7 +2,8 @@
 import asyncio
 from datetime import datetime
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from minerva.core.services.tender_notification_service import notify_tender_updates
 from minerva.tasks.sources.tender_monitor_manager import TenderMonitoringManager
 
 logger = logging.getLogger("minerva.tasks.monitoring_tasks")
@@ -38,6 +39,20 @@ async def get_updates_for_tenders(date: Optional[str] = None, worker_index: int 
         {source.value: result if not isinstance(result, Exception) else str(result)}
         for source, result in zip(assigned_sources, results)
     ]
+
+    # Collect all successful updates for coordination-level notifications
+    all_updates: List[Dict] = []
+    for source, result in zip(assigned_sources, results):
+        if not isinstance(result, Exception) and isinstance(result, list):
+            all_updates.extend(result)
+    
+    # Send coordination-level notifications if we have updates and this is the primary worker
+    if all_updates and worker_index == 0:
+        try:
+            coordination_notification_results = await notify_tender_updates(all_updates)
+            logger.info(f"Coordination-level notification results: {coordination_notification_results}")
+        except Exception as e:
+            logger.error(f"Failed to send coordination-level notifications: {str(e)}")
 
     logger.info("Monitoring completed.")
     return {

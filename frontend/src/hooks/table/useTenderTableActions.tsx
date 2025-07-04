@@ -14,7 +14,6 @@ interface UseTenderTableActionsProps {
   currentPage: number;
   getTenderBoards: (tenderId: string) => string[];
   setLastKnownPage: (page: number) => void;
-  onDrawerVisibilityChange?: (visible: boolean) => void; // NEW: Add callback
 }
 
 export const useTenderTableActions = ({
@@ -27,8 +26,7 @@ export const useTenderTableActions = ({
   drawerRef,
   currentPage,
   getTenderBoards,
-  setLastKnownPage,
-  onDrawerVisibilityChange
+  setLastKnownPage
 }: UseTenderTableActionsProps) => {
   const router = useRouter();
   const {
@@ -42,6 +40,8 @@ export const useTenderTableActions = ({
   const justMarkedAsUnreadRef = useRef<string | null>(null);
   const operationInProgressRef = useRef<Set<string>>(new Set());
   const lastClickTimeRef = useRef<number>(0);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+
 
   const isUpdatedAfterOpened = useCallback((result: TenderAnalysisResult) => {
     if (!result.updated_at || !result.opened_at) return false;
@@ -64,10 +64,8 @@ export const useTenderTableActions = ({
     }
 
     if (event?.ctrlKey || event?.metaKey) {
-      const params = new URLSearchParams(window.location.search);
-      params.set("page", currentPage.toString());
-      params.set("tenderId", result._id!);
-      const url = `${window.location.origin}/dashboard/tenders/${selectedAnalysis?._id}?${params.toString()}`;
+      // NEW: Open the individual tender page instead of the analysis page
+      const url = `${window.location.origin}/dashboard/tender/${result._id}`;
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -90,8 +88,7 @@ export const useTenderTableActions = ({
 
       setCurrentTenderBoardStatus(boardStatus);
       setSelectedResult(result);
-
-      onDrawerVisibilityChange?.(true);
+      setSidebarVisible(true); // NEW: Set sidebar visible when opening
       drawerRef.current?.setVisibility(true);
 
       startTransition(() => {
@@ -169,8 +166,7 @@ export const useTenderTableActions = ({
     setAllResults,
     markAsOpened,
     isUpdatedAfterOpened,
-    setLastKnownPage,
-    onDrawerVisibilityChange
+    setLastKnownPage
   ]);
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
@@ -183,7 +179,7 @@ export const useTenderTableActions = ({
       
       try {
         justMarkedAsUnreadRef.current = result._id!;
-        onDrawerVisibilityChange?.(false);
+        setSidebarVisible(false); // NEW: Set sidebar not visible when marking as unread
         setSelectedResult(null);
         drawerRef.current?.setVisibility(false);
         
@@ -254,7 +250,7 @@ export const useTenderTableActions = ({
     if (currentPage > 1) {
       setLastKnownPage(currentPage);
     }
-    onDrawerVisibilityChange?.(false);
+    setSidebarVisible(false); // NEW: Set sidebar not visible when closing
     setSelectedResult(null);
     drawerRef.current?.setVisibility(false);
 

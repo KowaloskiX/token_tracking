@@ -3,7 +3,7 @@ from venv import logger
 from minerva.config.constants import PLAN_TYPES, PlanTypeLiteral, UserRole
 from minerva.core.models.utils import PyObjectId
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, ClassVar
+from typing import Optional, ClassVar, List
 from datetime import datetime
 from passlib.context import CryptContext
 from bson import ObjectId
@@ -18,6 +18,12 @@ class MarketingConsent(str, Enum):
     MARKETING = "marketing_emails"
     SOCIAL = "social_emails"
     SECURITY = "security_emails"
+
+class LoginEvent(BaseModel):
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    login_method: str  # "email_password", "google_oauth"
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
 
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -35,6 +41,7 @@ class User(BaseModel):
     daily_tokens: Optional[int] = 0
     last_token_reset: Optional[datetime] = Field(default_factory=datetime.utcnow)
     active: bool = True
+    preferred_language: Optional[str] = Field(default="pl")  # User's preferred language (pl, en, de)
     marketing_consent: dict[str, bool] = Field(
         default_factory=lambda: {
             "communication_emails": True,
@@ -43,6 +50,10 @@ class User(BaseModel):
             "security_emails": True
         }
     )
+    # Login tracking fields
+    last_login: Optional[datetime] = None
+    login_history: List[LoginEvent] = Field(default_factory=list)
+    login_count: int = 0
 
     class Config:
         arbitrary_types_allowed = True
@@ -141,3 +152,50 @@ class User(BaseModel):
         if not self.org_id:
             return 0
         return await db["users"].count_documents({"org_id": self.org_id})
+
+    async def record_login(self, login_method: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+        """Record a login event for analytics tracking"""
+        try:
+            now = datetime.utcnow()
+            login_event = LoginEvent(
+                timestamp=now,
+                login_method=login_method,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            # Update user document with login information
+            update_data = {
+                "$set": {
+                    "last_login": now
+                },
+                "$inc": {
+                    "login_count": 1
+                },
+                "$push": {
+                    "login_history": {
+                        "$each": [login_event.dict()],
+                        "$slice": -100  # Keep only the last 100 login events
+                    }
+                }
+            }
+            
+            result = await db["users"].update_one(
+                {"_id": self.id},
+                update_data
+            )
+            
+            if result.modified_count > 0:
+                # Update local instance
+                self.last_login = now
+                self.login_count += 1
+                self.login_history.append(login_event)
+                # Keep only last 100 events in memory too
+                if len(self.login_history) > 100:
+                    self.login_history = self.login_history[-100:]
+                
+            return result.modified_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error recording login for user {self.id}: {str(e)}")
+            return False

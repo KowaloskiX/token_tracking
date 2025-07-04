@@ -14,37 +14,35 @@ router = APIRouter()
 
 # Active users list for reliable analytics (excluding inactive users)
 ACTIVE_USER_EMAILS = [
-    "daniel.heina@ondre.pl",
-    "biuro@hydratec.pl", 
-    "office@lafrentz.pl",
-    "jasek@jasek-transport.pl",
-    "sklep@dtpsoftware.pl",
-    "jan.borowiak@foliarex.com.pl",
-    "marcin.krusze@neomedpolska.pl",
-    "agnieszka.czolnik@esinvest.pl",
-    "bartlomiejsosna1@gmail.com",
-    "m.mielcarek@mph.net.pl",
-    "kontakt@proton-polska.pl",
-    "fgoeldner@annfil.pl",
-    "test@account.ai",
-    "pawel.zawislak@ironmountain.com",
-    "abasinska@hammer.pl",
-    "bartek@senda.com.pl",
-    "inwestycje@kznrail.pl",
-    "boguslaw.groblewski@arisonconstruction.pl"
 ]
 
 async def get_active_user_ids():
     """Get ObjectIds for active users to filter analytics queries"""
-    active_users = await db.users.find({
-        "email": {"$in": ACTIVE_USER_EMAILS}
-    }, {"_id": 1}).to_list(None)
+    # If ACTIVE_USER_EMAILS is empty, include all active users
+    if not ACTIVE_USER_EMAILS:
+        active_users = await db.users.find({
+            "active": {"$ne": False}  # Include users where active is True or doesn't exist
+        }, {"_id": 1}).to_list(None)
+    else:
+        active_users = await db.users.find({
+            "email": {"$in": ACTIVE_USER_EMAILS}
+        }, {"_id": 1}).to_list(None)
     return [user["_id"] for user in active_users]
 
 class MetricsPeriod(BaseModel):
     daily: float  # Average per business day
     weekly: float  # Weekly total (actual if <7 days, projected if ≥7 days)
     monthly: float  # Monthly total (actual if <14 days, projected if ≥14 days)
+
+class LoginMetrics(BaseModel):
+    """Login-specific metrics for user activity analysis"""
+    total_logins: int
+    unique_users_logged_in: int
+    logins_by_method: Dict[str, int]  # email_password, google_oauth
+    avg_logins_per_user: float
+    peak_login_hour: int
+    peak_login_day: str
+    repeat_login_rate: float  # Users who logged in more than once
 
 class UserEngagementMetrics(BaseModel):
     total_users: int
@@ -58,6 +56,7 @@ class TenderAnalysisMetrics(BaseModel):
     active_analyses: int
     analyses_created: MetricsPeriod
     tender_results_generated: MetricsPeriod
+    public_tenders_opened: MetricsPeriod  # Number of public tender results opened in period
     tender_open_rate: float  # Percentage of results that were opened
     avg_time_to_open_hours: float  # Average time from created to opened
     avg_criteria_per_analysis: float
@@ -97,6 +96,7 @@ class ComprehensiveAnalytics(BaseModel):
     conversations: ConversationMetrics
     organizations: OrganizationMetrics
     platform_health: PlatformHealthMetrics
+    login_analytics: Optional[LoginMetrics] = None
 
 @router.get("/analytics/comprehensive", response_model=ComprehensiveAnalytics)
 async def get_comprehensive_analytics(
@@ -287,11 +287,18 @@ async def get_comprehensive_analytics(
         criteria_result = await db.tender_analysis.aggregate(pipeline_criteria).to_list(1)
         avg_criteria = round(criteria_result[0]["avg_criteria"], 2) if criteria_result else 0
         
+        # Count public tenders opened in the period
+        opened_in_period = await db.tender_analysis_results.count_documents({
+            "user_id": {"$in": active_user_ids},
+            "opened_at": {"$gte": start_dt, "$exists": True, "$ne": None}
+        })
+        
         tender_analysis_metrics = TenderAnalysisMetrics(
             total_analyses=total_analyses,
             active_analyses=active_analyses,
             analyses_created=calculate_period_metrics(analyses_created, days_back),
             tender_results_generated=calculate_period_metrics(tender_results_created, days_back),
+            public_tenders_opened=calculate_period_metrics(opened_in_period, days_back),
             tender_open_rate=open_rate,
             avg_time_to_open_hours=avg_time_to_open,
             avg_criteria_per_analysis=avg_criteria
@@ -502,6 +509,99 @@ async def get_comprehensive_analytics(
             successful_analysis_rate=success_rate
         )
         
+        # === LOGIN ANALYTICS ===
+        login_analytics = None
+        try:
+            # Calculate login metrics for the same period
+            login_pipeline = [
+                {
+                    "$match": {
+                        "_id": {"$in": active_user_ids}
+                    }
+                },
+                {
+                    "$project": {
+                        "login_history": {
+                            "$filter": {
+                                "input": "$login_history",
+                                "cond": {"$gte": ["$$this.timestamp", start_dt]}
+                            }
+                        }
+                    }
+                },
+                {
+                    "$unwind": {
+                        "$path": "$login_history",
+                        "preserveNullAndEmptyArrays": False
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_logins": {"$sum": 1},
+                        "unique_users": {"$addToSet": "$_id"},
+                        "login_methods": {"$push": "$login_history.login_method"},
+                        "login_hours": {"$push": {"$hour": "$login_history.timestamp"}},
+                        "login_days": {"$push": {"$dayOfWeek": "$login_history.timestamp"}},
+                        "user_login_counts": {
+                            "$push": {
+                                "user_id": "$_id",
+                                "login_method": "$login_history.login_method"
+                            }
+                        }
+                    }
+                }
+            ]
+            
+            login_result = await db.users.aggregate(login_pipeline).to_list(1)
+            
+            if login_result:
+                login_data = login_result[0]
+                
+                # Process login methods
+                method_counts = {}
+                for method in login_data.get("login_methods", []):
+                    method_counts[method] = method_counts.get(method, 0) + 1
+                
+                # Find peak login hour
+                hour_counts = {}
+                for hour in login_data.get("login_hours", []):
+                    hour_counts[hour] = hour_counts.get(hour, 0) + 1
+                peak_hour = max(hour_counts.keys(), key=lambda k: hour_counts[k]) if hour_counts else 0
+                
+                # Find peak login day
+                day_names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+                day_counts = {}
+                for day in login_data.get("login_days", []):
+                    day_counts[day] = day_counts.get(day, 0) + 1
+                peak_day_num = max(day_counts.keys(), key=lambda k: day_counts[k]) if day_counts else 1
+                peak_day = day_names[peak_day_num - 1]  # dayOfWeek is 1-indexed, Sunday = 1
+                
+                unique_users_count = len(login_data.get("unique_users", []))
+                total_logins = login_data.get("total_logins", 0)
+                
+                # Calculate repeat login rate
+                user_login_counts = {}
+                for item in login_data.get("user_login_counts", []):
+                    user_id = item["user_id"]
+                    user_login_counts[user_id] = user_login_counts.get(user_id, 0) + 1
+                
+                repeat_users = sum(1 for count in user_login_counts.values() if count > 1)
+                repeat_rate = (repeat_users / max(unique_users_count, 1)) * 100
+                
+                login_analytics = LoginMetrics(
+                    total_logins=total_logins,
+                    unique_users_logged_in=unique_users_count,
+                    logins_by_method=method_counts,
+                    avg_logins_per_user=round(total_logins / max(unique_users_count, 1), 2),
+                    peak_login_hour=peak_hour,
+                    peak_login_day=peak_day,
+                    repeat_login_rate=round(repeat_rate, 2)
+                )
+        
+        except Exception as e:
+            logger.warning(f"Could not calculate login analytics: {str(e)}")
+        
         return ComprehensiveAnalytics(
             period_start=start_dt,
             period_end=end_dt,
@@ -510,7 +610,8 @@ async def get_comprehensive_analytics(
             assistants=assistant_metrics,
             conversations=conversation_metrics,
             organizations=organization_metrics,
-            platform_health=platform_health
+            platform_health=platform_health,
+            login_analytics=login_analytics
         )
         
     except Exception as e:
@@ -1134,3 +1235,389 @@ async def get_users_with_active_tenders(
     except Exception as e:
         logger.error(f"Error getting users with active tenders: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting users with active tenders: {str(e)}")
+
+class DailyLoginData(BaseModel):
+    date: str
+    total_logins: int
+    unique_users: int
+    email_logins: int
+    google_logins: int
+    new_user_logins: int
+
+@router.get("/analytics/login-metrics", response_model=LoginMetrics)
+async def get_login_metrics(
+    days_back: Optional[int] = Query(30, description="Number of days to look back"),
+    current_user: User = Depends(get_current_user)
+):
+    """Get comprehensive login analytics"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days_back)
+        
+        # Get active user IDs for filtering
+        active_user_ids = await get_active_user_ids()
+        
+        # Aggregate login data from user login_history
+        pipeline = [
+            {
+                "$match": {
+                    "_id": {"$in": active_user_ids}
+                }
+            },
+            {
+                "$project": {
+                    "login_history": {
+                        "$filter": {
+                            "input": "$login_history",
+                            "cond": {"$gte": ["$$this.timestamp", start_dt]}
+                        }
+                    }
+                }
+            },
+            {
+                "$unwind": "$login_history"
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_logins": {"$sum": 1},
+                    "unique_users": {"$addToSet": "$_id"},
+                    "login_methods": {"$push": "$login_history.login_method"},
+                    "login_hours": {"$push": {"$hour": "$login_history.timestamp"}},
+                    "login_days": {"$push": {"$dayOfWeek": "$login_history.timestamp"}},
+                    "user_login_counts": {
+                        "$push": {
+                            "user_id": "$_id",
+                            "login_method": "$login_history.login_method"
+                        }
+                    }
+                }
+            }
+        ]
+        
+        result = await db.users.aggregate(pipeline).to_list(1)
+        
+        if not result:
+            return LoginMetrics(
+                total_logins=0,
+                unique_users_logged_in=0,
+                logins_by_method={},
+                avg_logins_per_user=0,
+                peak_login_hour=0,
+                peak_login_day="Monday",
+                repeat_login_rate=0
+            )
+        
+        data = result[0]
+        
+        # Process login methods
+        method_counts = {}
+        for method in data.get("login_methods", []):
+            method_counts[method] = method_counts.get(method, 0) + 1
+        
+        # Find peak login hour
+        hour_counts = {}
+        for hour in data.get("login_hours", []):
+            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+        peak_hour = max(hour_counts.keys(), key=lambda k: hour_counts[k]) if hour_counts else 0
+        
+        # Find peak login day
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_counts = {}
+        for day in data.get("login_days", []):
+            day_counts[day] = day_counts.get(day, 0) + 1
+        peak_day_num = max(day_counts.keys(), key=lambda k: day_counts[k]) if day_counts else 1
+        peak_day = day_names[peak_day_num - 1]  # dayOfWeek is 1-indexed, Sunday = 1
+        
+        unique_users_count = len(data.get("unique_users", []))
+        total_logins = data.get("total_logins", 0)
+        
+        # Calculate repeat login rate
+        user_login_counts = {}
+        for item in data.get("user_login_counts", []):
+            user_id = item["user_id"]
+            user_login_counts[user_id] = user_login_counts.get(user_id, 0) + 1
+        
+        repeat_users = sum(1 for count in user_login_counts.values() if count > 1)
+        repeat_rate = (repeat_users / max(unique_users_count, 1)) * 100
+        
+        return LoginMetrics(
+            total_logins=total_logins,
+            unique_users_logged_in=unique_users_count,
+            logins_by_method=method_counts,
+            avg_logins_per_user=round(total_logins / max(unique_users_count, 1), 2),
+            peak_login_hour=peak_hour,
+            peak_login_day=peak_day,
+            repeat_login_rate=round(repeat_rate, 2)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating login metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating login metrics: {str(e)}")
+
+@router.get("/analytics/daily-logins", response_model=List[DailyLoginData])
+async def get_daily_login_breakdown(
+    days_back: Optional[int] = Query(30, description="Number of days to look back"),
+    current_user: User = Depends(get_current_user)
+):
+    """Get daily breakdown of login activity"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days_back)
+        
+        active_user_ids = await get_active_user_ids()
+        
+        # Get user creation dates for new user detection
+        user_creation_dates = {}
+        async for user in db.users.find({"_id": {"$in": active_user_ids}}, {"_id": 1, "created_at": 1}):
+            user_creation_dates[user["_id"]] = user["created_at"]
+        
+        pipeline = [
+            {
+                "$match": {
+                    "_id": {"$in": active_user_ids}
+                }
+            },
+            {
+                "$project": {
+                    "login_history": {
+                        "$filter": {
+                            "input": "$login_history",
+                            "cond": {"$gte": ["$$this.timestamp", start_dt]}
+                        }
+                    }
+                }
+            },
+            {
+                "$unwind": "$login_history"
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "date": {
+                            "$dateToString": {
+                                "format": "%Y-%m-%d",
+                                "date": "$login_history.timestamp"
+                            }
+                        }
+                    },
+                    "total_logins": {"$sum": 1},
+                    "unique_users": {"$addToSet": "$_id"},
+                    "login_details": {
+                        "$push": {
+                            "user_id": "$_id",
+                            "method": "$login_history.login_method"
+                        }
+                    }
+                }
+            },
+            {
+                "$sort": {"_id.date": -1}
+            }
+        ]
+        
+        daily_data = await db.users.aggregate(pipeline).to_list(None)
+        
+        result = []
+        for day in daily_data:
+            date_str = day["_id"]["date"]
+            day_date = datetime.strptime(date_str, "%Y-%m-%d")
+            
+            # Count login methods
+            email_logins = sum(1 for detail in day["login_details"] if detail["method"] == "email_password")
+            google_logins = sum(1 for detail in day["login_details"] if detail["method"] == "google_oauth")
+            
+            # Count new users who logged in this day
+            new_user_logins = 0
+            for detail in day["login_details"]:
+                user_creation = user_creation_dates.get(detail["user_id"])
+                if user_creation and user_creation.date() == day_date.date():
+                    new_user_logins += 1
+            
+            result.append(DailyLoginData(
+                date=date_str,
+                total_logins=day["total_logins"],
+                unique_users=len(day["unique_users"]),
+                email_logins=email_logins,
+                google_logins=google_logins,
+                new_user_logins=new_user_logins
+            ))
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error generating daily login breakdown: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating daily login breakdown: {str(e)}")
+
+@router.get("/analytics/login-patterns", response_model=Dict[str, Any])
+async def get_login_patterns(
+    days_back: Optional[int] = Query(30, description="Number of days to analyze"),
+    current_user: User = Depends(get_current_user)
+):
+    """Analyze user login patterns and behavior"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days_back)
+        
+        active_user_ids = await get_active_user_ids()
+        
+        # Analyze login frequency patterns
+        pipeline = [
+            {
+                "$match": {
+                    "_id": {"$in": active_user_ids}
+                }
+            },
+            {
+                "$project": {
+                    "email": 1,
+                    "login_count": 1,
+                    "last_login": 1,
+                    "recent_logins": {
+                        "$filter": {
+                            "input": "$login_history",
+                            "cond": {"$gte": ["$$this.timestamp", start_dt]}
+                        }
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "email": 1,
+                    "login_count": 1,
+                    "last_login": 1,
+                    "recent_login_count": {"$size": "$recent_logins"},
+                    "login_methods_used": {
+                        "$setUnion": ["$recent_logins.login_method", []]
+                    }
+                }
+            }
+        ]
+        
+        user_patterns = await db.users.aggregate(pipeline).to_list(None)
+        
+        # Categorize users by login frequency
+        categories = {
+            "very_active": [],  # 10+ logins in period
+            "active": [],       # 3-9 logins in period
+            "occasional": [],   # 1-2 logins in period
+            "inactive": []      # 0 logins in period
+        }
+        
+        method_preferences = {"email_only": 0, "google_only": 0, "both": 0}
+        
+        for user in user_patterns:
+            recent_count = user["recent_login_count"]
+            methods = user["login_methods_used"]
+            
+            # Categorize by frequency
+            if recent_count >= 10:
+                categories["very_active"].append(user["email"])
+            elif recent_count >= 3:
+                categories["active"].append(user["email"])
+            elif recent_count >= 1:
+                categories["occasional"].append(user["email"])
+            else:
+                categories["inactive"].append(user["email"])
+            
+            # Analyze method preferences
+            if len(methods) == 1:
+                if "email_password" in methods:
+                    method_preferences["email_only"] += 1
+                elif "google_oauth" in methods:
+                    method_preferences["google_only"] += 1
+            elif len(methods) > 1:
+                method_preferences["both"] += 1
+        
+        return {
+            "period_days": days_back,
+            "user_categories": {
+                category: {
+                    "count": len(users),
+                    "percentage": round((len(users) / max(len(user_patterns), 1)) * 100, 2)
+                }
+                for category, users in categories.items()
+            },
+            "login_method_preferences": method_preferences,
+            "top_active_users": categories["very_active"][:10],  # Top 10 most active
+            "summary": {
+                "total_analyzed_users": len(user_patterns),
+                "users_with_recent_activity": len(user_patterns) - len(categories["inactive"]),
+                "activity_rate": round(((len(user_patterns) - len(categories["inactive"])) / max(len(user_patterns), 1)) * 100, 2)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating login patterns: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating login patterns: {str(e)}")
+
+@router.get("/analytics/users-by-last-login", response_model=List[Dict[str, Any]])
+async def get_users_by_last_login(
+    days_since_login: Optional[int] = Query(7, description="Show users who haven't logged in for this many days"),
+    current_user: User = Depends(get_current_user)
+):
+    """Get users who haven't logged in for a specified number of days"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        cutoff_date = datetime.utcnow() - timedelta(days=days_since_login)
+        
+        active_user_ids = await get_active_user_ids()
+        
+        # Find users who haven't logged in recently
+        inactive_users = await db.users.find({
+            "_id": {"$in": active_user_ids},
+            "$or": [
+                {"last_login": {"$lt": cutoff_date}},
+                {"last_login": {"$exists": False}},
+                {"last_login": None}
+            ]
+        }, {
+            "email": 1,
+            "name": 1,
+            "created_at": 1,
+            "last_login": 1,
+            "login_count": 1,
+            "total_tokens": 1
+        }).to_list(None)
+        
+        result = []
+        for user in inactive_users:
+            last_login = user.get("last_login")
+            days_since = None
+            if last_login:
+                days_since = (datetime.utcnow() - last_login).days
+            
+            result.append({
+                "email": user["email"],
+                "name": user.get("name"),
+                "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+                "last_login": last_login.isoformat() if last_login else None,
+                "days_since_last_login": days_since,
+                "total_login_count": user.get("login_count", 0),
+                "total_tokens": user.get("total_tokens", 0),
+                "never_logged_in": last_login is None
+            })
+        
+        # Sort by days since last login (descending)
+        result.sort(key=lambda x: x["days_since_last_login"] or 999999, reverse=True)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting users by last login: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting users by last login: {str(e)}")

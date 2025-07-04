@@ -343,7 +343,7 @@ async def analyze_relevant_tenders_with_our_rag(
     filter_conditions: Optional[List[Dict[str, Any]]] = None,
     ai_batch_size: int = 60,
     criteria_definitions: list = None,
-    batch_size: int = 7,
+    batch_size: int = 8,
     language: str = "polish"
 ):
     analysis_session_id = str(uuid4())
@@ -973,4 +973,4 @@ async def run_partial_tender_analyses(
         failed_analyses=failed,
         analysis_results=analysis_results,
         analysis_summary_data=analysis_summary_data
-    )
+          )

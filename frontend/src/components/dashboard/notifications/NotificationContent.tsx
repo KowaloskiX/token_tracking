@@ -17,15 +17,16 @@ interface NotificationContentProps {
   onMarkAsReadWhenDisplayed?: (notification: Notification) => void;
 }
 
+
 const getNotificationTypeColor = (type: string) => {
   switch (type.toLowerCase()) {
-    case 'success': return 'bg-green-100 text-green-800 border-green-200';
-    case 'warning': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    case 'error': return 'bg-red-100 text-red-800 border-red-200';
-    case 'info': return 'bg-amber-900/10 text-amber-900 border-amber-900/20';
-    case 'update': return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'results': return 'bg-purple-100 text-purple-800 border-purple-200';
-    default: return 'bg-amber-900/10 text-amber-900 border-amber-900/20';
+    case 'success': return 'bg-green-600/10 text-green-800 border-green-500/20 font-medium';
+    case 'warning': return 'bg-yellow-100 text-yellow-800 border-yellow-200 font-medium';
+    case 'error': return 'bg-red-100 text-red-800 border-red-200 font-medium';
+    case 'info': return 'bg-primary-900/10 text-primary border-primary-900/20 font-medium';
+    case 'update': return 'bg-amber-500/10 text-amber-800 border-amber-300 font-medium';
+    case 'outcome': return 'bg-secondary-border text-body-text border-secondary-border font-medium';
+    default: return 'bg-primary-900/10 text-primary border-primary-900/20 font-medium';
   }
 };
 
@@ -66,26 +67,26 @@ export function NotificationContent({
       <div className="border-b border-border p-6">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0 mr-4">
-            <div className="flex items-center gap-2 mb-2">
+          <h1 className="text-xl font-medium break-words">
+              {notification.title}
+            </h1>
+            <div className="flex items-center gap-2 mt-2">
               <Badge 
                 variant="outline" 
                 className={getNotificationTypeColor(notification.type)}
               >
                 {getNotificationTypeText(notification.type, t)}
               </Badge>
-              {notification.org_id && (
+              {/* {notification.org_id && (
                 <Badge variant="outline" className="bg-[hsl(var(--secondary))] text-[hsl(var(--primary))] border-[hsl(var(--border))]">
                   <Users className="h-3 w-3 mr-1" />
                   {t('org_badge')}
                 </Badge>
-              )}
+              )} */}
               <span className="text-sm text-muted-foreground">
                 {formatDate(notification.created_at)}
               </span>
             </div>
-            <h1 className="text-2xl font-semibold break-words">
-              {notification.title}
-            </h1>
           </div>
           
           <NotificationActions
