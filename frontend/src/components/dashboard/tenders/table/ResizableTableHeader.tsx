@@ -321,7 +321,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                 })}
 
                 {/* Column manager button */}
-                <TableHead className="w-7 text-center bg-card">
+                <TableHead className="w-10 text-center bg-card">
                     <Button
                         variant="ghost"
                         size="sm"
@@ -329,7 +329,7 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                         className="h-6 w-6 -ml-4 p-0 opacity-60 hover:opacity-100 cursor-pointer hover:bg-none transition-all"
                         title={t('columns.manageColumns')}
                     >
-                        <Settings className="h-3 w-3" />
+                        <Settings className="h-3 w-4" />
                     </Button>
                 </TableHead>
             </TableRow>

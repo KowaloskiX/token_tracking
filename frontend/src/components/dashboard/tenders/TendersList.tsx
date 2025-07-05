@@ -115,10 +115,6 @@ const TendersList: React.FC<TendersListProps> = ({
   const [kanbanBoards, setKanbanBoards] = useState<KanbanBoard[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
 
-  // NEW: State to track horizontal scroll needs when sidebar is closed
-  const [needsHorizontalScroll, setNeedsHorizontalScroll] = useState(false);
-  const [totalTableWidth, setTotalTableWidth] = useState(0);
-
   // FIXED: Changed sortConfig type to allow string instead of restrictive union
   const [sortConfig, setSortConfig] = useState<{
     field: string; // Changed from restrictive union to string
@@ -530,86 +526,69 @@ const TendersList: React.FC<TendersListProps> = ({
           />
         </CardHeader>
 
-        <CardContent className={`${
-          isDrawerVisible 
-            ? 'overflow-x-auto' // When drawer is open - keep existing behavior
-            : (!isLoading && needsHorizontalScroll && sortedResults.length > 0)
-              ? 'overflow-x-auto' // When drawer is closed, has content, and needs scroll
-              : '' // When drawer is closed and (loading OR no scroll needed OR no content)
-        }`}>
-          <div className={`${
-            isDrawerVisible 
-              ? 'w-[1200px] min-w-[1200px]' // Fixed width when drawer is open
-              : (!isLoading && needsHorizontalScroll && sortedResults.length > 0)
-                ? 'min-w-max' // Dynamic width when scroll needed and has content
-                : 'w-full' // Normal responsive behavior when loading, no scroll needed, or no content
-          }`} style={{
-            // When drawer is closed, has content, and scroll is needed, set minimum width to table width
-            minWidth: !isDrawerVisible && !isLoading && needsHorizontalScroll && sortedResults.length > 0 
-              ? `${totalTableWidth}px` 
-              : undefined
-          }}>
-            <TenderTable
-              currentResults={currentResults}
-              selectedResult={selectedResult}
-              selectedAnalysis={selectedAnalysis}
-              isLoading={isLoading}
-              totalFetched={totalFetched}
-              totalTendersCount={totalTendersCount}
-              allResultsLength={allResults.length}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              availableCriteria={availableCriteria}
-              isUpdatedAfterOpened={isUpdatedAfterOpened}
-              calculateDaysRemaining={calculateDaysRemaining}
-              getTenderBoards={getTenderBoards}
-              boardsLoading={boardsLoading}
-              onRowClick={handleRowClick}
-              onStatusChange={handleStatusChange}
-              onUnopened={handleUnopened}
-              isDrawerVisible={isDrawerVisible}
-              onDrawerVisibilityChange={onDrawerVisibilityChange}
-              onDelete={handleDelete}
-              onAddToKanban={handleAddToKanban}
-              onPageChange={(page) => updateCurrentPage(page, true)}
-              onSortChange={(columnIdOrCriteriaName, direction) => {
-                // Enhanced field mapping that covers all standard column types
-                const fieldMap: Record<string, string> = {
-                  // Standard columns
-                  'source': 'source',
-                  'name': 'tender_metadata.name',
-                  'organization': 'tender_metadata.organization',
-                  'publication_date': 'initiation_date',
-                  'submission_deadline': 'submission_deadline',
-                  'board_status': 'status',
-                  'score': 'tender_score',
-                  'created_at': 'created_at',
-                  'updated_at': 'updated_at'
-                };
+<CardContent className=""> {/* Remove all overflow classes */}
+  <div className="w-full"> {/* Simple responsive container */}
+    <TenderTable
+      currentResults={currentResults}
+      selectedResult={selectedResult}
+      selectedAnalysis={selectedAnalysis}
+      isLoading={isLoading}
+      totalFetched={totalFetched}
+      totalTendersCount={totalTendersCount}
+      allResultsLength={allResults.length}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      availableCriteria={availableCriteria}
+      isUpdatedAfterOpened={isUpdatedAfterOpened}
+      calculateDaysRemaining={calculateDaysRemaining}
+      getTenderBoards={getTenderBoards}
+      boardsLoading={boardsLoading}
+      onRowClick={handleRowClick}
+      onStatusChange={handleStatusChange}
+      onUnopened={handleUnopened}
+      isDrawerVisible={isDrawerVisible}
+      onDrawerVisibilityChange={onDrawerVisibilityChange}
+      onDelete={handleDelete}
+      onAddToKanban={handleAddToKanban}
+      onPageChange={(page) => updateCurrentPage(page, true)}
+      onSortChange={(columnIdOrCriteriaName, direction) => {
+        // Enhanced field mapping that covers all standard column types
+        const fieldMap: Record<string, string> = {
+          // Standard columns
+          'source': 'source',
+          'name': 'tender_metadata.name',
+          'organization': 'tender_metadata.organization',
+          'publication_date': 'initiation_date',
+          'submission_deadline': 'submission_deadline',
+          'board_status': 'status',
+          'score': 'tender_score',
+          'created_at': 'created_at',
+          'updated_at': 'updated_at'
+        };
 
-                // Check if this is a criteria column by seeing if it's a criteria name
-                const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
+        // Check if this is a criteria column by seeing if it's a criteria name
+        const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
 
-                if (isCriteriaSort) {
-                  // For criteria columns, use the criteria name directly as the field
-                  if (direction) {
-                    setSortConfig({ field: columnIdOrCriteriaName, direction });
-                  } else {
-                    setSortConfig(null);
-                  }
-                } else {
-                  // For standard columns, use the field mapping
-                  const field = fieldMap[columnIdOrCriteriaName];
-                  if (field && direction) {
-                    setSortConfig({ field, direction });
-                  } else {
-                    setSortConfig(null);
-                  }
-                }
-              }}
-            />
-          </div>
-        </CardContent>
+        if (isCriteriaSort) {
+          // For criteria columns, use the criteria name directly as the field
+          if (direction) {
+            setSortConfig({ field: columnIdOrCriteriaName, direction });
+          } else {
+            setSortConfig(null);
+          }
+        } else {
+          // For standard columns, use the field mapping
+          const field = fieldMap[columnIdOrCriteriaName];
+          if (field && direction) {
+            setSortConfig({ field, direction });
+          } else {
+            setSortConfig(null);
+          }
+        }
+      }}
+    />
+  </div>
+</CardContent>
       </Card>
 
       {selectedResult && (

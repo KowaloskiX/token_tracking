@@ -39,8 +39,6 @@ interface TenderTableProps {
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
   isDrawerVisible?: boolean;
   onDrawerVisibilityChange?: (visible: boolean) => void;
-  // NEW: Add callback to inform parent about scroll needs
-  onScrollInfoChange?: (needsScroll: boolean, totalWidth: number) => void;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -67,7 +65,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onSortChange,
   isDrawerVisible,
   onDrawerVisibilityChange,
-  onScrollInfoChange, // NEW: Accept scroll info callback
 }) => {
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -109,21 +106,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // NEW: Notify parent about scroll needs when sidebar is closed
-  useEffect(() => {
-    // Only report scroll needs when:
-    // 1. Sidebar is closed (!selectedResult)
-    // 2. Table has actual content (not loading and has results)
-    // 3. Table width is measured (tableWidth > 0)
-    if (onScrollInfoChange && !selectedResult && !isLoading && currentResults.length > 0 && tableWidth > 0) {
-      const needsScroll = totalTableWidth > tableWidth;
-      onScrollInfoChange(needsScroll, totalTableWidth);
-    } else if (onScrollInfoChange && (!selectedResult && (isLoading || currentResults.length === 0))) {
-      // Reset scroll when loading or no content
-      onScrollInfoChange(false, 0);
-    }
-  }, [onScrollInfoChange, selectedResult, totalTableWidth, tableWidth, isLoading, currentResults.length]);
-
   const handleSort = (columnId: string, direction: 'asc' | 'desc' | null) => {
     setSortConfig(columnId, direction);
     onSortChange?.(columnId, direction);
@@ -138,23 +120,26 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   };
 
   // Determine if horizontal scrolling is needed
-  const needsHorizontalScroll = totalTableWidth > tableWidth;
+  const needsHorizontalScroll = totalTableWidth > tableWidth && tableWidth > 0;
 
   return (
     <div className="w-full max-w-full">
       <div
-        className={`rounded-md border shadow-sm overflow-visible relative ${
-          selectedResult ? 'transition-all duration-200 ease-in-out' : ''
-        }`}
+        className="rounded-md border shadow-sm overflow-visible relative"
         ref={tableContainerRef}
       >
-        {/* Scrollable table container - only scroll here when sidebar is OPEN AND has content */}
-        <div className={
-          selectedResult && currentResults.length > 0 
-            ? "overflow-x-auto scrollbar-thin" 
-            : "overflow-visible"
-        }>
-          <Table className="min-w-max table-fixed" style={{ minWidth: `${totalTableWidth}px` }}>
+        {/* Always scrollable table container - handles both sidebar states consistently */}
+        <div className={`
+          ${needsHorizontalScroll ? 'overflow-x-auto scrollbar-thin' : 'overflow-x-visible'}
+          ${selectedResult ? 'transition-all duration-200 ease-in-out' : ''}
+        `}>
+          <Table 
+            className="min-w-max table-fixed" 
+            style={{ 
+              minWidth: needsHorizontalScroll ? `${totalTableWidth}px` : '100%',
+              width: needsHorizontalScroll ? `${totalTableWidth}px` : '100%'
+            }}
+          >
             <ResizableTableHeader
               columns={visibleColumns}
               sortConfig={columnState.sortConfig}
