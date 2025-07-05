@@ -35,7 +35,6 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
     const [summaryText, setSummaryText] = useState(criteriaItem.analysis.summary);
     const [isSaving, setIsSaving] = useState(false);
     const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set());
-    const [citationsSectionExpanded, setCitationsSectionExpanded] = useState(false);
     const t = useTendersTranslations();
     const commonT = useCommonTranslations();
 
@@ -289,7 +288,7 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
             </>
           ) : (
             <div className="flex flex-wrap items-end justify-end">
-              <div className="w-full flex-grow space-y-3">
+              <div className="w-full flex-grow">
                 <div className="markdown-content">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -298,33 +297,35 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                     {summaryText}
                   </ReactMarkdown>
                 </div>
-
+                {/* <Button className='-mt-4 bg-transparent border-none p-0 hover:bg-transparent hover:text-primary-hover' variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                  <Pencil />
+                </Button> */}
                 {citations.length > 0 && (
-                  <Collapsible open={citationsSectionExpanded} onOpenChange={setCitationsSectionExpanded}>
-                    <div className="border-t pt-3">
-                      <div className={`bg-secondary/40 border rounded-lg overflow-hidden ${citationsSectionExpanded ? '' : 'hover:bg-secondary/50'} transition-colors`}>
+                  <Collapsible>
+                    <div className="pt-2">
+                      <div className="bg-white/20 border rounded-lg overflow-hidden hover:bg-background transition-colors">
                         <CollapsibleTrigger asChild>
-                          <div className="flex items-center gap-3 cursor-pointer p-3 transition-colors group">
-                            <Card className="bg-secondary p-2 relative rounded-md shrink-0">
-                              <Quote className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <div className="group flex items-center gap-3 cursor-pointer py-2 px-3 transition-colors">
+                            <Card className="bg-background p-2 relative rounded-md shrink-0">
+                              <Quote className="h-3 w-3 shrink-0 text-muted-foreground" />
                             </Card>
                             <div className="flex items-center justify-between flex-grow">
                               <span className="text-sm font-medium text-muted-foreground">
                                 {t('tenders.criteria.viewCitations')}
                               </span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline" className="text-xs font-medium bg-background">
                                   {citations.length}
                                 </Badge>
                                 <ChevronDown 
-                                  className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 ${citationsSectionExpanded ? 'rotate-180' : ''}`}
+                                  className="w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
                                 />
                               </div>
                             </div>
                           </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <div className="px-3 pb-3 space-y-2 border-t border-secondary-border/50">
+                          <div className="px-3 pb-3 space-y-2 border-secondary-border">
                             {citations.map((citation, idx) => {
                               const isExpanded = expandedCitations.has(idx);
                               const matchingFile = findMatchingFile(citation.source || '');
@@ -391,9 +392,7 @@ const EditableCriteriaItem: React.FC<EditableCriteriaItemProps> = ({
                   </Collapsible>
                 )}
               </div>
-              <Button className='bg-transparent border-none p-0 hover:bg-transparent hover:text-primary-hover' variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                <Pencil />
-              </Button>
+
             </div>
           )}
         </div>

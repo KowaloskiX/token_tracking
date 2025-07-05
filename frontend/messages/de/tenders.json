@@ -368,6 +368,15 @@
     "downloadFullData": "Vollständige Daten herunterladen",
     "noAnalysis": "Keine Kriterienanalyse verfügbar. Dateien wurden nicht von der Ausschreibungsquelle heruntergeladen.",
     "noCommentsError": "Kommentare können nicht geladen werden - fehlende Ausschreibungskennung",
+    "products": {
+      "title": "Gefundene Produkte",
+      "subtitle": "Produkte, die zu Ihrem Unternehmensprofil passen",
+      "citations": "Zitate",
+      "citation": "Zitat",
+      "citationPlural": "Zitate",
+      "clickToView": "Klicken Sie hier, um {filename} anzuzeigen",
+      "noProducts": "Keine Produkte in dieser Ausschreibung gefunden"
+    },
     "completion": {
       "title": "Vergabeergebnisse",
       "loadingData": "Lade Vergabedaten...",

@@ -390,7 +390,16 @@
     "loadingFullData": "Ładowanie pełnych danych przetargu...",
     "downloadFullData": "Pobierz pełne dane",
     "noAnalysis": "Brak analizy kryteriów. Pliki nie zostały pobrane ze źródła przetargu.",
-    "noCommentsError": "Nie można załadować komentarzy - brak identyfikatora przetargu"
+    "noCommentsError": "Nie można załadować komentarzy - brak identyfikatora przetargu",
+    "products": {
+      "title": "Znalezione produkty",
+      "subtitle": "Produkty pasujące do oferty firmy",
+      "citations": "Cytaty",
+      "citation": "cytat",
+      "citationPlural": "cytaty",
+      "clickToView": "Kliknij, aby wyświetlić {filename}",
+      "noProducts": "Nie znaleziono produktów w tym przetargu"
+    }
   },
   "errors": {
     "notFound": "Nie znaleziono przetargu",

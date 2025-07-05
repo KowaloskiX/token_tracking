@@ -31,10 +31,10 @@ const ResultFileItem = ({ file }: { file: FileData }) => {
     };
 
     const content = (
-        <div className="inline-flex items-center gap-2 py-2 px-3 rounded-lg transition-all duration-200 border border-secondary-border bg-secondary/50 w-full hover:bg-secondary shadow-sm">
+        <div className="inline-flex items-center gap-2 py-2 px-3 rounded-lg transition-all duration-200 border border-secondary-border bg-white/20 w-full hover:bg-secondary shadow-sm">
             <div className="flex items-center gap-2 w-full min-w-0">
-                <Card className="bg-secondary p-1.5 shrink-0 rounded-md">
-                    <FileText className="w-4 h-4" />
+                <Card className="bg-background p-1.5 shrink-0 rounded-md">
+                    <FileText className="w-4 h-4 text-muted-foreground" />
                 </Card>
                 <TooltipProvider delayDuration={300}>
                     <Tooltip>

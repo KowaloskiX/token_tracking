@@ -79,6 +79,7 @@ import TenderDetailsSkeleton from './TenderDetailsSkeleton';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { useTendersTranslations, useCommonTranslations } from '@/hooks/useTranslations';
+import TenderProductsSection from './TenderProductsSection';
 
 interface TenderResultSidebarProps {
     result: TenderAnalysisResult | null;
@@ -661,13 +662,9 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
       };
 
     const getWeightBadge = (weight: number) => {
-        const badgeStyle = 'bg-secondary border-secondary-border border-2 text-primary';
       
         return (
-          <Badge 
-            variant="outline" 
-            className={`${badgeStyle} rounded-md px-2 py-0.5 h-auto font-medium`}
-          >
+           <Badge variant="outline" className="text-xs font-medium bg-background">
             {t('tenders.board.weightLabel').split('(')[0].trim()}: {weight}
           </Badge>
         );
@@ -942,7 +939,7 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                                 value={localStatus} 
                                                 onValueChange={handleStatusChange}
                                             >
-                                                <SelectTrigger id="tender-status" className="h-8 w-48 bg-white/20 hover:bg-secondary-hover">
+                                                <SelectTrigger id="tender-status" className="h-8 w-48 bg-white/20 hover:bg-background">
                                                     <SelectValue placeholder={t('tenders.status.selectStatus')} />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1148,6 +1145,14 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                         </div>
                                     )}
                                     
+                                    {/* Products Found Section */}
+                                    {/* <TenderProductsSection 
+                                        onCitationClick={(citation) => {
+                                            // This will be connected to the file preview functionality
+                                            console.log('Open citation:', citation);
+                                        }}
+                                    /> */}
+
                                     <div className="space-y-4">
                                     <div className="flex items-center justify-between">
                                     <h3 className="font-semibold">{t('tenders.criteria.title')}</h3>
@@ -1238,58 +1243,55 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
 
                                                 return (
                                                     <Collapsible key={index}>
-                                                        <div className="group">
-                                                            <CollapsibleTrigger asChild>
-                                                                <div 
-                                                                    data-state="closed"
-                                                                    className="flex overflow-hidden items-center gap-2 py-2 px-4 transition-all duration-200 border border-secondary-border shadow-sm bg-secondary/30 w-full hover:bg-secondary rounded-t-lg rounded-b-lg data-[state=open]:rounded-b-none cursor-pointer"
-                                                                >
-                                                                    {/* Icon - fixed width */}
-                                                                    <Card className="bg-secondary p-2 relative rounded-md flex-shrink-0">
-                                                                        {/* Conditional dot rendering */}
-                                                                        <div className={`absolute w-2 h-2 rounded-full ${getCriteriaMetColor(item.analysis.criteria_met)} right-0 top-0 transform translate-x-1 -translate-y-1`} />
-                                                                        <ListCheck className="w-4 h-4 shrink-0 text-muted-foreground" />
-                                                                    </Card>
-                                                                    
-                                                                    {/* Criteria text - flexible but constrained */}
-                                                                    <TooltipProvider delayDuration={300}>
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <div className="flex-1 min-w-0">
-                                                                                    <p className="text-sm font-medium truncate text-left">
-                                                                                        {item.criteria}
-                                                                                    </p>
-                                                                                </div>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent side="top" className="max-w-[300px] break-all">
-                                                                                <div className="markdown-content">
-                                                                                    <ReactMarkdown
-                                                                                        remarkPlugins={[remarkGfm, remarkBreaks]}
-                                                                                        components={markdownComponents}
-                                                                                    >
-                                                                                        {item.criteria}
-                                                                                    </ReactMarkdown>
-                                                                                </div>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    </TooltipProvider>
-                                                                    
-                                                                    {/* Weight badge - fixed position when present */}
-                                                                    {shouldShowWeight && (
-                                                                        <div className="flex-shrink-0 ml-2">
-                                                                            {getWeightBadge(item.analysis.weight)}
-                                                                        </div>
-                                                                    )}
-                                                                    
-                                                                    {/* Chevron - always fixed position */}
-                                                                    <ChevronDown 
-                                                                        className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 ml-2" 
-                                                                    />
-                                                                </div>
-                                                            </CollapsibleTrigger>
-                                                        </div>
+                                                        <CollapsibleTrigger asChild>
+                                                            <div 
+                                                                className="group flex overflow-hidden items-center gap-2 py-2 px-4 transition-all duration-200 border border-secondary-border shadow-sm bg-white/20 w-full hover:bg-background rounded-t-lg rounded-b-lg data-[state=open]:rounded-b-none cursor-pointer"
+                                                            >
+                                                                {/* Icon - fixed width */}
+                                                                <Card className="bg-background p-2 relative rounded-md flex-shrink-0">
+                                                                    {/* Conditional dot rendering */}
+                                                                    <div className={`absolute w-2 h-2 rounded-full ${getCriteriaMetColor(item.analysis.criteria_met)} right-0 top-0 transform translate-x-1 -translate-y-1`} />
+                                                                    <ListCheck className="w-4 h-4 shrink-0 text-muted-foreground" />
+                                                                </Card>
+                                                                
+                                                                {/* Criteria text - flexible but constrained */}
+                                                                <TooltipProvider delayDuration={300}>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-sm font-medium truncate text-left">
+                                                                                    {item.criteria}
+                                                                                </p>
+                                                                            </div>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent side="top" className="max-w-[300px] break-all">
+                                                                            <div className="markdown-content">
+                                                                                <ReactMarkdown
+                                                                                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                                                                                    components={markdownComponents}
+                                                                                >
+                                                                                    {item.criteria}
+                                                                                </ReactMarkdown>
+                                                                            </div>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                                
+                                                                {/* Weight badge - fixed position when present */}
+                                                                {shouldShowWeight && (
+                                                                    <div className="flex-shrink-0 ml-2">
+                                                                        {getWeightBadge(item.analysis.weight)}
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Chevron - always fixed position */}
+                                                                <ChevronDown 
+                                                                    className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 ml-2" 
+                                                                />
+                                                            </div>
+                                                        </CollapsibleTrigger>
                                                         <CollapsibleContent>
-                                                            <div className="border border-t-0 border-secondary-border bg-secondary/30 px-4 py-3 rounded-b-xl">
+                                                            <div className="border border-t-0 border-secondary-border bg-white/10 px-4 pt-4 pb-6 rounded-b-xl">
                                                                 <div className="flex gap-4">
                                                                     <div className="" />
                                                                     <EditableCriteriaItem

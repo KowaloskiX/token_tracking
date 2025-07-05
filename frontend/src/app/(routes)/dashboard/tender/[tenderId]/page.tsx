@@ -8,9 +8,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { TooltipProvider } from "@/components/ui/tooltip";
-import ReactMarkdown, { Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
+import { Components } from 'react-markdown';
 import { useMemo } from 'react';
 import { TenderAnalysisResult, TenderAnalysisUpdate } from '@/types/tenders';
 import { FileData } from '@/types'; // NEW: Add this import
@@ -42,7 +40,7 @@ import TenderUpdatesCard from '@/components/dashboard/tender/TenderUpdatesCard';
 import TenderFilesCard from '@/components/dashboard/tender/TenderFilesCard';
 import TenderCommentsCard from '@/components/dashboard/tender/TenderCommentsCard';
 import { FilePreview } from "@/components/dashboard/FilePreview"; // NEW: Add this import
-import JSZip from 'jszip';
+import { TenderHistoricalDataCard } from '@/components/dashboard/tenders/TenderHistoricalDataCard';
 
 // NEW: Add interface for preview file
 interface PreviewFile {
@@ -62,7 +60,33 @@ interface UpdateSummary {
     summary: string;
   }>;
 }
-
+interface HistoricalTenderData {
+  id: string;
+  score: number;
+  metadata: {
+    additional_cpv_codes?: string;
+    completion_status?: string;
+    contract_date?: string;
+    contract_value?: string;
+    highest_price?: string;
+    initiation_date?: string;
+    location?: string;
+    lowest_price?: string;
+    main_cpv_code?: string;
+    name?: string;
+    organization?: string;
+    original_tender_url?: string;
+    realization_period?: string;
+    sme_offers?: number;
+    submission_deadline?: string;
+    total_offers?: number;
+    total_parts?: number;
+    winner_location?: string;
+    winner_name?: string;
+    winner_size?: string;
+    winning_price?: string;
+  };
+}
 function TenderDetailsPageContent() {
   const { tenderId } = useParams();
   const router = useRouter();
@@ -88,7 +112,12 @@ function TenderDetailsPageContent() {
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  const { updateTenderStatus, fetchTenderResultById } = useTender();
+    const { updateTenderStatus, fetchTenderResultById, fetchHistoricalTenderByPineconeId } = useTender();
+
+      // Historical tender data states
+    const [historicalTenderData, setHistoricalTenderData] = useState<HistoricalTenderData | null>(null);
+    const [isLoadingHistoricalData, setIsLoadingHistoricalData] = useState(false);
+    const [lastFetchedFinishedId, setLastFetchedFinishedId] = useState<string | null>(null);
 
   // NEW: File preview handlers
   const openFilePreview = (file: FileData, citationsForFile: string[]) => {
@@ -199,6 +228,40 @@ function TenderDetailsPageContent() {
 
     fetchTender();
   }, [tenderId, fetchTenderResultById, toast, router, t]);
+
+  
+    // Fetch historical tender data when finished_id changes
+    useEffect(() => {
+        const finishedId = tender?.finished_id;
+        
+        if (finishedId && finishedId !== lastFetchedFinishedId) {
+            console.log("[TenderSidebar] Fetching historical tender data for finished_id:", finishedId);
+            setIsLoadingHistoricalData(true);
+            setLastFetchedFinishedId(finishedId);
+            
+            fetchHistoricalTenderByPineconeId(finishedId)
+                .then((data) => {
+                    if (data) {
+                        setHistoricalTenderData(data);
+                        console.log("[TenderSidebar] Historical tender data fetched successfully:", data);
+                    } else {
+                        setHistoricalTenderData(null);
+                        console.log("[TenderSidebar] No historical tender data found");
+                    }
+                })
+                .catch((error) => {
+                    console.error("[TenderSidebar] Error fetching historical tender data:", error);
+                    setHistoricalTenderData(null);
+                })
+                .finally(() => {
+                    setIsLoadingHistoricalData(false);
+                });
+        } else if (!finishedId) {
+            // Reset when no finished_id
+            setHistoricalTenderData(null);
+            setLastFetchedFinishedId(null);
+        }
+    }, [tender?.finished_id, fetchHistoricalTenderByPineconeId]);
 
   const fetchUpdates = async (tender: TenderAnalysisResult) => {
     if (!tender || !tender.updates || tender.updates.length === 0) {
@@ -496,6 +559,13 @@ function TenderDetailsPageContent() {
               <TenderStatusCard 
                 status={localStatus}
                 onStatusChange={handleStatusChange}
+              />
+
+              {/* Historical Tender Data Section */}
+              <TenderHistoricalDataCard
+                historicalTenderData={historicalTenderData}
+                isLoadingHistoricalData={isLoadingHistoricalData}
+                t={t}
               />
 
               <TenderCriteriaCard

@@ -368,6 +368,15 @@
     "downloadFullData": "Download full data",
     "noAnalysis": "No criteria analysis available. Files were not downloaded from the tender source.",
     "noCommentsError": "Cannot load comments - missing tender identifier",
+    "products": {
+      "title": "Found Products",
+      "subtitle": "Products matching your company profile",
+      "citations": "Citations",
+      "citation": "citation",
+      "citationPlural": "citations",
+      "clickToView": "Click to view {filename}",
+      "noProducts": "No products found in this tender"
+    },
     "completion": {
       "title": "Award Results",
       "loadingData": "Loading award data...",
