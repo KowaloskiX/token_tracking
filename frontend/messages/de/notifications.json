@@ -1,0 +1,46 @@
+{
+    "title": "Benachrichtigungszentrum",
+    "sidebar_title": "Benachrichtigungen", 
+    "new_count": "{count} neue",
+    "mark_all_read": "Alle als gelesen markieren",
+    "select_to_view": "Wählen Sie eine Benachrichtigung zum Anzeigen aus",
+    "no_notifications": "Keine Benachrichtigungen",
+    "no_filtered_notifications": "Keine Benachrichtigungen entsprechen dem Filter",
+    "clear_filter": "Filter löschen",
+    "delete": "Löschen",
+    "org_badge": "Organisationsbenachrichtigung",
+    "org_badge_short": "Org",
+    "loading": "Benachrichtigungen werden geladen...",
+    "error_loading": "Fehler beim Laden der Benachrichtigungen",
+    "filters": {
+        "all": "Alle",
+        "unread": "Ungelesen",
+        "read": "Gelesen"
+    },
+    "actions": {
+        "mark_as_read": "Als gelesen markieren",
+        "mark_as_unread": "Als ungelesen markieren",
+        "delete": "Löschen"
+    },
+    "types": {
+        "success": "Erfolg",
+        "warning": "Warnung", 
+        "error": "Fehler",
+        "info": "Information",
+        "update": "Aktualisierung",
+        "outcome": "Ergebnis"
+    },
+    "toast": {
+        "failed_to_load": "Benachrichtigungen konnten nicht geladen werden",
+        "failed_to_mark_read": "Benachrichtigung konnte nicht als gelesen markiert werden",
+        "failed_to_mark_unread": "Benachrichtigung konnte nicht als ungelesen markiert werden",
+        "marked_as_read": "Als gelesen markiert",
+        "marked_as_unread": "Als ungelesen markiert",
+        "failed_to_mark_all_read": "Alle Benachrichtigungen konnten nicht als gelesen markiert werden",
+        "notification_deleted": "Benachrichtigung gelöscht",
+        "failed_to_delete": "Benachrichtigung konnte nicht gelöscht werden",
+        "notification_created": "Benachrichtigung erstellt",
+        "failed_to_create": "Benachrichtigung konnte nicht erstellt werden",
+        "not_authenticated": "Nicht authentifiziert"
+    }
+}

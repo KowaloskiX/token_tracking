@@ -45,7 +45,7 @@ interface TableLayoutProps {
     onRemoveCriteriaColumn: (criteriaId: string) => void;
     onResetToDefaults: () => Promise<void>;
     onUpdateColumnWidth: (columnId: string, width: number) => void;
-    onUpdateCriteriaDisplayMode: (columnId: string, displayMode: CriteriaDisplayMode) => void; // NEW: Add this prop
+    onUpdateCriteriaDisplayMode: (columnId: string, displayMode: CriteriaDisplayMode) => void;
     onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>;
 }
 
@@ -60,14 +60,13 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
     onRemoveCriteriaColumn,
     onResetToDefaults,
     onUpdateColumnWidth,
-    onUpdateCriteriaDisplayMode, // NEW: Accept this prop
+    onUpdateCriteriaDisplayMode,
     onSaveConfiguration,
 }) => {
     const t = useTranslations();
     const tTenders = useTendersTranslations();
 
     const MIN_VISIBLE = 3;
-    const MAX_VISIBLE = 20;
 
     const [draftColumns, setDraftColumns] = useState<ColumnConfig[]>([]);
     const [searchCriteria, setSearchCriteria] = useState('');
@@ -109,8 +108,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             );
             const nextVisibleCount = next.filter(c => c.visible).length;
 
-            // Prevent going below minimum or above maximum visible columns
-            if (nextVisibleCount < MIN_VISIBLE || nextVisibleCount > MAX_VISIBLE) {
+            // Only prevent going below minimum visible columns
+            if (nextVisibleCount < MIN_VISIBLE) {
                 return prev;
             }
 
@@ -118,7 +117,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         });
     };
 
-    // NEW: Function to update display mode in draft
     const updateDraftDisplayMode = (columnId: string, displayMode: CriteriaDisplayMode) => {
         setDraftColumns(prev =>
             prev.map(col => {
@@ -143,7 +141,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         setDraftColumns(prev =>
             prev.map(c => {
                 if (c.id !== id) return c;
-                // clamp to [minWidth, maxWidth]
                 const clamped = Math.max(c.minWidth, Math.min(c.maxWidth, width));
                 return { ...c, width: clamped };
             })
@@ -152,7 +149,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
     const addDraftCriteria = (criteriaId: string, name: string) => {
         setDraftColumns(prev => {
-            // Check if this criteria column already exists
             const existingColumn = prev.find(col =>
                 col.type === 'criteria' &&
                 isCriteriaColumn(col) &&
@@ -161,13 +157,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
             if (existingColumn) {
                 console.log(`Draft criteria column for ${name} already exists, skipping`);
-                return prev;
-            }
-
-            // Check if adding this column would exceed the maximum visible limit
-            const currentVisibleCount = prev.filter(c => c.visible).length;
-            if (currentVisibleCount >= MAX_VISIBLE) {
-                console.log(`Cannot add criteria column: maximum visible columns (${MAX_VISIBLE}) reached`);
                 return prev;
             }
 
@@ -185,7 +174,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 resizable: true,
                 criteriaName: name,
                 criteriaId: criteriaId,
-                displayMode: 'text', // NEW: Default to text mode
+                displayMode: 'text',
             } as CriteriaColumnConfig;
             return [...prev, newCol];
         });
@@ -232,14 +221,10 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
         try {
             console.log('Saving table layout configuration...');
-
-            // First, save the configuration to backend
             await onSaveConfiguration(draftColumns);
-
             console.log('Table layout saved successfully');
             setSaveSuccess(true);
 
-            // Close the dialog after a brief success message
             setTimeout(() => {
                 onClose();
             }, 1000);
@@ -268,7 +253,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             setIsResetting(false);
         }
     };
-    // NEW: Helper function to get display mode icon
+
     const getDisplayModeIcon = (mode: CriteriaDisplayMode) => {
         switch (mode) {
             case 'text':
@@ -287,7 +272,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                     <DialogTitle className="text-lg font-semibold">
                         {tTenders('columns.manageColumns')}
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                            ({visibleDraftCount}/{draftColumns.length} {tTenders('columns.visible')}, max {MAX_VISIBLE})
+                            ({visibleDraftCount}/{draftColumns.length} {tTenders('columns.visible')})
                         </span>
                     </DialogTitle>
                 </DialogHeader>
@@ -313,7 +298,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 )}
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0">
-                    {/* Current Columns - Takes up 3/5 of the width */}
+                    {/* Current Columns */}
                     <div className="lg:col-span-3 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
                             <CardHeader className="pb-3">
@@ -325,20 +310,13 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         variant="outline"
                                         size="sm"
                                         onClick={() =>
-                                            setDraftColumns(prev => {
-                                                // Get columns sorted by importance (order)
-                                                const sortedCols = [...prev].sort((a, b) => a.order - b.order);
-
-                                                // Show first MAX_VISIBLE columns, hide the rest
-                                                return prev.map(c => {
-                                                    const index = sortedCols.findIndex(sc => sc.id === c.id);
-                                                    return { ...c, visible: index < MAX_VISIBLE };
-                                                });
-                                            })
+                                            setDraftColumns(prev =>
+                                                prev.map(c => ({ ...c, visible: true }))
+                                            )
                                         }
                                         disabled={isSaving || isResetting}
                                     >
-                                        {tTenders('columns.showAll')} (max {MAX_VISIBLE})
+                                        {tTenders('columns.showAll')}
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -401,7 +379,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                         <span>
                                                             {tTenders('columns.width')}: {col.width}px
                                                         </span>
-                                                        {/* NEW: Clickable display mode badge for criteria columns */}
                                                         {isCriteriaColumn(col) && (
                                                             <button
                                                                 type="button"
@@ -438,9 +415,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                     </div>
                                                 </div>
 
-                                                {/* Column configuration controls */}
                                                 <div className="flex items-center gap-2">
-                                                    {/* Width input */}
                                                     <div className="flex items-center gap-1">
                                                         <Label htmlFor={`w-${col.id}`} className="text-xs whitespace-nowrap">
                                                             {tTenders('columns.widthShort')}:
@@ -457,18 +432,12 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                         />
                                                     </div>
 
-                                                    {/* Visibility toggle */}
                                                     <Switch
                                                         checked={col.visible}
                                                         onCheckedChange={() => toggleDraftVisibility(col.id)}
-                                                        disabled={
-                                                            isSaving ||
-                                                            isResetting ||
-                                                            (!col.visible && visibleDraftCount >= MAX_VISIBLE)
-                                                        }
+                                                        disabled={isSaving || isResetting}
                                                     />
 
-                                                    {/* Remove button for criteria columns */}
                                                     {isCriteriaColumn(col) && (
                                                         <Button
                                                             variant="ghost"
@@ -489,7 +458,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         </Card>
                     </div>
 
-                    {/* Add Criteria Section - Takes up 2/5 of the width */}
+                    {/* Add Criteria Section */}
                     <div className="lg:col-span-2 flex flex-col min-h-0">
                         <Card className="flex-1 flex flex-col overflow-hidden border">
                             <CardHeader className="pb-3">
@@ -526,16 +495,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                             size="sm"
                                                             onClick={() => addDraftCriteria(c.id, c.name)}
                                                             className="shrink-0"
-                                                            disabled={
-                                                                isSaving ||
-                                                                isResetting ||
-                                                                visibleDraftCount >= MAX_VISIBLE
-                                                            }
-                                                            title={
-                                                                visibleDraftCount >= MAX_VISIBLE
-                                                                    ? `Maximum ${MAX_VISIBLE} columns allowed`
-                                                                    : undefined
-                                                            }
+                                                            disabled={isSaving || isResetting}
                                                         >
                                                             {tTenders('columns.add')}
                                                         </Button>
@@ -579,16 +539,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                 {t('tenders.columns.selectMinColumns', { min: MIN_VISIBLE })}
                             </span>
                         )}
-                        {visibleDraftCount > MAX_VISIBLE && (
-                            <span className="text-destructive text-sm">
-                                {t('tenders.columns.maxColumnsReached', { max: MAX_VISIBLE })}
-                            </span>
-                        )}
-                        {visibleDraftCount === MAX_VISIBLE && (
-                            <span className="text-amber-600 text-sm">
-                                {t('tenders.columns.maxColumnsReachedStatus', { current: MAX_VISIBLE, max: MAX_VISIBLE })}
-                            </span>
-                        )}
                         <Button
                             variant="outline"
                             onClick={onClose}
@@ -599,12 +549,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         <Button
                             onClick={commitChanges}
                             className="bg-primary hover:bg-primary/90"
-                            disabled={
-                                visibleDraftCount < MIN_VISIBLE ||
-                                visibleDraftCount > MAX_VISIBLE ||
-                                isSaving ||
-                                isResetting
-                            }
+                            disabled={visibleDraftCount < MIN_VISIBLE || isSaving || isResetting}
                         >
                             {isSaving ? (
                                 <>

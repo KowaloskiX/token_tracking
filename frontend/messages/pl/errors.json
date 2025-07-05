@@ -1,0 +1,34 @@
+{
+  "token_limit": {
+    "title": "Limit tokenów darmowego planu",
+    "description": "Osiągnięto dzienny limit tokenów dla interakcji AI.",
+    "reset_time": "Limit wyzeruje się o:",
+    "upgrade_plan": "Ulepsz plan",
+    "check_pricing": "Sprawdź ofertę",
+    "unknown_reset": "Nieznany"
+  },
+  "file_errors": {
+    "preview_unavailable": "Podgląd niedostępny (Brak URL)",
+    "file_not_found": "Nie znaleziono pliku",
+    "loading_failed": "Nie udało się załadować pliku",
+    "unsupported_format": "Nieobsługiwany format pliku",
+    "file_too_large": "Plik jest za duży",
+    "network_error": "Wystąpił błąd sieci"
+  },
+  "general": {
+    "something_went_wrong": "Coś poszło nie tak",
+    "please_try_again": "Spróbuj ponownie",
+    "network_error": "Błąd sieci",
+    "permission_denied": "Brak uprawnień",
+    "not_found": "Nie znaleziono",
+    "server_error": "Błąd serwera",
+    "timeout": "Przekroczono limit czasu",
+    "invalid_input": "Nieprawidłowe dane wejściowe",
+    "required_field": "To pole jest wymagane"
+  },
+  "not_found": {
+    "title": "404 Strony nie znaleziono",
+    "description": "Uups... ta strona nie istnieje",
+    "back_home": "Wróc na stronę główną"
+  }
+}
