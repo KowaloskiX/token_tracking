@@ -3253,7 +3253,8 @@ async def save_table_layout(
                 width=column_data.width,
                 visible=column_data.visible,
                 order=column_data.order,
-                criteria_id=column_data.criteria_id
+                criteria_id=column_data.criteria_id,
+                display_mode=column_data.display_mode  # NEW: Include display_mode
             )
             for column_data in layout_data.columns
         ]

@@ -67,7 +67,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
     const tTenders = useTendersTranslations();
 
     const MIN_VISIBLE = 3;
-    const MAX_VISIBLE = 10;
+    const MAX_VISIBLE = 20;
 
     const [draftColumns, setDraftColumns] = useState<ColumnConfig[]>([]);
     const [searchCriteria, setSearchCriteria] = useState('');

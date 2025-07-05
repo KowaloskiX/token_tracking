@@ -73,8 +73,8 @@ interface TendersListProps {
   setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
   drawerRef: React.RefObject<{ setVisibility: (value: boolean) => void }>;
   setCurrentTenderBoardStatus: React.Dispatch<React.SetStateAction<string | null>>;
-  isDrawerVisible: boolean; // NEW: Add this prop
-  onDrawerVisibilityChange: (visible: boolean) => void; // NEW: Add this prop
+  isDrawerVisible: boolean;
+  onDrawerVisibilityChange: (visible: boolean) => void;
 }
 
 const TendersList: React.FC<TendersListProps> = ({
@@ -82,8 +82,8 @@ const TendersList: React.FC<TendersListProps> = ({
   allResults,
   setAllResults,
   setCurrentTenderBoardStatus,
-  isDrawerVisible, // NEW: Accept this prop
-  onDrawerVisibilityChange // NEW: Accept this prop
+  isDrawerVisible,
+  onDrawerVisibilityChange
 }) => {
   const t = useTendersTranslations();
   const commonT = useCommonTranslations();
@@ -114,6 +114,10 @@ const TendersList: React.FC<TendersListProps> = ({
   // Add kanban boards state
   const [kanbanBoards, setKanbanBoards] = useState<KanbanBoard[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
+
+  // NEW: State to track horizontal scroll needs when sidebar is closed
+  const [needsHorizontalScroll, setNeedsHorizontalScroll] = useState(false);
+  const [totalTableWidth, setTotalTableWidth] = useState(0);
 
   // FIXED: Changed sortConfig type to allow string instead of restrictive union
   const [sortConfig, setSortConfig] = useState<{
@@ -157,6 +161,8 @@ const TendersList: React.FC<TendersListProps> = ({
   const editContainerRef = useRef<HTMLDivElement>(null);
 
   const { user } = useDashboard();
+
+  // NEW: Callback to receive scroll info from TenderTabl
 
   // Function to find which boards a tender belongs to
   const getTenderBoards = useCallback((tenderId: string): string[] => {
@@ -466,16 +472,6 @@ const TendersList: React.FC<TendersListProps> = ({
                     )}
                   </div>
                 )}
-                {/* {selectedAnalysis && (
-                  <Badge
-                    variant={(selectedAnalysis.assigned_users?.length ?? 0) > 1 ? "default" : "secondary"}
-                    className="text-xs font-medium ml-2"
-                  >
-                    {(selectedAnalysis.assigned_users?.length ?? 0) > 1
-                      ? t('tenders.edit.share.sharedBadge')
-                      : t('tenders.edit.share.privateBadge')}
-                  </Badge>
-                )} */}
               </div>
               <CardDescription className="mt-1">
                 {isLoading
@@ -493,9 +489,9 @@ const TendersList: React.FC<TendersListProps> = ({
 
             <div className="flex gap-2">
               <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow"
                 onClick={() => setIncludeHistorical(!includeHistorical)}
                 disabled={isLoading}
               >
@@ -530,79 +526,88 @@ const TendersList: React.FC<TendersListProps> = ({
             sortConfig={sortConfig}
             handleSort={handleSort}
             availableSources={availableSources}
-            availableCriteria={selectedAnalysis?.criteria?.map((c: any) => c.name) || []} // Pass just the names for filter
+            availableCriteria={selectedAnalysis?.criteria?.map((c: any) => c.name) || []}
           />
         </CardHeader>
 
         <CardContent className={`${
           isDrawerVisible 
-            ? 'overflow-x-auto' // Enable horizontal scrolling when drawer is open
-            : ''
+            ? 'overflow-x-auto' // When drawer is open - keep existing behavior
+            : (!isLoading && needsHorizontalScroll && sortedResults.length > 0)
+              ? 'overflow-x-auto' // When drawer is closed, has content, and needs scroll
+              : '' // When drawer is closed and (loading OR no scroll needed OR no content)
         }`}>
           <div className={`${
             isDrawerVisible 
-              ? 'w-[1200px] min-w-[1200px]' // Fixed width for table when drawer is open
-              : 'w-full' // Normal responsive behavior when drawer is closed
-          }`}>
+              ? 'w-[1200px] min-w-[1200px]' // Fixed width when drawer is open
+              : (!isLoading && needsHorizontalScroll && sortedResults.length > 0)
+                ? 'min-w-max' // Dynamic width when scroll needed and has content
+                : 'w-full' // Normal responsive behavior when loading, no scroll needed, or no content
+          }`} style={{
+            // When drawer is closed, has content, and scroll is needed, set minimum width to table width
+            minWidth: !isDrawerVisible && !isLoading && needsHorizontalScroll && sortedResults.length > 0 
+              ? `${totalTableWidth}px` 
+              : undefined
+          }}>
             <TenderTable
-            currentResults={currentResults}
-            selectedResult={selectedResult}
-            selectedAnalysis={selectedAnalysis}
-            isLoading={isLoading}
-            totalFetched={totalFetched}
-            totalTendersCount={totalTendersCount}
-            allResultsLength={allResults.length}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            availableCriteria={availableCriteria}
-            isUpdatedAfterOpened={isUpdatedAfterOpened}
-            calculateDaysRemaining={calculateDaysRemaining}
-            getTenderBoards={getTenderBoards}
-            boardsLoading={boardsLoading}
-            onRowClick={handleRowClick}
-            onStatusChange={handleStatusChange}
-            onUnopened={handleUnopened}
-            isDrawerVisible={isDrawerVisible}
-            onDrawerVisibilityChange={onDrawerVisibilityChange}
-            onDelete={handleDelete}
-            onAddToKanban={handleAddToKanban}
-            onPageChange={(page) => updateCurrentPage(page, true)}
-            onSortChange={(columnIdOrCriteriaName, direction) => {
-              // Enhanced field mapping that covers all standard column types
-              const fieldMap: Record<string, string> = {
-                // Standard columns
-                'source': 'source',
-                'name': 'tender_metadata.name',
-                'organization': 'tender_metadata.organization',
-                'publication_date': 'initiation_date',
-                'submission_deadline': 'submission_deadline',
-                'board_status': 'status',
-                'score': 'tender_score',
-                'created_at': 'created_at',
-                'updated_at': 'updated_at'
-              };
+              currentResults={currentResults}
+              selectedResult={selectedResult}
+              selectedAnalysis={selectedAnalysis}
+              isLoading={isLoading}
+              totalFetched={totalFetched}
+              totalTendersCount={totalTendersCount}
+              allResultsLength={allResults.length}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              availableCriteria={availableCriteria}
+              isUpdatedAfterOpened={isUpdatedAfterOpened}
+              calculateDaysRemaining={calculateDaysRemaining}
+              getTenderBoards={getTenderBoards}
+              boardsLoading={boardsLoading}
+              onRowClick={handleRowClick}
+              onStatusChange={handleStatusChange}
+              onUnopened={handleUnopened}
+              isDrawerVisible={isDrawerVisible}
+              onDrawerVisibilityChange={onDrawerVisibilityChange}
+              onDelete={handleDelete}
+              onAddToKanban={handleAddToKanban}
+              onPageChange={(page) => updateCurrentPage(page, true)}
+              onSortChange={(columnIdOrCriteriaName, direction) => {
+                // Enhanced field mapping that covers all standard column types
+                const fieldMap: Record<string, string> = {
+                  // Standard columns
+                  'source': 'source',
+                  'name': 'tender_metadata.name',
+                  'organization': 'tender_metadata.organization',
+                  'publication_date': 'initiation_date',
+                  'submission_deadline': 'submission_deadline',
+                  'board_status': 'status',
+                  'score': 'tender_score',
+                  'created_at': 'created_at',
+                  'updated_at': 'updated_at'
+                };
 
-              // Check if this is a criteria column by seeing if it's a criteria name
-              const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
+                // Check if this is a criteria column by seeing if it's a criteria name
+                const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
 
-              if (isCriteriaSort) {
-                // For criteria columns, use the criteria name directly as the field
-                if (direction) {
-                  setSortConfig({ field: columnIdOrCriteriaName, direction });
+                if (isCriteriaSort) {
+                  // For criteria columns, use the criteria name directly as the field
+                  if (direction) {
+                    setSortConfig({ field: columnIdOrCriteriaName, direction });
+                  } else {
+                    setSortConfig(null);
+                  }
                 } else {
-                  setSortConfig(null);
+                  // For standard columns, use the field mapping
+                  const field = fieldMap[columnIdOrCriteriaName];
+                  if (field && direction) {
+                    setSortConfig({ field, direction });
+                  } else {
+                    setSortConfig(null);
+                  }
                 }
-              } else {
-                // For standard columns, use the field mapping
-                const field = fieldMap[columnIdOrCriteriaName];
-                if (field && direction) {
-                  setSortConfig({ field, direction });
-                } else {
-                  setSortConfig(null);
-                }
-              }
-            }}
-          />
+              }}
+            />
           </div>
         </CardContent>
       </Card>

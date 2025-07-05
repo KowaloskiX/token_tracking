@@ -66,6 +66,7 @@ class ColumnConfiguration(BaseModel):
     visible: bool
     order: int
     criteria_id: Optional[str] = None  # Only for criteria columns
+    display_mode: Optional[str] = None  # NEW: Add display mode for criteria columns
 
 class TableLayout(BaseModel):
     """Table layout configuration per user for this analysis"""
@@ -298,6 +299,7 @@ class ColumnConfigurationRequest(BaseModel):
     visible: bool
     order: int
     criteria_id: Optional[str] = None
+    display_mode: Optional[str] = None  # NEW: Add display mode for criteria columns
 
 class TableLayoutUpdate(BaseModel):
     columns: List[ColumnConfigurationRequest]

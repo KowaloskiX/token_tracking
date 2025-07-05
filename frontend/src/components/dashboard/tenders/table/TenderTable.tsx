@@ -1,3 +1,4 @@
+// Updated TenderTable.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody } from '@/components/ui/table';
 import { TenderAnalysisResult } from '@/types/tenders';
@@ -36,8 +37,10 @@ interface TenderTableProps {
   onAddToKanban: (result: TenderAnalysisResult) => void;
   onPageChange: (page: number) => void;
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
-  isDrawerVisible?: boolean; // Keep for backward compatibility but not used for resize logic
+  isDrawerVisible?: boolean;
   onDrawerVisibilityChange?: (visible: boolean) => void;
+  // NEW: Add callback to inform parent about scroll needs
+  onScrollInfoChange?: (needsScroll: boolean, totalWidth: number) => void;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -62,8 +65,9 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onAddToKanban,
   onPageChange,
   onSortChange,
-  isDrawerVisible, // Keep for backward compatibility
+  isDrawerVisible,
   onDrawerVisibilityChange,
+  onScrollInfoChange, // NEW: Accept scroll info callback
 }) => {
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +79,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     totalTableWidth,
     updateColumnWidth,
     toggleColumnVisibility,
-    updateCriteriaDisplayMode, // NEW: Get the new function from the hook
+    updateCriteriaDisplayMode,
     reorderColumns,
     addCriteriaColumn,
     removeCriteriaColumn,
@@ -105,13 +109,27 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
+  // NEW: Notify parent about scroll needs when sidebar is closed
+  useEffect(() => {
+    // Only report scroll needs when:
+    // 1. Sidebar is closed (!selectedResult)
+    // 2. Table has actual content (not loading and has results)
+    // 3. Table width is measured (tableWidth > 0)
+    if (onScrollInfoChange && !selectedResult && !isLoading && currentResults.length > 0 && tableWidth > 0) {
+      const needsScroll = totalTableWidth > tableWidth;
+      onScrollInfoChange(needsScroll, totalTableWidth);
+    } else if (onScrollInfoChange && (!selectedResult && (isLoading || currentResults.length === 0))) {
+      // Reset scroll when loading or no content
+      onScrollInfoChange(false, 0);
+    }
+  }, [onScrollInfoChange, selectedResult, totalTableWidth, tableWidth, isLoading, currentResults.length]);
+
   const handleSort = (columnId: string, direction: 'asc' | 'desc' | null) => {
     setSortConfig(columnId, direction);
     onSortChange?.(columnId, direction);
   };
 
   const handleColumnResize = (columnId: string, newWidth: number) => {
-    // Always allow resizing - the width adjustment happens automatically in the hook
     updateColumnWidth(columnId, newWidth);
   };
 
@@ -130,8 +148,12 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         }`}
         ref={tableContainerRef}
       >
-        {/* Scrollable table container with strict width constraints */}
-        <div className="overflow-x-auto scrollbar-thin">
+        {/* Scrollable table container - only scroll here when sidebar is OPEN AND has content */}
+        <div className={
+          selectedResult && currentResults.length > 0 
+            ? "overflow-x-auto scrollbar-thin" 
+            : "overflow-visible"
+        }>
           <Table className="min-w-max table-fixed" style={{ minWidth: `${totalTableWidth}px` }}>
             <ResizableTableHeader
               columns={visibleColumns}
@@ -139,7 +161,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               onSort={handleSort}
               onColumnResize={handleColumnResize}
               onOpenTableLayout={openTableLayout}
-              isResizeDisabled={!!selectedResult} // Use selectedResult instead of isDrawerVisible
+              isResizeDisabled={!!selectedResult}
             />
             <TableBody>
               {isLoading ? (
@@ -147,14 +169,14 @@ export const TenderTable: React.FC<TenderTableProps> = ({
                   tableWidth={tableWidth}
                   totalFetched={totalFetched}
                   totalTendersCount={totalTendersCount}
-                  columnCount={visibleColumns.length + 1} // +1 for column manager button
+                  columnCount={visibleColumns.length + 1}
                 />
               ) : currentResults.length === 0 ? (
                 <TenderTableEmpty
                   tableWidth={tableWidth}
                   allResultsLength={allResultsLength}
                   selectedAnalysis={selectedAnalysis}
-                  columnCount={visibleColumns.length + 1} // +1 for column manager button
+                  columnCount={visibleColumns.length + 1}
                 />
               ) : (
                 currentResults.map((result: TenderAnalysisResult) => (
@@ -179,8 +201,8 @@ export const TenderTable: React.FC<TenderTableProps> = ({
           </Table>
         </div>
 
-        {/* Horizontal scroll indicator */}
-        {needsHorizontalScroll && (
+        {/* Horizontal scroll indicator - show when scroll is needed and has content */}
+        {needsHorizontalScroll && currentResults.length > 0 && !isLoading && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent pointer-events-none" />
         )}
       </div>
