@@ -1,6 +1,7 @@
 // Updated TenderTable.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody } from '@/components/ui/table';
+import { Loader2 } from 'lucide-react';
 import { TenderAnalysisResult } from '@/types/tenders';
 import { ResizableTableHeader } from './ResizableTableHeader';
 import { DynamicTableRow } from './DynamicTableRow';
@@ -10,6 +11,7 @@ import { TenderTablePagination } from './TenderTablePagination';
 import { TableLayout } from './TableLayout';
 import { useTableColumns } from '@/hooks/table/useTableColumns';
 import { ColumnConfig } from '@/types/tableColumns';
+import { useTendersTranslations } from '@/hooks/useTranslations';
 
 interface TenderTableProps {
   currentResults: TenderAnalysisResult[];
@@ -66,6 +68,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   isDrawerVisible,
   onDrawerVisibilityChange,
 }) => {
+  const t = useTendersTranslations();
   const [tableWidth, setTableWidth] = useState(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -122,8 +125,47 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   // Determine if horizontal scrolling is needed
   const needsHorizontalScroll = totalTableWidth > tableWidth && tableWidth > 0;
 
+  // Calculate progress percentage for loader
+  const progressPercentage = totalTendersCount && totalTendersCount > 0 
+    ? Math.round((totalFetched / totalTendersCount) * 100) 
+    : 0;
+
   return (
-    <div className="w-full max-w-full">
+    <div className="w-full max-w-full relative">
+      {/* Absolutely positioned loader in center of screen */}
+      {isLoading && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="flex flex-col items-center justify-center space-y-4 bg-background/95 border border-border rounded-lg p-6 shadow-lg">
+            <div className="flex items-center space-x-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">
+                  {t('tenders.list.loading', {
+                    fetched: totalFetched,
+                    total: totalTendersCount !== null ? ` / ${totalTendersCount}` : ''
+                  })}
+                </p>
+              </div>
+            </div>
+            
+            {/* Progress bar */}
+            {totalTendersCount !== null && totalTendersCount > 0 && (
+              <div className="w-64 space-y-2">
+                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-2 bg-primary transition-all duration-300 rounded-full"
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  {progressPercentage}%
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
         className="rounded-md border shadow-sm overflow-visible relative"
         ref={tableContainerRef}

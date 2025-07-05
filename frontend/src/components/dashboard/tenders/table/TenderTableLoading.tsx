@@ -89,56 +89,12 @@ export const TenderTableLoading: React.FC<TenderTableLoadingProps> = ({
   columnCount
 }) => {
   const t = useTendersTranslations();
-  
-  // Calculate progress percentage
-  const progressPercentage = totalTendersCount && totalTendersCount > 0 
-    ? Math.round((totalFetched / totalTendersCount) * 100) 
-    : 0;
 
   return (
     <>
-      {/* First few skeleton rows */}
-      {Array.from({ length: 3 }, (_, index) => (
-        <SkeletonRow key={`skeleton-row-top-${index}`} columnCount={columnCount} />
-      ))}
-      
-      {/* Loading progress row in the middle */}
-      <TableRow className="bg-muted/30">
-        <TableCell colSpan={columnCount} className="py-8">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="flex items-center space-x-3">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              <div className="text-center">
-                <p className="text-sm font-medium text-foreground">
-                  {t('tenders.list.loading', {
-                    fetched: totalFetched,
-                    total: totalTendersCount !== null ? ` / ${totalTendersCount}` : ''
-                  })}
-                </p>
-              </div>
-            </div>
-            
-            {/* Progress bar */}
-            {totalTendersCount !== null && totalTendersCount > 0 && (
-              <div className="w-full max-w-md space-y-2">
-                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-2 bg-primary transition-all duration-300 rounded-full"
-                    style={{ width: `${progressPercentage}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  {progressPercentage}%
-                </p>
-              </div>
-            )}
-          </div>
-        </TableCell>
-      </TableRow>
-      
-      {/* More skeleton rows after the loading indicator */}
-      {Array.from({ length: 4 }, (_, index) => (
-        <SkeletonRow key={`skeleton-row-bottom-${index}`} columnCount={columnCount} />
+      {/* Skeleton rows to maintain table structure */}
+      {Array.from({ length: 8 }, (_, index) => (
+        <SkeletonRow key={`skeleton-row-${index}`} columnCount={columnCount} />
       ))}
     </>
   );
