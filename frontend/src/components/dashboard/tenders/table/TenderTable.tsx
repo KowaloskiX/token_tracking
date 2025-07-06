@@ -1,7 +1,5 @@
-// Updated TenderTable.tsx - Pass isDrawerVisible to useTableColumns
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody } from '@/components/ui/table';
-import { Loader2 } from 'lucide-react';
 import { TenderAnalysisResult } from '@/types/tenders';
 import { ResizableTableHeader } from './ResizableTableHeader';
 import { DynamicTableRow } from './DynamicTableRow';
@@ -41,6 +39,15 @@ interface TenderTableProps {
   onSortChange?: (columnId: string, direction: 'asc' | 'desc' | null) => void;
   isDrawerVisible?: boolean;
   onDrawerVisibilityChange?: (visible: boolean) => void;
+  
+  // Data filter props
+  includeHistorical: boolean;
+  onToggleHistorical: (value: boolean) => void;
+  includeFiltered: boolean;
+  onToggleFiltered: (value: boolean) => void;
+  includeExternal: boolean;
+  onToggleExternal: (value: boolean) => void;
+  showIncludeExternal: boolean;
 }
 
 export const TenderTable: React.FC<TenderTableProps> = ({
@@ -65,8 +72,15 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onAddToKanban,
   onPageChange,
   onSortChange,
-  isDrawerVisible = false, // Default to false
+  isDrawerVisible = false,
   onDrawerVisibilityChange,
+  includeHistorical,
+  onToggleHistorical,
+  includeFiltered,
+  onToggleFiltered,
+  includeExternal,
+  onToggleExternal,
+  showIncludeExternal,
 }) => {
   const t = useTendersTranslations();
   const [tableWidth, setTableWidth] = useState(0);
@@ -81,7 +95,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const scrollableRef = useRef<HTMLDivElement>(null);
 
-  // Use the table columns hook with BOTH selectedResult AND isDrawerVisible
+  // Use the table columns hook
   const {
     columnState,
     visibleColumns,
@@ -103,7 +117,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     availableCriteria,
     tableWidth,
     selectedResult,
-    isDrawerVisible, // NEW: Pass isDrawerVisible to the hook
+    isDrawerVisible,
   });
 
   // Monitor table container width
@@ -145,7 +159,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     };
 
     scrollableElement.addEventListener('scroll', handleScroll);
-    // Initial calculation
     handleScroll();
 
     return () => {
@@ -178,7 +191,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   const calculateScrollGradients = () => {
     const { scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight } = scrollState;
     
-    // Calculate scroll percentages (0 to 1)
     const horizontalScrollable = scrollWidth > clientWidth;
     const verticalScrollable = scrollHeight > clientHeight;
     
@@ -189,37 +201,15 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     
     if (horizontalScrollable) {
       const maxScrollLeft = scrollWidth - clientWidth;
-      // Show left gradient when scrolled away from left edge
       leftGradient = scrollLeft > 0 ? Math.min(scrollLeft / 50, 1) : 0;
-      // Show right gradient when not scrolled to right edge
       rightGradient = scrollLeft < maxScrollLeft ? Math.min((maxScrollLeft - scrollLeft) / 50, 1) : 0;
     }
     
     if (verticalScrollable) {
       const maxScrollTop = scrollHeight - clientHeight;
-      // Show top gradient when scrolled away from top edge
       topGradient = scrollTop > 0 ? Math.min(scrollTop / 50, 1) : 0;
-      // Show bottom gradient when not scrolled to bottom edge
       bottomGradient = scrollTop < maxScrollTop ? Math.min((maxScrollTop - scrollTop) / 50, 1) : 0;
     }
-    
-    // Debug logging (remove in production)
-    console.log('Scroll state:', {
-      scrollLeft,
-      scrollTop,
-      scrollWidth,
-      scrollHeight,
-      clientWidth,
-      clientHeight,
-      horizontalScrollable,
-      verticalScrollable,
-      maxScrollLeft: scrollWidth - clientWidth,
-      maxScrollTop: scrollHeight - clientHeight,
-      needsHorizontalScroll,
-      totalTableWidth,
-      tableWidth,
-      gradients: { leftGradient, rightGradient, topGradient, bottomGradient }
-    });
     
     return { leftGradient, rightGradient, topGradient, bottomGradient };
   };
@@ -228,7 +218,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
 
   return (
     <div className="w-full max-w-full relative flex flex-col h-full">
-      {/* Absolutely positioned loader in center of screen */}
+      {/* Loading overlay */}
       {isLoading && (
         <div 
           className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
@@ -238,7 +228,6 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         >
           <div className="flex flex-col items-center justify-center space-y-4 rounded-lg p-6">
             <div className="flex items-center space-x-3">
-              {/* <Loader2 className="h-6 w-6 animate-spin text-primary" /> */}
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">
                   {t('tenders.list.loading', {
@@ -265,12 +254,12 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         </div>
       )}
 
-      {/* Table container - flex-1 to take remaining space */}
+      {/* Table container */}
       <div
         className="flex-1 rounded-md border shadow-sm overflow-hidden relative min-h-0"
         ref={tableContainerRef}
       >
-        {/* Scroll gradient overlays - positioned relative to the table container */}
+        {/* Scroll gradient overlays */}
         {leftGradient > 0 && (
           <div
             className="absolute top-0 left-0 bottom-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
@@ -308,7 +297,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
           />
         )}
 
-        {/* Scrollable table container - both horizontal and vertical scrolling */}
+        {/* Scrollable table container */}
         <div 
           ref={scrollableRef}
           className={`
@@ -369,13 +358,13 @@ export const TenderTable: React.FC<TenderTableProps> = ({
           </Table>
         </div>
 
-        {/* Horizontal scroll indicator - show when scroll is needed and has content */}
+        {/* Horizontal scroll indicator */}
         {needsHorizontalScroll && currentResults.length > 0 && !isLoading && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent pointer-events-none" />
         )}
       </div>
 
-      {/* Pagination - always visible outside the scrollable area */}
+      {/* Pagination */}
       <div className="flex-shrink-0">
         <TenderTablePagination
           currentPage={currentPage}
@@ -384,7 +373,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         />
       </div>
 
-      {/* Column Manager */}
+      {/* Table Settings Dialog */}
       <TableLayout
         isOpen={managerState.isOpen}
         onClose={closeTableLayout}
@@ -398,6 +387,13 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         onUpdateColumnWidth={updateColumnWidth}
         onUpdateCriteriaDisplayMode={updateCriteriaDisplayMode}
         onSaveConfiguration={handleSaveConfiguration}
+        includeHistorical={includeHistorical}
+        onToggleHistorical={onToggleHistorical}
+        includeFiltered={includeFiltered}
+        onToggleFiltered={onToggleFiltered}
+        includeExternal={includeExternal}
+        onToggleExternal={onToggleExternal}
+        showIncludeExternal={showIncludeExternal}
       />
     </div>
   );

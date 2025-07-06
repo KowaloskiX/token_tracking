@@ -17,7 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Clock, Check, Pencil, Settings2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Check, Pencil } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { useTender } from "@/context/TenderContext";
 import { TenderAnalysisResult } from "@/types/tenders";
@@ -123,7 +123,7 @@ const TendersList: React.FC<TendersListProps> = ({
 
   const [filters, setFilters] = useState<Filters>({
     onlyQualified: false,
-    status: { inactive: true, active: true, archived: false, inBoard: true, filtered: true, external: true }, // NEW: Include 'filtered' status
+    status: { inactive: true, active: true, archived: false, inBoard: true, filtered: true, external: true },
     voivodeship: {
       "Dolnośląskie": true,
       "Kujawsko-pomorskie": true,
@@ -147,12 +147,13 @@ const TendersList: React.FC<TendersListProps> = ({
   });
 
   const [showKanbanDialog, setShowKanbanDialog] = useState(false);
+  
+  // Data filter states - moved from buttons to table settings
   const [includeHistorical, setIncludeHistorical] = useState(false);
   const [includeFiltered, setIncludeFiltered] = useState(false);
-  // NEW: Include External state
   const [includeExternal, setIncludeExternal] = useState(false);
 
-  // NEW: Only show includeExternal if selectedAnalysis.include_external_sources is true
+  // Show external toggle only if analysis supports it
   const showIncludeExternal = !!selectedAnalysis?.include_external_sources;
 
   // Inline title editing & settings modal state
@@ -163,8 +164,6 @@ const TendersList: React.FC<TendersListProps> = ({
   const editContainerRef = useRef<HTMLDivElement>(null);
 
   const { user } = useDashboard();
-
-  // NEW: Callback to receive scroll info from TenderTabl
 
   // Function to find which boards a tender belongs to
   const getTenderBoards = useCallback((tenderId: string): string[] => {
@@ -489,43 +488,22 @@ const TendersList: React.FC<TendersListProps> = ({
                     historical: includeHistorical ? ` ${t('tenders.list.historical')}` : ''
                   })
                 }
+                {/* Show active data filters */}
+                {(includeHistorical || includeFiltered || includeExternal) && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-xs text-muted-foreground">Including:</span>
+                    {includeHistorical && (
+                      <Badge variant="outline" className="text-xs">Historical</Badge>
+                    )}
+                    {includeFiltered && (
+                      <Badge variant="outline" className="text-xs">Filtered</Badge>
+                    )}
+                    {includeExternal && (
+                      <Badge variant="outline" className="text-xs">External</Badge>
+                    )}
+                  </div>
+                )}
               </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow"
-                onClick={() => setIncludeHistorical(!includeHistorical)}
-                disabled={isLoading}
-              >
-                <Clock className="h-4 w-4" />
-                {/* {includeHistorical
-                  ? t('tenders.list.hideHistorical')
-                  : t('tenders.list.loadHistorical')} */}
-              </Button>
-              {/* NEW: Include Filtered Button */}
-              <Button
-                variant={includeFiltered ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIncludeFiltered(!includeFiltered)}
-                disabled={isLoading}
-                className="whitespace-nowrap"
-              >
-                <span>{includeFiltered ? t('tenders.list.hideFiltered') : t('tenders.list.showFiltered')}</span>
-              </Button>
-              {/* NEW: Include External Button (only if showIncludeExternal) */}
-              {showIncludeExternal && (
-                <Button
-                  variant={includeExternal ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setIncludeExternal(!includeExternal)}
-                  disabled={isLoading}
-                  className="whitespace-nowrap"
-                >
-                  <span>{includeExternal ? t('tenders.list.hideExternal') : t('tenders.list.showExternal')}</span>
-                </Button>
-              )}
             </div>
           </div>
 
@@ -546,8 +524,8 @@ const TendersList: React.FC<TendersListProps> = ({
           />
         </CardHeader>
 
-        <CardContent className="flex flex-col flex-1 min-h-0"> {/* Ensure proper padding and flex behavior */}
-          <div className="flex-1 min-h-0 w-full"> {/* Flex container that takes remaining space */}
+        <CardContent className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0 w-full">
             <TenderTable
               currentResults={currentResults}
               selectedResult={selectedResult}
@@ -572,9 +550,7 @@ const TendersList: React.FC<TendersListProps> = ({
               onAddToKanban={handleAddToKanban}
               onPageChange={(page) => updateCurrentPage(page, true)}
               onSortChange={(columnIdOrCriteriaName, direction) => {
-                // Enhanced field mapping that covers all standard column types
                 const fieldMap: Record<string, string> = {
-                  // Standard columns
                   'source': 'source',
                   'name': 'tender_metadata.name',
                   'organization': 'tender_metadata.organization',
@@ -586,18 +562,15 @@ const TendersList: React.FC<TendersListProps> = ({
                   'updated_at': 'updated_at'
                 };
 
-                // Check if this is a criteria column by seeing if it's a criteria name
                 const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
 
                 if (isCriteriaSort) {
-                  // For criteria columns, use the criteria name directly as the field
                   if (direction) {
                     setSortConfig({ field: columnIdOrCriteriaName, direction });
                   } else {
                     setSortConfig(null);
                   }
                 } else {
-                  // For standard columns, use the field mapping
                   const field = fieldMap[columnIdOrCriteriaName];
                   if (field && direction) {
                     setSortConfig({ field, direction });
@@ -606,6 +579,14 @@ const TendersList: React.FC<TendersListProps> = ({
                   }
                 }
               }}
+              // Pass data filter props to TenderTable
+              includeHistorical={includeHistorical}
+              onToggleHistorical={setIncludeHistorical}
+              includeFiltered={includeFiltered}
+              onToggleFiltered={setIncludeFiltered}
+              includeExternal={includeExternal}
+              onToggleExternal={setIncludeExternal}
+              showIncludeExternal={showIncludeExternal}
             />
           </div>
         </CardContent>
