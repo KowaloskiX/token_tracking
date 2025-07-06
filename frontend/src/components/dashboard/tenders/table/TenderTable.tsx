@@ -1,4 +1,4 @@
-// Updated TenderTable.tsx
+// Updated TenderTable.tsx - Pass isDrawerVisible to useTableColumns
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody } from '@/components/ui/table';
 import { Loader2 } from 'lucide-react';
@@ -65,14 +65,23 @@ export const TenderTable: React.FC<TenderTableProps> = ({
   onAddToKanban,
   onPageChange,
   onSortChange,
-  isDrawerVisible,
+  isDrawerVisible = false, // Default to false
   onDrawerVisibilityChange,
 }) => {
   const t = useTendersTranslations();
   const [tableWidth, setTableWidth] = useState(0);
+  const [scrollState, setScrollState] = useState({
+    scrollLeft: 0,
+    scrollTop: 0,
+    scrollWidth: 0,
+    scrollHeight: 0,
+    clientWidth: 0,
+    clientHeight: 0,
+  });
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const scrollableRef = useRef<HTMLDivElement>(null);
 
-  // Use the table columns hook with selectedResult for sidebar-aware column sizing
+  // Use the table columns hook with BOTH selectedResult AND isDrawerVisible
   const {
     columnState,
     visibleColumns,
@@ -94,6 +103,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     availableCriteria,
     tableWidth,
     selectedResult,
+    isDrawerVisible, // NEW: Pass isDrawerVisible to the hook
   });
 
   // Monitor table container width
@@ -107,6 +117,40 @@ export const TenderTable: React.FC<TenderTableProps> = ({
       resizeObserver.observe(tableContainerRef.current);
     }
     return () => resizeObserver.disconnect();
+  }, []);
+
+  // Monitor scroll position for gradient effects
+  useEffect(() => {
+    const scrollableElement = scrollableRef.current;
+    if (!scrollableElement) return;
+
+    const handleScroll = () => {
+      const {
+        scrollLeft,
+        scrollTop,
+        scrollWidth,
+        scrollHeight,
+        clientWidth,
+        clientHeight,
+      } = scrollableElement;
+
+      setScrollState({
+        scrollLeft,
+        scrollTop,
+        scrollWidth,
+        scrollHeight,
+        clientWidth,
+        clientHeight,
+      });
+    };
+
+    scrollableElement.addEventListener('scroll', handleScroll);
+    // Initial calculation
+    handleScroll();
+
+    return () => {
+      scrollableElement.removeEventListener('scroll', handleScroll);
+    };
   }, []);
 
   const handleSort = (columnId: string, direction: 'asc' | 'desc' | null) => {
@@ -130,14 +174,71 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     ? Math.round((totalFetched / totalTendersCount) * 100) 
     : 0;
 
+  // Calculate scroll gradients
+  const calculateScrollGradients = () => {
+    const { scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight } = scrollState;
+    
+    // Calculate scroll percentages (0 to 1)
+    const horizontalScrollable = scrollWidth > clientWidth;
+    const verticalScrollable = scrollHeight > clientHeight;
+    
+    let leftGradient = 0;
+    let rightGradient = 0;
+    let topGradient = 0;
+    let bottomGradient = 0;
+    
+    if (horizontalScrollable) {
+      const maxScrollLeft = scrollWidth - clientWidth;
+      // Show left gradient when scrolled away from left edge
+      leftGradient = scrollLeft > 0 ? Math.min(scrollLeft / 50, 1) : 0;
+      // Show right gradient when not scrolled to right edge
+      rightGradient = scrollLeft < maxScrollLeft ? Math.min((maxScrollLeft - scrollLeft) / 50, 1) : 0;
+    }
+    
+    if (verticalScrollable) {
+      const maxScrollTop = scrollHeight - clientHeight;
+      // Show top gradient when scrolled away from top edge
+      topGradient = scrollTop > 0 ? Math.min(scrollTop / 50, 1) : 0;
+      // Show bottom gradient when not scrolled to bottom edge
+      bottomGradient = scrollTop < maxScrollTop ? Math.min((maxScrollTop - scrollTop) / 50, 1) : 0;
+    }
+    
+    // Debug logging (remove in production)
+    console.log('Scroll state:', {
+      scrollLeft,
+      scrollTop,
+      scrollWidth,
+      scrollHeight,
+      clientWidth,
+      clientHeight,
+      horizontalScrollable,
+      verticalScrollable,
+      maxScrollLeft: scrollWidth - clientWidth,
+      maxScrollTop: scrollHeight - clientHeight,
+      needsHorizontalScroll,
+      totalTableWidth,
+      tableWidth,
+      gradients: { leftGradient, rightGradient, topGradient, bottomGradient }
+    });
+    
+    return { leftGradient, rightGradient, topGradient, bottomGradient };
+  };
+
+  const { leftGradient, rightGradient, topGradient, bottomGradient } = calculateScrollGradients();
+
   return (
-    <div className="w-full max-w-full relative">
+    <div className="w-full max-w-full relative flex flex-col h-full">
       {/* Absolutely positioned loader in center of screen */}
       {isLoading && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="flex flex-col items-center justify-center space-y-4 bg-background/95 border border-border rounded-lg p-6 shadow-lg">
+        <div 
+          className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse 400px 200px at center, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.7) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`
+          }}
+        >
+          <div className="flex flex-col items-center justify-center space-y-4 rounded-lg p-6">
             <div className="flex items-center space-x-3">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              {/* <Loader2 className="h-6 w-6 animate-spin text-primary" /> */}
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">
                   {t('tenders.list.loading', {
@@ -149,32 +250,72 @@ export const TenderTable: React.FC<TenderTableProps> = ({
             </div>
             
             {/* Progress bar */}
-            {totalTendersCount !== null && totalTendersCount > 0 && (
-              <div className="w-64 space-y-2">
-                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-2 bg-primary transition-all duration-300 rounded-full"
-                    style={{ width: `${progressPercentage}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  {progressPercentage}%
-                </p>
+            <div className="w-64 space-y-2">
+              <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-2 bg-primary rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${progressPercentage}%` }}
+                />
               </div>
-            )}
+              <p className="text-xs text-muted-foreground text-center">
+                {progressPercentage}%
+              </p>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Table container - flex-1 to take remaining space */}
       <div
-        className="rounded-md border shadow-sm overflow-visible relative"
+        className="flex-1 rounded-md border shadow-sm overflow-hidden relative min-h-0"
         ref={tableContainerRef}
       >
-        {/* Always scrollable table container - handles both sidebar states consistently */}
-        <div className={`
-          ${needsHorizontalScroll ? 'overflow-x-auto scrollbar-thin' : 'overflow-x-visible'}
-          ${selectedResult ? 'transition-all duration-200 ease-in-out' : ''}
-        `}>
+        {/* Scroll gradient overlays - positioned relative to the table container */}
+        {leftGradient > 0 && (
+          <div
+            className="absolute top-0 left-0 bottom-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
+            style={{
+              background: `linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
+              opacity: leftGradient,
+            }}
+          />
+        )}
+        {rightGradient > 0 && (
+          <div
+            className="absolute top-0 right-0 bottom-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
+            style={{
+              background: `linear-gradient(to left, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
+              opacity: rightGradient,
+            }}
+          />
+        )}
+        {topGradient > 0 && (
+          <div
+            className="absolute top-0 left-0 right-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
+            style={{
+              background: `linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
+              opacity: topGradient,
+            }}
+          />
+        )}
+        {bottomGradient > 0 && (
+          <div
+            className="absolute bottom-0 left-0 right-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
+            style={{
+              background: `linear-gradient(to top, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
+              opacity: bottomGradient,
+            }}
+          />
+        )}
+
+        {/* Scrollable table container - both horizontal and vertical scrolling */}
+        <div 
+          ref={scrollableRef}
+          className={`
+            h-full scrollbar-table relative overflow-auto
+            ${isDrawerVisible ? 'transition-all duration-200 ease-in-out' : ''}
+          `}
+        >
           <Table 
             className="min-w-max table-fixed" 
             style={{ 
@@ -188,7 +329,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
               onSort={handleSort}
               onColumnResize={handleColumnResize}
               onOpenTableLayout={openTableLayout}
-              isResizeDisabled={!!selectedResult}
+              isResizeDisabled={false}
             />
             <TableBody>
               {isLoading ? (
@@ -234,12 +375,14 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         )}
       </div>
 
-      {/* Pagination */}
-      <TenderTablePagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={onPageChange}
-      />
+      {/* Pagination - always visible outside the scrollable area */}
+      <div className="flex-shrink-0">
+        <TenderTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      </div>
 
       {/* Column Manager */}
       <TableLayout

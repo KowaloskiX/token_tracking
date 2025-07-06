@@ -34,7 +34,7 @@ type SourceKey = keyof Filters['source'];
 
 export interface Filters {
   onlyQualified: boolean;
-  status: { inactive: boolean; active: boolean; archived: boolean; inBoard: boolean };
+  status: { inactive: boolean; active: boolean; archived: boolean; inBoard: boolean; filtered: boolean; external: boolean }; // Updated to include 'inBoard' and 'filtered'
   voivodeship: {
     "Dolnośląskie": boolean;
     "Kujawsko-pomorskie": boolean;
@@ -59,6 +59,7 @@ export interface Filters {
 
 interface TenderFiltersProps {
   filters: Filters;
+  showIncludeExternal?: boolean; // NEW: Optional prop to control external results visibility
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
@@ -79,6 +80,7 @@ interface TenderFiltersProps {
 
 export const TenderFilters: React.FC<TenderFiltersProps> = ({
   filters,
+  showIncludeExternal = false, // NEW: Default to false if not provided
   setFilters,
   searchQuery,
   setSearchQuery,
@@ -135,7 +137,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
     });
   }, [availableSources, availableCriteria, setFilters]);
 
-  const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived' | 'inBoard') => {
+  const toggleStatusFilter = (status: 'inactive' | 'active' | 'archived' | 'inBoard' | 'filtered' | 'external') => {
     setFilters(prev => ({
       ...prev,
       status: { ...prev.status, [status]: !prev.status[status] },
@@ -375,7 +377,7 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                     {areAllStatusSelected() ? t('tenders.filters.deselectAll') : t('tenders.filters.selectAll')}
                   </div>
                 </DropdownMenuItem>
-                <div className="max-h-[180px] overflow-y-auto border-t border-t-muted/20 pt-1">
+                <div className="max-h-[200px] overflow-y-auto border-t border-t-muted/20 pt-1">
                   <DropdownMenuCheckboxItem
                     checked={filters.status.active}
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('active'); }}
@@ -397,6 +399,22 @@ export const TenderFilters: React.FC<TenderFiltersProps> = ({
                   >
                     <span className="truncate pr-6 pl-6">{t('tenders.status.archived')}</span>
                   </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filters.status.filtered}
+                    onSelect={(e) => { e.preventDefault(); toggleStatusFilter('filtered'); }}
+                    className="px-2 flex items-center"
+                  >
+                    <span className="truncate pr-6 pl-6">{t('tenders.status.filtered')}</span>
+                  </DropdownMenuCheckboxItem>
+                  { showIncludeExternal ? (
+                    <DropdownMenuCheckboxItem
+                      checked={filters.status.external}
+                      onSelect={(e) => { e.preventDefault(); toggleStatusFilter('external'); }}
+                      className="px-2 flex items-center"
+                    >
+                      <span className="truncate pr-6 pl-6">{t('tenders.status.external')}</span>
+                    </DropdownMenuCheckboxItem>
+                  ) : null }
                   <DropdownMenuCheckboxItem
                     checked={filters.status.inBoard}
                     onSelect={(e) => { e.preventDefault(); toggleStatusFilter('inBoard'); }}

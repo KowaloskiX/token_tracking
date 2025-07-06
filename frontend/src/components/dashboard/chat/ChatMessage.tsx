@@ -234,7 +234,7 @@ const ChatMessage = ({ message, isThinking }: ChatMessageProps) => {
               whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
               whileTap={{ scale: 0.98 }}
               onClick={() => handleFileClick(groupData)}
-              title={`${groupData.fileData.filename}\nCitations:\n${groupData.citationContents.map(c => `- ${c}`).join('\n')}`}
+              title={`${groupData.fileData.filename}\n${tTenders('citations')}:\n${groupData.citationContents.map(c => `- ${c}`).join('\n')}`}
             >
               <Paperclip className="size-3 text-neutral-400 flex-shrink-0" />
               <div className="truncate">

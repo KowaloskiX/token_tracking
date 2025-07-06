@@ -198,6 +198,8 @@
     "status": {
       "inactive": "Nieaktywny",
       "active": "Aktywny",
+      "filtered": "Odfiltrowany",
+      "external": "Zewnętrzny",
       "archived": "Zarchiwizowany",
       "inBoard": "W tablicy",
       "activate": "Aktywuj",
@@ -283,6 +285,10 @@
       "selectAnalysis": "Wybierz analizę, aby zobaczyć wyniki.",
       "hideHistorical": "Ukryj historyczne",
       "loadHistorical": "Wczytaj historyczne",
+      "hideFiltered": "Ukryj odfiltrowane",
+      "showFiltered": "Wczytaj odfiltrowane",
+      "showExternal": "Wczytaj zewnętrzne",
+      "hideExternal": "Ukryj zewnętrzne",
       "boardStatus": "Tablica / Status"
     },
     "updates": {

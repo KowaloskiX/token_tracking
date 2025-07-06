@@ -945,6 +945,8 @@ export function EditTenderAnalysisForm({ analysis, onSubmit, isLoading = false, 
                             <CommandGroup>
                               {Object.entries(POLISH_SOURCES).map(([sourceId, source]) => {
                                 const isSelected = selectedSources.includes(sourceId);
+                                const source_any = source as any;
+                                if (source_any.hidden) return null; // Skip hidden sources
                                 return (
                                   <CommandItem
                                     key={sourceId}

@@ -67,6 +67,11 @@ export const TenderBoardBadge: React.FC<TenderBoardBadgeProps> = ({
           {t('tenders.status.archived')}
         </Badge>
       );
+
+       case 'filtered':
+        return <Badge variant="default" className="bg-yellow-600/80 hover:bg-yellow-600/80 font-normal">{t('tenders.status.filtered')}</Badge>;
+      case 'external':
+        return <Badge variant="default" className="bg-primary hover:bg-primary/80 font-normal">{t('tenders.status.external')}</Badge>;
     default:
       return (
         <Badge variant="outline">

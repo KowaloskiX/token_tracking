@@ -49,7 +49,7 @@ export const TenderRowActions: React.FC<TenderRowActionsProps> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {result.status !== 'active' && (
+        {result.status !== 'active' && result.status !== 'external' && (
           <DropdownMenuItem 
             onClick={(e) => { 
               e.stopPropagation(); 
@@ -73,7 +73,7 @@ export const TenderRowActions: React.FC<TenderRowActionsProps> = ({
           </DropdownMenuItem>
         )}
         
-        {result.status !== 'archived' && (
+        {result.status !== 'archived' && result.status !== 'external' && (
           <DropdownMenuItem 
             onClick={(e) => { 
               e.stopPropagation(); 

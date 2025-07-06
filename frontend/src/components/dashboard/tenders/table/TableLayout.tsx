@@ -26,6 +26,7 @@ import {
     CriteriaColumnConfig,
     isCriteriaColumn,
     CriteriaDisplayMode,
+    StandardColumnConfig,
 } from '@/types/tableColumns';
 import { useTendersTranslations, useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
@@ -76,6 +77,42 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
     const [isResetting, setIsResetting] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
+
+    // Function to get translated column label for display in the management interface
+    const getTranslatedColumnLabel = (column: ColumnConfig): string => {
+        // For criteria columns, show the criteria name
+        if (isCriteriaColumn(column)) {
+            const criteriaColumn = column as CriteriaColumnConfig;
+            return criteriaColumn.criteriaName;
+        }
+
+        // For standard columns, use the same translations as ResizableTableHeader
+        const standardColumn = column as StandardColumnConfig;
+        
+        switch (standardColumn.type) {
+            case 'source':
+                return 'Źródło'; // Source icon column
+            case 'name':
+                return tTenders('tenders.list.order');
+            case 'organization':
+                return tTenders('tenders.details.client');
+            case 'publication_date':
+                return tTenders('tenders.details.publicationDate');
+            case 'deadline_progress':
+                return 'Postęp terminu'; // Progress bar column
+            case 'submission_deadline':
+                return tTenders('tenders.details.submissionDeadline');
+            case 'board_status':
+                return tTenders('tenders.list.boardStatus');
+            case 'score':
+                return tTenders('tenders.list.relevance');
+            case 'actions':
+                return 'Akcje'; // Actions column
+            default:
+                // Fallback to the raw label if no translation is found
+                return standardColumn.label || standardColumn.id;
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -340,7 +377,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             </CardHeader>
                             <CardContent className="flex-1 overflow-hidden">
                                 <ScrollArea className="h-full pr-3">
-                                    <ul className="space-y-2 pb-2">
+                                    <ul className="space-y-2 pb-2 px-2 py-1">
                                         {sortedDraft.map((col, idx) => (
                                             <li
                                                 key={`column-${col.id}`}
@@ -362,9 +399,9 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                     <div className="flex items-center gap-2">
                                                         <span
                                                             className="font-medium text-sm truncate max-w-[160px]"
-                                                            title={col.label || col.id}
+                                                            title={getTranslatedColumnLabel(col)}
                                                         >
-                                                            {col.label || col.id}
+                                                            {getTranslatedColumnLabel(col)}
                                                         </span>
                                                         {isCriteriaColumn(col) && (
                                                             <Badge variant="outline" className="text-xs">

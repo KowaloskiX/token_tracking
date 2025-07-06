@@ -46,7 +46,7 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
   const t = useTendersTranslations();
 
   const hasUpdate = isUpdatedAfterOpened(result);
-  const daysRemaining = calculateDaysRemaining(result.tender_metadata.submission_deadline);
+  const daysRemaining = calculateDaysRemaining(result.tender_metadata.submission_deadline || '');
 
   const voivodeship = result.location?.voivodeship &&
     result.location.voivodeship !== "UNKNOWN" ?
@@ -100,7 +100,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center justify-center gap-2 p-1 cursor-help">
+            <div className="flex items-center justify-center gap-2 p-1 cursor-pointer">
               {met ? (
                 <CheckCircle className="w-4 h-4 text-green-600" />
               ) : (
@@ -154,15 +154,15 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-start gap-1 p-1 cursor-help w-full">
+          <div className="flex items-start gap-1 p-1 cursor-pointer w-full">
             {/* Status indicator */}
-            <div className="flex-shrink-0 mt-0.5">
+            {/* <div className="flex-shrink-0 mt-0.5">
               {met ? (
                 <div className="w-2 h-2 rounded-full bg-green-600/80" />
               ) : (
                 <div className="w-2 h-2 rounded-full bg-red-400/80" />
               )}
-            </div>
+            </div> */}
             
             {/* Criteria text */}
             <div className="flex-1 min-w-0">
@@ -222,6 +222,8 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
               </TooltipProvider>
             )}
             <TenderSourceIcon source={result.source} url={result.tender_url} />
+            {result.external_compare_status === "overlap_bizpol" ?  <TenderSourceIcon source={"biznespolska"} url={result.tender_url} /> : (
+              result.external_compare_status === "overlap_oferent" ? <TenderSourceIcon source={"oferent"} url={result.tender_url} /> : null)}
           </TableCell>
         );
 
@@ -255,7 +257,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
         return (
           <TableCell style={getCellStyle(column)}>
             <span className="text-xs text-gray-500 whitespace-nowrap">
-              {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline)
+              {formatDate(result.tender_metadata.initiation_date || result.tender_metadata.submission_deadline || '')
                 .split('.').slice(0, 2).join('.')}
             </span>
           </TableCell>
@@ -266,7 +268,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
           <TableCell className="px-2" style={getCellStyle(column)}>
             <DeadlineProgressBar
               createdAt={result.created_at}
-              submissionDeadline={result.tender_metadata.submission_deadline}
+              submissionDeadline={result.tender_metadata.submission_deadline || ''}
               daysRemaining={daysRemaining}
             />
           </TableCell>
@@ -282,7 +284,7 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
                   "-" : formatDate(result.tender_metadata.submission_deadline)}
               </span>
               <span className="text-xs text-foreground/50 font-medium">
-                {extractHour(result.tender_metadata.submission_deadline)}
+                {extractHour(result.tender_metadata.submission_deadline || '')}
               </span>
             </div>
           </TableCell>

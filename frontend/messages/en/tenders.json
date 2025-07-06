@@ -176,6 +176,8 @@
       "inactive": "Inactive",
       "active": "Active",
       "archived": "Archived",
+      "filtered": "Filtered",
+      "external": "External",
       "inBoard": "In board",
       "activate": "Activate",
       "deactivate": "Deactivate",
@@ -260,6 +262,10 @@
       "selectAnalysis": "Select an analysis to see results.",
       "hideHistorical": "Hide historical",
       "loadHistorical": "Load historical",
+      "hideFiltered": "Hide filtered",
+      "showFiltered": "Load filtered",
+      "showExternal": "Show external",
+      "hideExternal": "Hide external",
       "boardStatus": "Board / Status"
     },
     "updates": {

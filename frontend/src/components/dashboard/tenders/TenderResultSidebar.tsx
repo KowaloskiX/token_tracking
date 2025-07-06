@@ -638,6 +638,10 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
             return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 font-normal">{t('tenders.status.active')}</Badge>;
             case 'archived':
             return <Badge variant="secondary" className="bg-secondary text-primary/70 hover:bg-secondary font-normal">{t('tenders.status.archived')}</Badge>;
+            case 'filtered':
+            return <Badge variant="default" className="bg-yellow-600/80 hover:bg-yellow-600/80 font-normal">{t('tenders.status.filtered')}</Badge>;
+            case 'external':
+            return <Badge variant="default" className="bg-primary hover:bg-primary/80 font-normal">{t('tenders.status.external')}</Badge>;
             default:
             return <Badge variant="outline">{t('tenders.status.unknown')}</Badge>;
         }
@@ -938,15 +942,20 @@ const TenderResultSidebar: React.FC<TenderResultSidebarProps> = ({ result, drawe
                                             <Select 
                                                 value={localStatus} 
                                                 onValueChange={handleStatusChange}
-                                            >
-                                                <SelectTrigger id="tender-status" className="h-8 w-48 bg-white/20 hover:bg-background">
-                                                    <SelectValue placeholder={t('tenders.status.selectStatus')} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="inactive">{t('tenders.status.inactive')}</SelectItem>
-                                                    <SelectItem value="active">{t('tenders.status.active')}</SelectItem>
-                                                    <SelectItem value="archived">{t('tenders.status.archived')}</SelectItem>
-                                                </SelectContent>
+                                            >{
+                                                (localStatus !== "external" ? (
+                                                    <>
+                                                    <SelectTrigger id="tender-status" className="h-8 w-48 bg-white/20 hover:bg-secondary-hover">
+                                                        <SelectValue placeholder={t('tenders.status.selectStatus')} />
+                                                    </SelectTrigger>
+                                                         <SelectContent>
+                                                        <SelectItem value="inactive">{t('tenders.status.inactive')}</SelectItem>
+                                                        <SelectItem value="active">{t('tenders.status.active')}</SelectItem>
+                                                        <SelectItem value="archived">{t('tenders.status.archived')}</SelectItem>
+                                                    </SelectContent>
+                                                    </>
+                                                ) : null)
+                                            }
                                             </Select>
                                         </div>
                                         <div>

@@ -23,7 +23,7 @@ export interface AnalysisCriteria {
 export interface TenderMetadata {
   name: string;
   organization: string;
-  submission_deadline: string;
+  submission_deadline?: string;
   initiation_date?: string;
   procedure_type: string;
 }
@@ -63,12 +63,13 @@ export interface TenderAnalysisResult {
   };
   tender_pinecone_id?: string;
   tender_description?: string;
-  status: 'inactive' | 'active' | 'archived' | 'inBoard';
+  status: 'inactive' | 'active' | 'archived' | 'inBoard' | 'filtered' | 'external';
   updated_at: string;
   created_at: string;
   opened_at: string;
   order_number: string;
   finished_id?: string;
+  external_compare_status?: 'our_unique' | 'overlap_oferent' | 'overlap_bizpol' | 'external_unique';
 }
 
 export interface TenderAnalysis {
@@ -86,6 +87,7 @@ export interface TenderAnalysis {
   updated_at: string;
   assigned_users?: string[];
   email_recipients?: string[];
+  include_external_sources?: boolean; // NEW: Include external sources in analysis
 }
 
 // Request/Response types for API operations

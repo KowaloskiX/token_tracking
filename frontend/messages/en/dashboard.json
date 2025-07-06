@@ -182,7 +182,9 @@
     "displaying_text_instead": "Displaying extracted text content instead. Highlighting may be limited.",
     "no_url_for_download": "No URL available for download",
     "download_error": "Download error",
-    "failed_to_fetch": "Failed to fetch file for download"
+    "failed_to_fetch": "Failed to fetch file for download",
+    "no_citations_found_in_document": "No citations found in the document",
+    "could_not_locate": "Could not locate the citations in the document"
   },
   "memory": {
     "memory": "Memory",

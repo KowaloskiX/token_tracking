@@ -182,7 +182,9 @@
     "displaying_text_instead": "Wyświetlana jest zamiast tego wyciągnięta zawartość tekstowa. Podświetlanie może być ograniczone.",
     "no_url_for_download": "Brak adresu URL do pobrania",
     "download_error": "Błąd pobierania",
-    "failed_to_fetch": "Nie udało się pobrać pliku"
+    "failed_to_fetch": "Nie udało się pobrać pliku",
+    "no_citations_found_in_document": "Nie znaleziono cytatów w dokumencie",
+    "could_not_locate": "Nie znaleziono cytatów w dokumencie"
   },
   "memory": {
     "memory": "Pamięć",

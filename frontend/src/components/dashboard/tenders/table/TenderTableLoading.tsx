@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Loader2 } from 'lucide-react';
 import { useTendersTranslations } from '@/hooks/useTranslations';
@@ -90,10 +90,34 @@ export const TenderTableLoading: React.FC<TenderTableLoadingProps> = ({
 }) => {
   const t = useTendersTranslations();
 
+  // Dynamically calculate how many skeleton rows are needed to roughly fill the
+  // viewport/table height.  Fallback to 12 rows if window is undefined (SSR).
+  const [rowCount, setRowCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 12;
+    const rowHeight = 56; // approximate px height of one table row
+    return Math.ceil(window.innerHeight / rowHeight);
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      const rowHeight = 56;
+      setRowCount(Math.ceil(window.innerHeight / rowHeight));
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', handleResize);
+      }
+    };
+  }, []);
+
   return (
     <>
-      {/* Skeleton rows to maintain table structure */}
-      {Array.from({ length: 8 }, (_, index) => (
+      {Array.from({ length: rowCount }, (_, index) => (
         <SkeletonRow key={`skeleton-row-${index}`} columnCount={columnCount} />
       ))}
     </>

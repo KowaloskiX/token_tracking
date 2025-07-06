@@ -53,7 +53,19 @@ export const POLISH_SOURCES = {
     icon: '/images/tender_sources/pge_logo.png',
     label: 'Grupa PGE',
     urlPattern: 'swpp2.gkpge.pl'
-  }
+  },
+  biznespolska: {
+    icon: '/images/tender_sources/bizpol_logo.png',
+    label: 'BiznesPolska',
+    urlPattern: 'biznes-polska.pl',
+    hidden: true
+  },
+  oferent: {
+    icon: '/images/tender_sources/oferent_logo.png',
+    label: 'Oferent',
+    urlPattern: 'oferent.com.pl',
+    hidden: true
+  },
 } as const;
 
 export const TED_SOURCES = {

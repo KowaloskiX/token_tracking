@@ -123,7 +123,7 @@ const TendersList: React.FC<TendersListProps> = ({
 
   const [filters, setFilters] = useState<Filters>({
     onlyQualified: false,
-    status: { inactive: true, active: true, archived: false, inBoard: true },
+    status: { inactive: true, active: true, archived: false, inBoard: true, filtered: true, external: true }, // NEW: Include 'filtered' status
     voivodeship: {
       "Dolnośląskie": true,
       "Kujawsko-pomorskie": true,
@@ -148,6 +148,12 @@ const TendersList: React.FC<TendersListProps> = ({
 
   const [showKanbanDialog, setShowKanbanDialog] = useState(false);
   const [includeHistorical, setIncludeHistorical] = useState(false);
+  const [includeFiltered, setIncludeFiltered] = useState(false);
+  // NEW: Include External state
+  const [includeExternal, setIncludeExternal] = useState(false);
+
+  // NEW: Only show includeExternal if selectedAnalysis.include_external_sources is true
+  const showIncludeExternal = !!selectedAnalysis?.include_external_sources;
 
   // Inline title editing & settings modal state
   const [isEditing, setIsEditing] = useState(false);
@@ -217,6 +223,9 @@ const TendersList: React.FC<TendersListProps> = ({
   } = useTenderTableData({
     selectedAnalysis,
     includeHistorical,
+    includeFiltered,
+    showIncludeExternal,
+    includeExternal,
     allResults,
     setAllResults,
     filters,
@@ -423,9 +432,9 @@ const TendersList: React.FC<TendersListProps> = ({
   };
 
   return (
-    <div className="sm:px-4 py-2 w-full overflow-y-hidden">
-      <Card className="rounded-none sm:rounded-lg shadow">
-        <CardHeader>
+    <div className="sm:px-4 py-2 w-full h-full flex flex-col">
+      <Card className="rounded-none sm:rounded-lg shadow flex flex-col flex-1 min-h-0 h-full">
+        <CardHeader className="flex-shrink-0">
           <div className="flex justify-between flex-wrap sm:flex-nowrap gap-4">
             <div className="w-full sm:w-auto">
               <div className="flex items-center gap-2">
@@ -482,7 +491,6 @@ const TendersList: React.FC<TendersListProps> = ({
                 }
               </CardDescription>
             </div>
-
             <div className="flex gap-2">
               <Button
                 variant="secondary"
@@ -492,19 +500,30 @@ const TendersList: React.FC<TendersListProps> = ({
                 disabled={isLoading}
               >
                 <Clock className="h-4 w-4" />
-                {includeHistorical
+                {/* {includeHistorical
                   ? t('tenders.list.hideHistorical')
-                  : t('tenders.list.loadHistorical')}
+                  : t('tenders.list.loadHistorical')} */}
               </Button>
-              {selectedAnalysis && (
+              {/* NEW: Include Filtered Button */}
+              <Button
+                variant={includeFiltered ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIncludeFiltered(!includeFiltered)}
+                disabled={isLoading}
+                className="whitespace-nowrap"
+              >
+                <span>{includeFiltered ? t('tenders.list.hideFiltered') : t('tenders.list.showFiltered')}</span>
+              </Button>
+              {/* NEW: Include External Button (only if showIncludeExternal) */}
+              {showIncludeExternal && (
                 <Button
-                  variant="secondary"
+                  variant={includeExternal ? "default" : "outline"}
                   size="sm"
-                  className="h-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow"
-                  onClick={() => setIsSettingsOpen(true)}
+                  onClick={() => setIncludeExternal(!includeExternal)}
+                  disabled={isLoading}
+                  className="whitespace-nowrap"
                 >
-                  <Settings2 className="h-4 w-4" />
-                  <span className="hidden sm:block">{t('tenders.actions.searchSettings')}</span>
+                  <span>{includeExternal ? t('tenders.list.hideExternal') : t('tenders.list.showExternal')}</span>
                 </Button>
               )}
             </div>
@@ -512,6 +531,7 @@ const TendersList: React.FC<TendersListProps> = ({
 
           <TenderFilters
             filters={filters}
+            showIncludeExternal={showIncludeExternal}
             setFilters={setFilters}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -526,69 +546,69 @@ const TendersList: React.FC<TendersListProps> = ({
           />
         </CardHeader>
 
-<CardContent className=""> {/* Remove all overflow classes */}
-  <div className="w-full"> {/* Simple responsive container */}
-    <TenderTable
-      currentResults={currentResults}
-      selectedResult={selectedResult}
-      selectedAnalysis={selectedAnalysis}
-      isLoading={isLoading}
-      totalFetched={totalFetched}
-      totalTendersCount={totalTendersCount}
-      allResultsLength={allResults.length}
-      currentPage={currentPage}
-      totalPages={totalPages}
-      availableCriteria={availableCriteria}
-      isUpdatedAfterOpened={isUpdatedAfterOpened}
-      calculateDaysRemaining={calculateDaysRemaining}
-      getTenderBoards={getTenderBoards}
-      boardsLoading={boardsLoading}
-      onRowClick={handleRowClick}
-      onStatusChange={handleStatusChange}
-      onUnopened={handleUnopened}
-      isDrawerVisible={isDrawerVisible}
-      onDrawerVisibilityChange={onDrawerVisibilityChange}
-      onDelete={handleDelete}
-      onAddToKanban={handleAddToKanban}
-      onPageChange={(page) => updateCurrentPage(page, true)}
-      onSortChange={(columnIdOrCriteriaName, direction) => {
-        // Enhanced field mapping that covers all standard column types
-        const fieldMap: Record<string, string> = {
-          // Standard columns
-          'source': 'source',
-          'name': 'tender_metadata.name',
-          'organization': 'tender_metadata.organization',
-          'publication_date': 'initiation_date',
-          'submission_deadline': 'submission_deadline',
-          'board_status': 'status',
-          'score': 'tender_score',
-          'created_at': 'created_at',
-          'updated_at': 'updated_at'
-        };
+        <CardContent className="flex flex-col flex-1 min-h-0"> {/* Ensure proper padding and flex behavior */}
+          <div className="flex-1 min-h-0 w-full"> {/* Flex container that takes remaining space */}
+            <TenderTable
+              currentResults={currentResults}
+              selectedResult={selectedResult}
+              selectedAnalysis={selectedAnalysis}
+              isLoading={isLoading}
+              totalFetched={totalFetched}
+              totalTendersCount={totalTendersCount}
+              allResultsLength={allResults.length}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              availableCriteria={availableCriteria}
+              isUpdatedAfterOpened={isUpdatedAfterOpened}
+              calculateDaysRemaining={calculateDaysRemaining}
+              getTenderBoards={getTenderBoards}
+              boardsLoading={boardsLoading}
+              onRowClick={handleRowClick}
+              onStatusChange={handleStatusChange}
+              onUnopened={handleUnopened}
+              isDrawerVisible={isDrawerVisible}
+              onDrawerVisibilityChange={onDrawerVisibilityChange}
+              onDelete={handleDelete}
+              onAddToKanban={handleAddToKanban}
+              onPageChange={(page) => updateCurrentPage(page, true)}
+              onSortChange={(columnIdOrCriteriaName, direction) => {
+                // Enhanced field mapping that covers all standard column types
+                const fieldMap: Record<string, string> = {
+                  // Standard columns
+                  'source': 'source',
+                  'name': 'tender_metadata.name',
+                  'organization': 'tender_metadata.organization',
+                  'publication_date': 'initiation_date',
+                  'submission_deadline': 'submission_deadline',
+                  'board_status': 'status',
+                  'score': 'tender_score',
+                  'created_at': 'created_at',
+                  'updated_at': 'updated_at'
+                };
 
-        // Check if this is a criteria column by seeing if it's a criteria name
-        const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
+                // Check if this is a criteria column by seeing if it's a criteria name
+                const isCriteriaSort = availableCriteria.some((c: any) => c.name === columnIdOrCriteriaName);
 
-        if (isCriteriaSort) {
-          // For criteria columns, use the criteria name directly as the field
-          if (direction) {
-            setSortConfig({ field: columnIdOrCriteriaName, direction });
-          } else {
-            setSortConfig(null);
-          }
-        } else {
-          // For standard columns, use the field mapping
-          const field = fieldMap[columnIdOrCriteriaName];
-          if (field && direction) {
-            setSortConfig({ field, direction });
-          } else {
-            setSortConfig(null);
-          }
-        }
-      }}
-    />
-  </div>
-</CardContent>
+                if (isCriteriaSort) {
+                  // For criteria columns, use the criteria name directly as the field
+                  if (direction) {
+                    setSortConfig({ field: columnIdOrCriteriaName, direction });
+                  } else {
+                    setSortConfig(null);
+                  }
+                } else {
+                  // For standard columns, use the field mapping
+                  const field = fieldMap[columnIdOrCriteriaName];
+                  if (field && direction) {
+                    setSortConfig({ field, direction });
+                  } else {
+                    setSortConfig(null);
+                  }
+                }
+              }}
+            />
+          </div>
+        </CardContent>
       </Card>
 
       {selectedResult && (

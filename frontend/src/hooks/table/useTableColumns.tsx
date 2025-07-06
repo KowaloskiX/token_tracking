@@ -24,6 +24,7 @@ interface UseTableColumnsProps {
   }>;
   tableWidth: number;
   selectedResult?: TenderAnalysisResult | null;
+  isDrawerVisible?: boolean; // NEW: Add isDrawerVisible prop
 }
 
 // Simplified backend structure - only stores user preferences
@@ -45,7 +46,8 @@ export const useTableColumns = ({
   selectedAnalysisId,
   availableCriteria,
   tableWidth,
-  selectedResult
+  selectedResult,
+  isDrawerVisible = false // NEW: Add with default value
 }: UseTableColumnsProps) => {
   // Column state
   const [columnState, setColumnState] = useState<TableColumnState>({
@@ -73,33 +75,23 @@ export const useTableColumns = ({
     }));
   }, [availableCriteria]);
 
-  // Compute columns with adjusted widths based on sidebar state
+  // Keep original column widths regardless of drawer visibility so that expanding/collapsing
+  // the sidebar does not alter user-configured table layout.
   const adjustedColumns = useMemo(() => {
-    const isSidebarOpen = !!selectedResult;
-
-    return columnState.columns.map(column => {
-      if (isSidebarOpen) {
-        // When sidebar is open, use minimum width for all columns
-        return {
-          ...column,
-          width: column.minWidth
-        };
-      }
-      // When sidebar is closed, use normal width
-      return column;
-    });
-  }, [columnState.columns, selectedResult]);
+    return columnState.columns;
+  }, [columnState.columns]);
 
   const responsiveColumns = useMemo(() => {
-    let columnsToShow = [...adjustedColumns];
-    const isSidebarOpen = !!selectedResult;
+    const columnsToShow = [...adjustedColumns];
 
-    // With unified scrolling, we no longer hide columns due to width constraints
-    // The table will handle horizontal scrolling consistently regardless of sidebar state
-    // Only apply responsive breakpoints for mobile/tablet devices
+    // Only apply responsive breakpoints based on viewport width, not container width,
+    // so opening the sidebar (which shrinks the table container) does not incorrectly
+    // trigger mobile/tablet hiding logic.
 
-    const isMobile = tableWidth < RESPONSIVE_BREAKPOINTS.tablet;
-    const isTablet = tableWidth >= RESPONSIVE_BREAKPOINTS.tablet && tableWidth < RESPONSIVE_BREAKPOINTS.desktop;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : tableWidth;
+
+    const isMobile = viewportWidth < RESPONSIVE_BREAKPOINTS.tablet;
+    const isTablet = viewportWidth >= RESPONSIVE_BREAKPOINTS.tablet && viewportWidth < RESPONSIVE_BREAKPOINTS.desktop;
 
     return columnsToShow.map(column => {
       let visible = column.visible;
@@ -113,14 +105,14 @@ export const useTableColumns = ({
         }
 
         // Keep criteria columns visible on desktop regardless of sidebar state
-        if (column.type === 'criteria' && tableWidth >= RESPONSIVE_BREAKPOINTS.desktop) {
+        if (column.type === 'criteria' && viewportWidth >= RESPONSIVE_BREAKPOINTS.desktop) {
           visible = column.visible;
         }
       }
 
       return { ...column, visible };
     });
-  }, [adjustedColumns, tableWidth, selectedResult]); // Added selectedResult to dependencies
+  }, [adjustedColumns, tableWidth, isDrawerVisible]); // Updated dependency
 
   const visibleColumns = useMemo(() => {
     return responsiveColumns

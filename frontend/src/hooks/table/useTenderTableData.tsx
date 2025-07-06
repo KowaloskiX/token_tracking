@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 interface Filters {
   onlyQualified: boolean;
-  status: { inactive: boolean; active: boolean; archived: boolean; inBoard: boolean };
+  status: { inactive: boolean; active: boolean; archived: boolean; inBoard: boolean, filtered: boolean; external: boolean };
   voivodeship: Record<string, boolean>;
   source: Record<string, boolean>;
   criteria: Record<string, boolean>;
@@ -14,6 +14,9 @@ interface Filters {
 interface UseTenderTableDataProps {
   selectedAnalysis: any;
   includeHistorical: boolean;
+  includeFiltered: boolean; // NEW: Include filtered results
+  showIncludeExternal: boolean;
+  includeExternal: boolean; // NEW: Include external results
   allResults: TenderAnalysisResult[];
   setAllResults: React.Dispatch<React.SetStateAction<TenderAnalysisResult[]>>;
   filters: Filters;
@@ -27,6 +30,9 @@ interface UseTenderTableDataProps {
 export const useTenderTableData = ({
   selectedAnalysis,
   includeHistorical,
+  includeFiltered,
+  showIncludeExternal,
+  includeExternal,
   allResults,
   setAllResults,
   filters,
@@ -57,8 +63,12 @@ export const useTenderTableData = ({
       const token = localStorage.getItem("token") || "";
       const historicalParam = includeHistorical ? "&include_historical=true" : "";
       const criteriaParam = "&include_criteria_for_filtering=true"; // This triggers the new projection
+            // NEW: includeFiltered param
+      const filteredParam = includeFiltered ? "&include_filtered=true" : "";
+      // NEW: includeExternal param (only if showIncludeExternal)
+      const externalParam = showIncludeExternal && includeExternal ? "&include_external=true" : "";
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}${criteriaParam}`,
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=${page}&limit=${limit}${historicalParam}${filteredParam}${externalParam}${criteriaParam}&include_criteria_for_filtering=true`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -134,7 +144,7 @@ export const useTenderTableData = ({
       isCancelled = true;
       setIsLoading(false);
     };
-  }, [selectedAnalysis?._id, setAllResults, includeHistorical]);
+  }, [selectedAnalysis?._id, setAllResults, includeHistorical, includeFiltered, includeExternal]);
 
   // Merge data with context updates
   const mergedData = useMemo(() => {
@@ -244,9 +254,11 @@ export const useTenderTableData = ({
         (filters.status.inactive && status === 'inactive') ||
         (filters.status.active && status === 'active') ||
         (filters.status.archived && status === 'archived') ||
+        (filters.status.filtered && status === 'filtered') ||
+        (filters.status.external && status === 'external') || // NEW: Check for external status
         (filters.status.inBoard && isInBoard);
 
-      const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard;
+      const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard  || filters.status.filtered || filters.status.external;
 
       if (anyStatusFilterSelected && !statusMatches) {
         return false;
@@ -447,8 +459,8 @@ export const useTenderTableData = ({
           }
 
           case 'initiation_date': {
-            const dateA = a.tender_metadata.initiation_date || a.tender_metadata.submission_deadline;
-            const dateB = b.tender_metadata.initiation_date || b.tender_metadata.submission_deadline;
+            const dateA = a.tender_metadata.initiation_date || a.tender_metadata.submission_deadline || '';
+            const dateB = b.tender_metadata.initiation_date || b.tender_metadata.submission_deadline || '';
             const cmp = compareDates(dateA, dateB, sortConfig.direction);
             if (cmp !== 0) return cmp;
             return compareNumbers(a.tender_score, b.tender_score, 'desc');
@@ -457,9 +469,10 @@ export const useTenderTableData = ({
           case 'submission_deadline': {
             // Complex deadline sorting logic (keeping your existing logic)
             const getDeadlineStatus = (deadlineStr: string): { status: 'future' | 'past' | 'invalid', days: number } => {
-              if (!deadlineStr || deadlineStr.includes('NaN')) {
-                return { status: 'invalid', days: Infinity };
-              }
+            if (!deadlineStr || typeof deadlineStr !== 'string' || deadlineStr.includes('NaN')) {
+              return { status: 'invalid', days: Infinity };
+            }
+
 
               const days = calculateDaysRemaining(deadlineStr);
 
@@ -472,8 +485,8 @@ export const useTenderTableData = ({
               }
             };
 
-            const aStatus = getDeadlineStatus(a.tender_metadata.submission_deadline);
-            const bStatus = getDeadlineStatus(b.tender_metadata.submission_deadline);
+            const aStatus = getDeadlineStatus(a.tender_metadata.submission_deadline || '');
+            const bStatus = getDeadlineStatus(b.tender_metadata.submission_deadline || '');
 
             const statusOrder = { future: 0, past: 1, invalid: 2 };
             const aOrder = statusOrder[aStatus.status];

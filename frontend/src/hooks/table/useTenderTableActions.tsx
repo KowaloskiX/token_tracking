@@ -231,7 +231,7 @@ export const useTenderTableActions = ({
     }
   };
 
-  const handleStatusChange = async (resultId: string, newStatus: 'inactive' | 'active' | 'archived') => {
+  const handleStatusChange = async (resultId: string, newStatus: 'inactive' | 'active' | 'archived' | 'filtered') => {
     try {
       await updateTenderStatus(resultId, newStatus);
       setAllResults((prevResults) =>

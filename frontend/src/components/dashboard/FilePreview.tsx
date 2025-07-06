@@ -294,6 +294,10 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
   const [currentCitationIndex, setCurrentCitationIndex] = useState<number>(-1); // Index in citationList
   const [isProcessingHighlights, setIsProcessingHighlights] = useState<boolean>(false); // Combined loading for search/citations
 
+  // NEW STATES FOR CITATION PROCESSING
+  const [citationProcessingCompleted, setCitationProcessingCompleted] = useState<boolean>(false);
+  const [notFoundCitations, setNotFoundCitations] = useState<string[]>([]); // Track citations that weren't found
+
   // Add loading state phases for better user feedback
   const [loadingPhase, setLoadingPhase] = useState<'initial' | 'rendering' | 'highlighting' | 'complete'>('initial');
   const [highlightProgress, setHighlightProgress] = useState<number>(0);
@@ -382,6 +386,10 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
     fileContentRef.current = null;
     setSearchQuery(""); // Clear search on file change
     clearAllHighlightsAndState(); // Clear highlights and related state
+
+    // RESET NEW CITATION PROCESSING STATES
+    setCitationProcessingCompleted(false);
+    setNotFoundCitations([]);
 
     console.log(`[File Load] Processing new file: ${file.name} (${file.type}), Citations: ${file.citations?.length || 0}`);
 
@@ -652,6 +660,10 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
     setCitationToElementsMap(new Map());
     setCitationList([]);
     setCurrentCitationIndex(-1);
+
+    // CLEAR NEW CITATION PROCESSING STATES
+    setCitationProcessingCompleted(false);
+    setNotFoundCitations([]);
   }
 
   function groupNearbyElements(elements: HTMLElement[]): HTMLElement[] {
@@ -793,7 +805,7 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
         /* ────────────────────────────────────────────────
            CITATION HIGHLIGHTING BRANCH (IMPROVED)
            ──────────────────────────────────────────────── */
-        if (file.citations && file.citations.length > 0 && citationList.length === 0) {
+        if (file.citations && file.citations.length > 0 && citationList.length === 0 && !citationProcessingCompleted) {
           console.log(`[Citations] Processing ${file.citations.length} citations with improved DOM readiness`);
 
           // WAIT FOR DOM TO BE FULLY READY
@@ -809,12 +821,20 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
 
           const processCitationSequentially = async (index: number) => {
             if (index >= unique.length) {
-              // All done
+              // All done - process results
               console.log(`[Citations] Final: ${newMap.size}/${unique.length} citations highlighted`);
 
               setCitationToElementsMap(newMap);
               const list = Array.from(newMap.keys());
               setCitationList(list);
+
+              // Track which citations weren't found
+              const foundCitations = new Set(list);
+              const notFound = unique.filter(citation => !foundCitations.has(citation));
+              setNotFoundCitations(notFound);
+
+              // MARK PROCESSING AS COMPLETED
+              setCitationProcessingCompleted(true);
 
               const start = list.length ? 0 : -1;
               setCurrentCitationIndex(start);
@@ -1401,12 +1421,10 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
   const isSearchMode = !isTextFile && searchQuery.trim();
 
   const displayCount = isTextFile ? textMatchCount :
-    // REMOVE: isTextCitationMode ? textFileCitationList.length :
     isCitationMode ? citationList.length :
       userSearchMatches.length;
 
   const currentIndex = isTextFile ? textActiveIndex :
-    // REMOVE: isTextCitationMode ? currentTextFileCitationIndex :
     isCitationMode ? currentCitationIndex :
       currentUserSearchMatchIndex;
 
@@ -1442,21 +1460,21 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
     return 0;
   };
 
-  // Consider we are still processing citations if we haven't built citationList yet
+  // UPDATED: Use the completion flag instead of citationList length
   const isProcessingCitations =
     !searchQuery.trim() &&
     !!file.citations &&
     file.citations.length > 0 &&
-    // REMOVE: ((file.type === "txt" && textFileCitationList.length === 0) ||
-    (file.type !== "txt" && citationList.length === 0);
+    file.type !== "txt" &&
+    !citationProcessingCompleted; // Use the completion flag instead
 
   // Show overlay while any loading OR citation processing is active
   const showLoadingOverlay =
     isLoading ||
     isProcessingHighlights ||
-    // REMOVE: isProcessingTextCitations ||
     isProcessingCitations ||
     (loadingPhase !== 'complete' && pagesRendered < numPages);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
       <div className="bg-background rounded-lg shadow-lg flex flex-col w-full max-w-6xl min-h-[97vh] max-h-[97vh] overflow-hidden relative">
@@ -1537,9 +1555,9 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
               ) : (isSearchMode || isTextSearchMode) ? (
                 t('no_matches')
               ) : file.citations && file.citations.length > 0 && 
-                  (file.type !== "txt" && citationList.length === 0) && 
-                  !isProcessingCitations ? (
-                t('no_citations_in_file')
+                  citationProcessingCompleted && 
+                  citationList.length === 0 ? (
+                t('no_citations_found_in_document')
               ) : (
                 ""
               )}
@@ -1572,6 +1590,24 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
             <div className="w-full text-xs bg-secondary p-2 mt-2 rounded border border-secondary-border text-primary overflow-hidden text-ellipsis whitespace-nowrap">
               <span className="font-medium">{t('citation')} {(isCitationMode ? currentCitationIndex : textActiveIndex) + 1}: </span>
               <span className="italic">{currentCitationText}</span>
+            </div>
+          )}
+
+          {!searchQuery.trim() && file.citations && file.citations.length > 0 && citationProcessingCompleted && citationList.length === 0 && (
+            <div className="w-full text-xs bg-amber-50 border border-secondary-200 p-2 mt-2 rounded text-primary-800">
+              <span>
+                {notFoundCitations.length > 0 ? (
+                  <>
+                    {t('could_not_locate')} {notFoundCitations.length} {t('citation')}
+                    {notFoundCitations.length !== 1 ? (tCommon('language') === 'pl' ? 'ów' : 's') : ''}.
+                    {notFoundCitations.length <= 3 ? (
+                      <> : &quot;{notFoundCitations.slice(0, 3).map(c => c.substring(0, 40) + (c.length > 40 ? '...' : '')).join('&quot;, &quot;')}&quot;</>
+                    ) : null}
+                  </>
+                ) : (
+                  t('citations_exist_but_not_found')
+                )}
+              </span>
             </div>
           )}
         </div>

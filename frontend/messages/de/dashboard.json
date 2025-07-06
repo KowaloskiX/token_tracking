@@ -182,7 +182,9 @@
     "displaying_text_instead": "Stattdessen wird extrahierter Textinhalt angezeigt. Hervorhebung kann eingeschränkt sein.",
     "no_url_for_download": "Keine URL für Download verfügbar",
     "download_error": "Download-Fehler",
-    "failed_to_fetch": "Datei konnte nicht für Download abgerufen werden"
+    "failed_to_fetch": "Datei konnte nicht für Download abgerufen werden",
+    "no_citations_found_in_document": "Keine Zitate im Dokument gefunden",
+    "could_not_locate": "Konnte die Zitate im Dokument nicht lokalisieren"
   },
   "memory": {
     "memory": "Speicher",
