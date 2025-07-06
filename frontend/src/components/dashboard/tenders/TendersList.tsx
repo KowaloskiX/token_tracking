@@ -488,21 +488,6 @@ const TendersList: React.FC<TendersListProps> = ({
                     historical: includeHistorical ? ` ${t('tenders.list.historical')}` : ''
                   })
                 }
-                {/* Show active data filters */}
-                {(includeHistorical || includeFiltered || includeExternal) && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="text-xs text-muted-foreground">Including:</span>
-                    {includeHistorical && (
-                      <Badge variant="outline" className="text-xs">Historical</Badge>
-                    )}
-                    {includeFiltered && (
-                      <Badge variant="outline" className="text-xs">Filtered</Badge>
-                    )}
-                    {includeExternal && (
-                      <Badge variant="outline" className="text-xs">External</Badge>
-                    )}
-                  </div>
-                )}
               </CardDescription>
             </div>
           </div>

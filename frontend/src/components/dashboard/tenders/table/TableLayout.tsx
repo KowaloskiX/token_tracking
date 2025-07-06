@@ -18,14 +18,14 @@ import {
 } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { 
-    Loader2, 
-    AlertCircle, 
-    CheckCircle2, 
-    Eye, 
-    Type, 
-    Table, 
-    Filter, 
+import {
+    Loader2,
+    AlertCircle,
+    CheckCircle2,
+    Eye,
+    Type,
+    Table,
+    Filter,
     Clock,
     Database,
     Globe
@@ -44,7 +44,7 @@ import { cn } from '@/lib/utils';
 interface TableLayoutProps {
     isOpen: boolean;
     onClose: () => void;
-    
+
     // Column management
     columns: ColumnConfig[];
     availableCriteria: Array<{
@@ -60,7 +60,7 @@ interface TableLayoutProps {
     onUpdateColumnWidth: (columnId: string, width: number) => void;
     onUpdateCriteriaDisplayMode: (columnId: string, displayMode: CriteriaDisplayMode) => void;
     onSaveConfiguration: (columns: ColumnConfig[]) => Promise<void>;
-    
+
     // Data filters
     includeHistorical: boolean;
     onToggleHistorical: (value: boolean) => void;
@@ -77,7 +77,6 @@ interface SidebarItem {
     id: SidebarSection;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
-    description: string;
 }
 
 export const TableLayout: React.FC<TableLayoutProps> = ({
@@ -121,13 +120,11 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             id: 'columns',
             label: t('tenders.columns.manageColumns'),
             icon: Table,
-            description: t('tenders.columns.tableLayoutDescription')
         },
         {
             id: 'dataFilters',
             label: t('tenders.columns.dataFilters'),
             icon: Filter,
-            description: t('tenders.columns.dataFiltersDescription')
         }
     ];
 
@@ -139,7 +136,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         }
 
         const standardColumn = column as StandardColumnConfig;
-        
+
         switch (standardColumn.type) {
             case 'source':
                 return t('tenders.columns.columnTypes.source');
@@ -348,179 +345,179 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
     // Render sidebar
     const renderSidebar = () => (
-        <div className="w-64 border-r bg-gradient-to-b from-secondary/30 to-secondary/50 flex flex-col flex-shrink-0">
-            <div className="p-4 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex-shrink-0">
-                <h3 className="font-medium text-sm text-primary uppercase tracking-wide">
+        <div className="w-64 border-r bg-sidebar flex flex-col flex-shrink-0">
+            {/* Header */}
+            <div className="p-4 border-b border-sidebar-border flex-shrink-0">
+                <h3 className="font-semibold text-sidebar-foreground">
                     {t('tenders.columns.tableSettings')}
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-sidebar-foreground/70 mt-1">
                     {t('tenders.columns.personalizeView')}
                 </p>
             </div>
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto min-h-0">
+
+            {/* Navigation Menu */}
+            <div className="flex-1 p-3 space-y-1 overflow-y-auto min-h-0">
                 {SIDEBAR_ITEMS.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeSection === item.id;
-                    
+
                     return (
                         <button
                             key={item.id}
                             onClick={() => setActiveSection(item.id)}
                             className={cn(
-                                "w-full flex items-center gap-3 px-3 py-3 text-left rounded-xl transition-all duration-200 text-sm group",
+                                "w-full flex items-center gap-3 px-2 py-2 text-left rounded-lg transition-all duration-200 text-sm",
                                 isActive
-                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                    : "hover:bg-secondary-hover text-muted-foreground hover:text-foreground hover:shadow-sm"
+                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                             )}
                         >
-                            <div className={cn(
-                                "p-2 rounded-lg transition-all duration-200",
-                                isActive 
-                                    ? "bg-primary-foreground/20 text-primary-foreground" 
-                                    : "bg-primary/10 text-primary group-hover:bg-primary/20"
-                            )}>
-                                <Icon className="h-4 w-4 flex-shrink-0" />
+                            <div className="flex aspect-square size-6 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
+                                <Icon className="size-4" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <div className={cn(
-                                    "font-medium transition-colors",
-                                    isActive ? "text-primary-foreground" : "text-foreground"
-                                )}>
+                            <div className="grid flex-1 text-left text-sm leading-tight">
+                                <span className="truncate font-medium">
                                     {item.label}
-                                </div>
-                                <div className={cn(
-                                    "text-xs opacity-80 truncate transition-colors",
-                                    isActive ? "text-primary-foreground/80" : "text-muted-foreground"
-                                )}>
-                                    {item.description}
-                                </div>
+                                </span>
                             </div>
                         </button>
                     );
                 })}
-            </nav>
+            </div>
         </div>
     );
 
-    // Render columns content
-    const renderColumnsContent = () => (
-        <div className="flex-1 flex flex-col min-h-0 h-full">
-            {/* Header */}
-            <div className="p-6 pb-4 border-b bg-gradient-to-r from-secondary/50 to-secondary/30 flex-shrink-0">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
-                        <Table className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-semibold text-foreground">
-                            {t('tenders.columns.manageColumns')}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {t('tenders.columns.columnVisibilityDescription')}
-                        </p>
-                    </div>
+// Update the renderColumnsContent function in your TableLayout.tsx
+// Replace the existing column rendering section with this:
+
+// Note: This uses Tailwind's line-clamp utilities for controlled text truncation
+
+const renderColumnsContent = () => (
+    <div className="flex-1 flex flex-col min-h-0 h-full">
+        {/* Header */}
+        <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
+            <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
+                    <Table className="h-5 w-5" />
                 </div>
-                
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">{t('tenders.columns.visible')}:</span>
-                        <span className="font-medium text-foreground">
-                            {visibleDraftCount}/{draftColumns.length}
-                        </span>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                setDraftColumns(prev =>
-                                    prev.map(c => ({ ...c, visible: true }))
-                                )
-                            }
-                            disabled={isSaving || isResetting}
-                            className="h-8 text-xs"
-                        >
-                            {t('tenders.columns.showAll')}
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                setDraftColumns(prev => {
-                                    const visibleCols = prev.filter(c => c.visible);
-                                    const mustKeep = visibleCols.slice(0, MIN_VISIBLE);
-                                    return prev.map(c =>
-                                        mustKeep.includes(c)
-                                            ? c
-                                            : { ...c, visible: false }
-                                    );
-                                })
-                            }
-                            disabled={isSaving || isResetting}
-                            className="h-8 text-xs"
-                        >
-                            {t('tenders.columns.hideAll')}
-                        </Button>
-                    </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-foreground">
+                        {t('tenders.columns.manageColumns')}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        {t('tenders.columns.columnVisibilityDescription')}
+                    </p>
                 </div>
             </div>
+            
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">{t('tenders.columns.visible')}:</span>
+                    <span className="font-medium text-foreground">
+                        {visibleDraftCount}/{draftColumns.length}
+                    </span>
+                </div>
+                
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                            setDraftColumns(prev =>
+                                prev.map(c => ({ ...c, visible: true }))
+                            )
+                        }
+                        disabled={isSaving || isResetting}
+                        className="h-8 text-xs"
+                    >
+                        {t('tenders.columns.showAll')}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                            setDraftColumns(prev => {
+                                const visibleCols = prev.filter(c => c.visible);
+                                const mustKeep = visibleCols.slice(0, MIN_VISIBLE);
+                                return prev.map(c =>
+                                    mustKeep.includes(c)
+                                        ? c
+                                        : { ...c, visible: false }
+                                );
+                            })
+                        }
+                        disabled={isSaving || isResetting}
+                        className="h-8 text-xs"
+                    >
+                        {t('tenders.columns.hideAll')}
+                    </Button>
+                </div>
+            </div>
+        </div>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 flex gap-6 min-h-0">
-                {/* Current Columns */}
-                <div className="flex-1 flex flex-col min-h-0 p-6">
-                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full"></div>
-                        {t('tenders.columns.currentColumns')}
-                    </h4>
-                    
-                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
-                        <div className="p-4 space-y-3">
-                            {sortedDraft.map((col, idx) => (
-                                <div
-                                    key={`column-${col.id}`}
-                                    draggable={!isSaving && !isResetting}
-                                    onDragStart={e => handleDragStart(e, idx)}
-                                    onDragOver={e => handleDragOver(e, idx)}
-                                    onDragEnd={finishDrag}
-                                    onDrop={finishDrag}
-                                    className={cn(
-                                        'group flex items-center gap-4 p-4 border rounded-xl bg-card transition-all duration-200',
-                                        col.visible ? 'opacity-100 shadow-sm' : 'opacity-60',
-                                        dragOverIndex === idx && 'ring-2 ring-primary/30 scale-[1.02]',
-                                        draggedIndex === idx && 'opacity-40 scale-95',
-                                        (isSaving || isResetting) && 'cursor-not-allowed',
-                                        !isSaving && !isResetting && 'hover:shadow-md cursor-grab active:cursor-grabbing'
-                                    )}
-                                >
-                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                        <span className="text-muted-foreground group-hover:text-primary transition-colors">
-                                            ≡
-                                        </span>
-                                        
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-medium text-sm truncate text-foreground">
+        {/* Scrollable Content */}
+        <div className="flex-1 flex gap-6 min-h-0">
+            {/* Current Columns */}
+            <div className="flex-1 flex flex-col min-h-0 p-6">
+                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-primary rounded-full"></div>
+                    {t('tenders.columns.currentColumns')}
+                </h4>
+                
+                <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                    <div className="p-4 space-y-3">
+                        {sortedDraft.map((col, idx) => (
+                            <div
+                                key={`column-${col.id}`}
+                                draggable={!isSaving && !isResetting}
+                                onDragStart={e => handleDragStart(e, idx)}
+                                onDragOver={e => handleDragOver(e, idx)}
+                                onDragEnd={finishDrag}
+                                onDrop={finishDrag}
+                                className={cn(
+                                    'group flex items-start gap-4 p-4 border rounded-xl bg-card transition-all duration-200',
+                                    col.visible ? 'opacity-100 shadow-sm' : 'opacity-60',
+                                    dragOverIndex === idx && 'ring-2 ring-primary/30 scale-[1.02]',
+                                    draggedIndex === idx && 'opacity-40 scale-95',
+                                    (isSaving || isResetting) && 'cursor-not-allowed',
+                                    !isSaving && !isResetting && 'hover:shadow-md cursor-grab active:cursor-grabbing'
+                                )}
+                            >
+                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                    <span className="text-muted-foreground group-hover:text-primary transition-colors mt-1">
+                                        ≡
+                                    </span>
+                                    
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-start gap-2 mb-1">
+                                            <div className="flex-1 min-w-0">
+                                                <span className={cn(
+                                                    "font-medium text-sm text-foreground leading-relaxed",
+                                                    // Show up to 2 lines for criteria columns, then truncate with ellipsis
+                                                    isCriteriaColumn(col) 
+                                                        ? "line-clamp-2 break-words" 
+                                                        : "truncate"
+                                                )}>
                                                     {getTranslatedColumnLabel(col)}
                                                 </span>
-                                                {isCriteriaColumn(col) && (
-                                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-                                                        {t('tenders.columns.criteria')}
-                                                    </Badge>
-                                                )}
                                             </div>
-                                            
-                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                <span>{t('tenders.columns.order')}: {col.order + 1}</span>
-                                                <span>{t('tenders.columns.width')}: {col.width}px</span>
-                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                            <span>{t('tenders.columns.order')}: {col.order + 1}</span>
+                                            <span>{t('tenders.columns.width')}: {col.width}px</span>
+                                        </div>
 
-                                            {isCriteriaColumn(col) && (
+                                        {isCriteriaColumn(col) && (
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                                                    {t('tenders.columns.criteria')}
+                                                </Badge>
                                                 <button
                                                     type="button"
                                                     className={cn(
-                                                        "mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
                                                         "border bg-gradient-to-r from-secondary/50 to-secondary/30 text-foreground",
                                                         "hover:from-primary/10 hover:to-primary/5 hover:border-primary/30 hover:shadow-sm"
                                                     )}
@@ -538,117 +535,114 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                             : t('tenders.columns.displayMode.indicator')}
                                                     </span>
                                                 </button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
-                                            <Input
-                                                type="number"
-                                                value={col.width}
-                                                min={col.minWidth}
-                                                max={col.maxWidth}
-                                                onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
-                                                className="w-16 h-7 text-xs border-border/50"
-                                                disabled={isSaving || isResetting}
-                                            />
-                                        </div>
-
-                                        <Switch
-                                            checked={col.visible}
-                                            onCheckedChange={() => toggleDraftVisibility(col.id)}
-                                            disabled={isSaving || isResetting}
-                                        />
-
-                                        {isCriteriaColumn(col) && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
-                                                onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
-                                                disabled={isSaving || isResetting}
-                                            >
-                                                ×
-                                            </Button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </ScrollArea>
-                </div>
 
-                {/* Add Criteria Section */}
-                <div className="w-80 flex flex-col min-h-0 p-6 border-l">
-                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                        {t('tenders.columns.addCriteria')}
-                    </h4>
-                    
-                    {availableCriteria.length > 3 && (
-                        <Input
-                            placeholder={t('tenders.columns.searchCriteria')}
-                            value={searchCriteria}
-                            onChange={e => setSearchCriteria(e.target.value)}
-                            className="mb-4"
-                            disabled={isSaving || isResetting}
-                        />
-                    )}
-
-                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
-                        <div className="p-4">
-                            {filteredAvailableCriteria.length ? (
-                                <div className="space-y-3">
-                                    {filteredAvailableCriteria.map(c => (
-                                        <div
-                                            key={`criteria-${c.id}`}
-                                            className="group flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-secondary/50 hover:border-primary/20 transition-all duration-200"
-                                        >
-                                            <div className="flex-1 min-w-0 pr-3">
-                                                <p className="font-medium text-sm text-foreground truncate">
-                                                    {c.name}
-                                                </p>
-                                                {c.description && (
-                                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                                        {c.description}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => addDraftCriteria(c.id, c.name)}
-                                                disabled={isSaving || isResetting}
-                                                className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary"
-                                            >
-                                                {t('tenders.columns.add')}
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center text-muted-foreground py-12 text-sm">
-                                    <div className="p-4 bg-secondary/30 rounded-lg">
-                                        {availableCriteria.length === 0 
-                                            ? t('tenders.columns.noCriteriaAvailable')
-                                            : t('tenders.columns.allCriteriaAdded')}
+                                <div className="flex items-start gap-3 flex-shrink-0 mt-1">
+                                    <div className="flex items-center gap-2">
+                                        <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
+                                        <Input
+                                            type="number"
+                                            value={col.width}
+                                            min={col.minWidth}
+                                            max={col.maxWidth}
+                                            onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
+                                            className="w-16 h-7 text-xs border-border/50"
+                                            disabled={isSaving || isResetting}
+                                        />
                                     </div>
+
+                                    <Switch
+                                        checked={col.visible}
+                                        onCheckedChange={() => toggleDraftVisibility(col.id)}
+                                        disabled={isSaving || isResetting}
+                                    />
+
+                                    {isCriteriaColumn(col) && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                                            onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
+                                            disabled={isSaving || isResetting}
+                                        >
+                                            ×
+                                        </Button>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    </ScrollArea>
-                </div>
+                            </div>
+                        ))}
+                    </div>
+                </ScrollArea>
+            </div>
+
+            {/* Add Criteria Section - Also with text wrapping */}
+            <div className="w-80 flex flex-col min-h-0 p-6 border-l">
+                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-primary rounded-full"></div>
+                    {t('tenders.columns.addCriteria')}
+                </h4>
+                
+                {availableCriteria.length > 3 && (
+                    <Input
+                        placeholder={t('tenders.columns.searchCriteria')}
+                        value={searchCriteria}
+                        onChange={e => setSearchCriteria(e.target.value)}
+                        className="mb-4"
+                        disabled={isSaving || isResetting}
+                    />
+                )}
+
+                <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                    <div className="p-4">
+                        {filteredAvailableCriteria.length ? (
+                            <div className="space-y-3">
+                                {filteredAvailableCriteria.map(c => (
+                                    <div
+                                        key={`criteria-${c.id}`}
+                                        className="group flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-secondary/50 hover:border-primary/20 transition-all duration-200"
+                                    >
+                                        <div className="flex-1 min-w-0 pr-3">
+                                            <p className="font-medium text-sm text-foreground leading-relaxed line-clamp-2 break-words">
+                                                {c.name}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => addDraftCriteria(c.id, c.name)}
+                                            disabled={isSaving || isResetting}
+                                            className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary flex-shrink-0"
+                                        >
+                                            {t('tenders.columns.add')}
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center text-muted-foreground py-12 text-sm">
+                                <div className="p-4 bg-secondary/30 rounded-lg">
+                                    {availableCriteria.length === 0 
+                                        ? t('tenders.columns.noCriteriaAvailable')
+                                        : t('tenders.columns.allCriteriaAdded')}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </ScrollArea>
             </div>
         </div>
-    );
+    </div>
+);
 
     // Render data filters content
+    // Render data filters content with beige/brown color scheme
     const renderDataFiltersContent = () => (
         <div className="flex-1 flex flex-col min-h-0 h-full">
             {/* Header Section */}
-            <div className="p-6 pb-4 border-b bg-gradient-to-r from-secondary/50 to-secondary/30 flex-shrink-0">
+            <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
                 <div className="flex items-center gap-3 mb-3">
                     <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
                         <Filter className="h-5 w-5" />
@@ -660,7 +654,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         </p>
                     </div>
                 </div>
-                
+
                 {/* Active filters summary */}
                 <div className="flex items-center gap-2 mt-4">
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -668,21 +662,21 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                     </span>
                     <div className="flex gap-2">
                         {includeHistorical && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-bold rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/15 text-primary rounded-full text-xs font-medium border border-primary/20">
                                 <Clock className="h-3 w-3" />
-                                {t('tenders.columns.historical')}
+                                {t('tenders.columns.historicalTenders')}
                             </div>
                         )}
                         {includeFiltered && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-bold rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary-hover/20 text-primary rounded-full text-xs font-medium border border-primary-hover/30">
                                 <Database className="h-3 w-3" />
-                                {t('tenders.columns.filtered')}
+                                {t('tenders.columns.filteredTenders')}
                             </div>
                         )}
                         {includeExternal && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-muted text-primary rounded-full text-xs font-medium border border-primary/20">
                                 <Globe className="h-3 w-3" />
-                                {t('tenders.columns.external')}
+                                {t('tenders.columns.externalSources')}
                             </div>
                         )}
                         {!includeHistorical && !includeFiltered && !includeExternal && (
@@ -700,21 +694,21 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         <div className={cn(
                             "group relative overflow-hidden transition-all duration-300 ease-out",
                             "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                            includeHistorical 
-                                ? "border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100/50 shadow-blue-100/50" 
-                                : "border-border bg-card hover:border-blue-200/60 hover:bg-blue-50/30"
+                            includeHistorical
+                                ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
+                                : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
                         )}>
                             <div className="p-5">
                                 <div className="flex items-start gap-4">
                                     <div className={cn(
                                         "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                        includeHistorical 
-                                            ? "bg-blue-500 text-white shadow-lg shadow-blue-500/25" 
-                                            : "bg-blue-100 text-blue-600 group-hover:bg-blue-200 group-hover:scale-105"
+                                        includeHistorical
+                                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                            : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
                                     )}>
                                         <Clock className="h-6 w-6" />
                                     </div>
-                                    
+
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-2">
                                             <h4 className="text-base font-semibold text-foreground">
@@ -723,19 +717,19 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                             <Switch
                                                 checked={includeHistorical}
                                                 onCheckedChange={onToggleHistorical}
-                                                className="data-[state=checked]:bg-blue-500"
+                                                className="data-[state=checked]:bg-primary"
                                             />
                                         </div>
-                                        
+
                                         <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                                             {t('tenders.columns.historicalDescription')}
                                         </p>
-                                        
+
                                         {includeHistorical && (
-                                            <div className="mt-4 p-3 bg-white/60 backdrop-blur-sm rounded-lg border border-blue-200/50">
+                                            <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
                                                 <div className="flex items-start gap-2">
-                                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                                                    <p className="text-xs text-blue-700 leading-relaxed">
+                                                    <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
+                                                    <p className="text-xs text-primary leading-relaxed">
                                                         {t('tenders.columns.historicalNote')}
                                                     </p>
                                                 </div>
@@ -744,30 +738,30 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {/* Subtle gradient overlay for visual depth */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
                         </div>
 
                         {/* Filtered Tenders */}
                         <div className={cn(
                             "group relative overflow-hidden transition-all duration-300 ease-out",
                             "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                            includeFiltered 
-                                ? "border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100/50 shadow-amber-100/50" 
-                                : "border-border bg-card hover:border-amber-200/60 hover:bg-amber-50/30"
+                            includeFiltered
+                                ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
+                                : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
                         )}>
                             <div className="p-5">
                                 <div className="flex items-start gap-4">
                                     <div className={cn(
                                         "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                        includeFiltered 
-                                            ? "bg-amber-500 text-white shadow-lg shadow-amber-500/25" 
-                                            : "bg-amber-100 text-amber-600 group-hover:bg-amber-200 group-hover:scale-105"
+                                        includeFiltered
+                                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                            : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
                                     )}>
                                         <Database className="h-6 w-6" />
                                     </div>
-                                    
+
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-2">
                                             <h4 className="text-base font-semibold text-foreground">
@@ -776,19 +770,19 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                             <Switch
                                                 checked={includeFiltered}
                                                 onCheckedChange={onToggleFiltered}
-                                                className="data-[state=checked]:bg-amber-500"
+                                                className="data-[state=checked]:bg-primary"
                                             />
                                         </div>
-                                        
+
                                         <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                                             {t('tenders.columns.filteredDescription')}
                                         </p>
-                                        
+
                                         {includeFiltered && (
-                                            <div className="mt-4 p-3 bg-white/60 backdrop-blur-sm rounded-lg border border-amber-200/50">
+                                            <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
                                                 <div className="flex items-start gap-2">
-                                                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></div>
-                                                    <p className="text-xs text-amber-700 leading-relaxed">
+                                                    <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
+                                                    <p className="text-xs text-primary leading-relaxed">
                                                         {t('tenders.columns.filteredNote')}
                                                     </p>
                                                 </div>
@@ -797,8 +791,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
                         </div>
 
                         {/* External Sources */}
@@ -806,21 +800,21 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             <div className={cn(
                                 "group relative overflow-hidden transition-all duration-300 ease-out",
                                 "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                                includeExternal 
-                                    ? "border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100/50 shadow-purple-100/50" 
-                                    : "border-border bg-card hover:border-purple-200/60 hover:bg-purple-50/30"
+                                includeExternal
+                                    ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
+                                    : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
                             )}>
                                 <div className="p-5">
                                     <div className="flex items-start gap-4">
                                         <div className={cn(
                                             "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                            includeExternal 
-                                                ? "bg-purple-500 text-white shadow-lg shadow-purple-500/25" 
-                                                : "bg-purple-100 text-purple-600 group-hover:bg-purple-200 group-hover:scale-105"
+                                            includeExternal
+                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
                                         )}>
                                             <Globe className="h-6 w-6" />
                                         </div>
-                                        
+
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-2">
                                                 <h4 className="text-base font-semibold text-foreground">
@@ -829,19 +823,19 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 <Switch
                                                     checked={includeExternal}
                                                     onCheckedChange={onToggleExternal}
-                                                    className="data-[state=checked]:bg-purple-500"
+                                                    className="data-[state=checked]:bg-primary"
                                                 />
                                             </div>
-                                            
+
                                             <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                                                 {t('tenders.columns.externalDescription')}
                                             </p>
-                                            
+
                                             {includeExternal && (
-                                                <div className="mt-4 p-3 bg-white/60 backdrop-blur-sm rounded-lg border border-purple-200/50">
+                                                <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
                                                     <div className="flex items-start gap-2">
-                                                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
-                                                        <p className="text-xs text-purple-700 leading-relaxed">
+                                                        <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
+                                                        <p className="text-xs text-primary leading-relaxed">
                                                             {t('tenders.columns.externalNote')}
                                                         </p>
                                                     </div>
@@ -850,8 +844,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
                             </div>
                         )}
                     </div>
@@ -881,8 +875,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-6xl h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
-                <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-secondary/30 to-secondary/20 flex-shrink-0">
+            <DialogContent className="max-w-6xl h-[85vh] p-0 gap-0 flex flex-col overflow-hidden bg-background">
+                <DialogHeader className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/50 flex-shrink-0">
                     <DialogTitle className="text-lg font-semibold text-foreground">
                         {t('tenders.columns.tableSettings')}
                     </DialogTitle>
@@ -911,7 +905,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                     </div>
                 )}
 
-                <div className="flex flex-1 min-h-0 overflow-hidden">
+                <div className="flex flex-1 min-h-0 overflow-hidden bg-background">
                     {/* Sidebar */}
                     {renderSidebar()}
 
@@ -924,7 +918,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
                 {/* Footer */}
                 <Separator className="flex-shrink-0" />
-                <div className="flex justify-between items-center p-6 bg-gradient-to-r from-secondary/30 to-secondary/20 flex-shrink-0">
+                <div className="flex justify-between items-center p-6 bg-sidebar/30 border-t border-sidebar-border flex-shrink-0">
                     <Button
                         variant="destructive"
                         onClick={handleReset}
@@ -971,7 +965,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             </Button>
                         )}
                         {activeSection === 'dataFilters' && (
-                            <Button 
+                            <Button
                                 onClick={onClose}
                                 className="bg-primary hover:bg-primary-hover"
                             >
