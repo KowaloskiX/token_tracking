@@ -502,7 +502,7 @@
     "historicalNote": "Dane historyczne obejmują zakończone, wygasłe i zarchiwizowane możliwości przetargowe, które mogą dostarczyć wartościowego kontekstu dla analizy.",
     "filteredTenders": "Przetargi Przefiltrowane",
     "filteredDescription": "Uwzględnij przetargi odfiltrowane przez wstępną selekcję",
-    "filteredNote": "Przefiltrowane przetargi zostały automatycznie wykluczone na podstawie kryteriów, ale mogą zawierać możliwości warte ręcznego przeglądu.",
+    "filteredNote": "Przefiltrowane przetargi zostały automatycznie wykluczone na podstawie opisu i ewentualnej instrukcji użytkownika.",
     "externalSources": "Źródła Zewnętrzne",
     "externalDescription": "Uwzględnij przetargi z zewnętrznych baz danych i źródeł partnerskich",
     "externalNote": "Źródła zewnętrzne dostarczają dodatkowych możliwości przetargowych z baz danych partnerskich i platform zewnętrznych.",

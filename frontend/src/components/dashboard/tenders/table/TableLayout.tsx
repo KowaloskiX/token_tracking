@@ -343,299 +343,288 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         }
     };
 
-    // Render sidebar
+
+    // Alternative even more minimalistic version (Tab-like approach):
     const renderSidebar = () => (
-        <div className="w-64 border-r bg-sidebar flex flex-col flex-shrink-0">
-            {/* Header */}
-            <div className="p-4 border-b border-sidebar-border flex-shrink-0">
-                <h3 className="font-semibold text-sidebar-foreground">
-                    {t('tenders.columns.tableSettings')}
-                </h3>
-                <p className="text-xs text-sidebar-foreground/70 mt-1">
-                    {t('tenders.columns.personalizeView')}
-                </p>
-            </div>
+        <div className="w-56 border-r bg-sidebar flex flex-col flex-shrink-0">
+            <div className="p-3">
+                {/* Tab-style navigation */}
+                <div className="bg-sidebar-accent/30 rounded-lg p-1">
+                    {SIDEBAR_ITEMS.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeSection === item.id;
 
-            {/* Navigation Menu */}
-            <div className="flex-1 p-3 space-y-1 overflow-y-auto min-h-0">
-                {SIDEBAR_ITEMS.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeSection === item.id;
-
-                    return (
-                        <button
-                            key={item.id}
-                            onClick={() => setActiveSection(item.id)}
-                            className={cn(
-                                "w-full flex items-center gap-3 px-2 py-2 text-left rounded-lg transition-all duration-200 text-sm",
-                                isActive
-                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                            )}
-                        >
-                            <div className="flex aspect-square size-6 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
-                                <Icon className="size-4" />
-                            </div>
-                            <div className="grid flex-1 text-left text-sm leading-tight">
-                                <span className="truncate font-medium">
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => setActiveSection(item.id)}
+                                className={cn(
+                                    "w-full flex items-center gap-2 px-3 py-2.5 text-left rounded-md transition-all duration-200 text-sm",
+                                    isActive
+                                        ? "bg-background text-foreground shadow-sm"
+                                        : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                                )}
+                            >
+                                <Icon className="size-4 flex-shrink-0" />
+                                <span className="font-medium truncate">
                                     {item.label}
                                 </span>
-                            </div>
-                        </button>
-                    );
-                })}
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );
 
-// Update the renderColumnsContent function in your TableLayout.tsx
-// Replace the existing column rendering section with this:
+    // Update the renderColumnsContent function in your TableLayout.tsx
+    // Replace the existing column rendering section with this:
 
-// Note: This uses Tailwind's line-clamp utilities for controlled text truncation
+    // Note: This uses Tailwind's line-clamp utilities for controlled text truncation
 
-const renderColumnsContent = () => (
-    <div className="flex-1 flex flex-col min-h-0 h-full">
-        {/* Header */}
-        <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
-            <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
-                    <Table className="h-5 w-5" />
+    const renderColumnsContent = () => (
+        <div className="flex-1 flex flex-col min-h-0 h-full">
+            {/* Header */}
+            <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
+                        <Table className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-foreground">
+                            {t('tenders.columns.manageColumns')}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {t('tenders.columns.columnVisibilityDescription')}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="text-lg font-semibold text-foreground">
-                        {t('tenders.columns.manageColumns')}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        {t('tenders.columns.columnVisibilityDescription')}
-                    </p>
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">{t('tenders.columns.visible')}:</span>
+                        <span className="font-medium text-foreground">
+                            {visibleDraftCount}/{draftColumns.length}
+                        </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                                setDraftColumns(prev =>
+                                    prev.map(c => ({ ...c, visible: true }))
+                                )
+                            }
+                            disabled={isSaving || isResetting}
+                            className="h-8 text-xs"
+                        >
+                            {t('tenders.columns.showAll')}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                                setDraftColumns(prev => {
+                                    const visibleCols = prev.filter(c => c.visible);
+                                    const mustKeep = visibleCols.slice(0, MIN_VISIBLE);
+                                    return prev.map(c =>
+                                        mustKeep.includes(c)
+                                            ? c
+                                            : { ...c, visible: false }
+                                    );
+                                })
+                            }
+                            disabled={isSaving || isResetting}
+                            className="h-8 text-xs"
+                        >
+                            {t('tenders.columns.hideAll')}
+                        </Button>
+                    </div>
                 </div>
             </div>
-            
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">{t('tenders.columns.visible')}:</span>
-                    <span className="font-medium text-foreground">
-                        {visibleDraftCount}/{draftColumns.length}
-                    </span>
-                </div>
-                
-                <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                            setDraftColumns(prev =>
-                                prev.map(c => ({ ...c, visible: true }))
-                            )
-                        }
-                        disabled={isSaving || isResetting}
-                        className="h-8 text-xs"
-                    >
-                        {t('tenders.columns.showAll')}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                            setDraftColumns(prev => {
-                                const visibleCols = prev.filter(c => c.visible);
-                                const mustKeep = visibleCols.slice(0, MIN_VISIBLE);
-                                return prev.map(c =>
-                                    mustKeep.includes(c)
-                                        ? c
-                                        : { ...c, visible: false }
-                                );
-                            })
-                        }
-                        disabled={isSaving || isResetting}
-                        className="h-8 text-xs"
-                    >
-                        {t('tenders.columns.hideAll')}
-                    </Button>
-                </div>
-            </div>
-        </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 flex gap-6 min-h-0">
-            {/* Current Columns */}
-            <div className="flex-1 flex flex-col min-h-0 p-6">
-                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full"></div>
-                    {t('tenders.columns.currentColumns')}
-                </h4>
-                
-                <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
-                    <div className="p-4 space-y-3">
-                        {sortedDraft.map((col, idx) => (
-                            <div
-                                key={`column-${col.id}`}
-                                draggable={!isSaving && !isResetting}
-                                onDragStart={e => handleDragStart(e, idx)}
-                                onDragOver={e => handleDragOver(e, idx)}
-                                onDragEnd={finishDrag}
-                                onDrop={finishDrag}
-                                className={cn(
-                                    'group flex items-start gap-4 p-4 border rounded-xl bg-card transition-all duration-200',
-                                    col.visible ? 'opacity-100 shadow-sm' : 'opacity-60',
-                                    dragOverIndex === idx && 'ring-2 ring-primary/30 scale-[1.02]',
-                                    draggedIndex === idx && 'opacity-40 scale-95',
-                                    (isSaving || isResetting) && 'cursor-not-allowed',
-                                    !isSaving && !isResetting && 'hover:shadow-md cursor-grab active:cursor-grabbing'
-                                )}
-                            >
-                                <div className="flex items-start gap-3 flex-1 min-w-0">
-                                    <span className="text-muted-foreground group-hover:text-primary transition-colors mt-1">
-                                        ≡
-                                    </span>
-                                    
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start gap-2 mb-1">
-                                            <div className="flex-1 min-w-0">
-                                                <span className={cn(
-                                                    "font-medium text-sm text-foreground leading-relaxed",
-                                                    // Show up to 2 lines for criteria columns, then truncate with ellipsis
-                                                    isCriteriaColumn(col) 
-                                                        ? "line-clamp-2 break-words" 
-                                                        : "truncate"
-                                                )}>
-                                                    {getTranslatedColumnLabel(col)}
-                                                </span>
+            {/* Scrollable Content */}
+            <div className="flex-1 flex gap-6 min-h-0">
+                {/* Current Columns */}
+                <div className="flex-1 flex flex-col min-h-0 p-6">
+                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-primary rounded-full"></div>
+                        {t('tenders.columns.currentColumns')}
+                    </h4>
+
+                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                        <div className="p-4 space-y-3">
+                            {sortedDraft.map((col, idx) => (
+                                <div
+                                    key={`column-${col.id}`}
+                                    draggable={!isSaving && !isResetting}
+                                    onDragStart={e => handleDragStart(e, idx)}
+                                    onDragOver={e => handleDragOver(e, idx)}
+                                    onDragEnd={finishDrag}
+                                    onDrop={finishDrag}
+                                    className={cn(
+                                        'group flex items-start gap-4 p-4 border rounded-xl bg-card transition-all duration-200',
+                                        col.visible ? 'opacity-100 shadow-sm' : 'opacity-60',
+                                        dragOverIndex === idx && 'ring-2 ring-primary/30 scale-[1.02]',
+                                        draggedIndex === idx && 'opacity-40 scale-95',
+                                        (isSaving || isResetting) && 'cursor-not-allowed',
+                                        !isSaving && !isResetting && 'hover:shadow-md cursor-grab active:cursor-grabbing'
+                                    )}
+                                >
+                                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                                        <span className="text-muted-foreground group-hover:text-primary transition-colors mt-1">
+                                            ≡
+                                        </span>
+
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-start gap-2 mb-1">
+                                                <div className="flex-1 min-w-0">
+                                                    <span className={cn(
+                                                        "font-medium text-sm text-foreground leading-relaxed",
+                                                        // Show up to 2 lines for criteria columns, then truncate with ellipsis
+                                                        isCriteriaColumn(col)
+                                                            ? "line-clamp-2 break-words"
+                                                            : "truncate"
+                                                    )}>
+                                                        {getTranslatedColumnLabel(col)}
+                                                    </span>
+                                                </div>
                                             </div>
+
+                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                <span>{t('tenders.columns.order')}: {col.order + 1}</span>
+                                                <span>{t('tenders.columns.width')}: {col.width}px</span>
+                                            </div>
+
+                                            {isCriteriaColumn(col) && (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                                                        {t('tenders.columns.criteria')}
+                                                    </Badge>
+                                                    <button
+                                                        type="button"
+                                                        className={cn(
+                                                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                                                            "border bg-gradient-to-r from-secondary/50 to-secondary/30 text-foreground",
+                                                            "hover:from-primary/10 hover:to-primary/5 hover:border-primary/30 hover:shadow-sm"
+                                                        )}
+                                                        onClick={() => {
+                                                            const currentMode = (col as CriteriaColumnConfig).displayMode;
+                                                            const newMode = currentMode === 'text' ? 'indicator' : 'text';
+                                                            updateDraftDisplayMode(col.id, newMode);
+                                                        }}
+                                                        disabled={isSaving || isResetting}
+                                                    >
+                                                        {getDisplayModeIcon((col as CriteriaColumnConfig).displayMode)}
+                                                        <span>
+                                                            {(col as CriteriaColumnConfig).displayMode === 'text'
+                                                                ? t('tenders.columns.displayMode.text')
+                                                                : t('tenders.columns.displayMode.indicator')}
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                        
-                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                            <span>{t('tenders.columns.order')}: {col.order + 1}</span>
-                                            <span>{t('tenders.columns.width')}: {col.width}px</span>
+                                    </div>
+
+                                    <div className="flex items-start gap-3 flex-shrink-0 mt-1">
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
+                                            <Input
+                                                type="number"
+                                                value={col.width}
+                                                min={col.minWidth}
+                                                max={col.maxWidth}
+                                                onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
+                                                className="w-16 h-7 text-xs border-border/50"
+                                                disabled={isSaving || isResetting}
+                                            />
                                         </div>
+
+                                        <Switch
+                                            checked={col.visible}
+                                            onCheckedChange={() => toggleDraftVisibility(col.id)}
+                                            disabled={isSaving || isResetting}
+                                        />
 
                                         {isCriteriaColumn(col) && (
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-                                                    {t('tenders.columns.criteria')}
-                                                </Badge>
-                                                <button
-                                                    type="button"
-                                                    className={cn(
-                                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
-                                                        "border bg-gradient-to-r from-secondary/50 to-secondary/30 text-foreground",
-                                                        "hover:from-primary/10 hover:to-primary/5 hover:border-primary/30 hover:shadow-sm"
-                                                    )}
-                                                    onClick={() => {
-                                                        const currentMode = (col as CriteriaColumnConfig).displayMode;
-                                                        const newMode = currentMode === 'text' ? 'indicator' : 'text';
-                                                        updateDraftDisplayMode(col.id, newMode);
-                                                    }}
-                                                    disabled={isSaving || isResetting}
-                                                >
-                                                    {getDisplayModeIcon((col as CriteriaColumnConfig).displayMode)}
-                                                    <span>
-                                                        {(col as CriteriaColumnConfig).displayMode === 'text'
-                                                            ? t('tenders.columns.displayMode.text')
-                                                            : t('tenders.columns.displayMode.indicator')}
-                                                    </span>
-                                                </button>
-                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                                                onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
+                                                disabled={isSaving || isResetting}
+                                            >
+                                                ×
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
+                            ))}
+                        </div>
+                    </ScrollArea>
+                </div>
 
-                                <div className="flex items-start gap-3 flex-shrink-0 mt-1">
-                                    <div className="flex items-center gap-2">
-                                        <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
-                                        <Input
-                                            type="number"
-                                            value={col.width}
-                                            min={col.minWidth}
-                                            max={col.maxWidth}
-                                            onChange={e => updateDraftWidth(col.id, parseInt(e.target.value, 10))}
-                                            className="w-16 h-7 text-xs border-border/50"
-                                            disabled={isSaving || isResetting}
-                                        />
-                                    </div>
+                {/* Add Criteria Section - Also with text wrapping */}
+                <div className="w-80 flex flex-col min-h-0 p-6 border-l">
+                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-primary rounded-full"></div>
+                        {t('tenders.columns.addCriteria')}
+                    </h4>
 
-                                    <Switch
-                                        checked={col.visible}
-                                        onCheckedChange={() => toggleDraftVisibility(col.id)}
-                                        disabled={isSaving || isResetting}
-                                    />
+                    {availableCriteria.length > 3 && (
+                        <Input
+                            placeholder={t('tenders.columns.searchCriteria')}
+                            value={searchCriteria}
+                            onChange={e => setSearchCriteria(e.target.value)}
+                            className="mb-4"
+                            disabled={isSaving || isResetting}
+                        />
+                    )}
 
-                                    {isCriteriaColumn(col) && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
-                                            onClick={() => removeDraftCriteria((col as CriteriaColumnConfig).criteriaId)}
-                                            disabled={isSaving || isResetting}
+                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                        <div className="p-4">
+                            {filteredAvailableCriteria.length ? (
+                                <div className="space-y-3">
+                                    {filteredAvailableCriteria.map(c => (
+                                        <div
+                                            key={`criteria-${c.id}`}
+                                            className="group flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-secondary/50 hover:border-primary/20 transition-all duration-200"
                                         >
-                                            ×
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </ScrollArea>
-            </div>
-
-            {/* Add Criteria Section - Also with text wrapping */}
-            <div className="w-80 flex flex-col min-h-0 p-6 border-l">
-                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full"></div>
-                    {t('tenders.columns.addCriteria')}
-                </h4>
-                
-                {availableCriteria.length > 3 && (
-                    <Input
-                        placeholder={t('tenders.columns.searchCriteria')}
-                        value={searchCriteria}
-                        onChange={e => setSearchCriteria(e.target.value)}
-                        className="mb-4"
-                        disabled={isSaving || isResetting}
-                    />
-                )}
-
-                <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
-                    <div className="p-4">
-                        {filteredAvailableCriteria.length ? (
-                            <div className="space-y-3">
-                                {filteredAvailableCriteria.map(c => (
-                                    <div
-                                        key={`criteria-${c.id}`}
-                                        className="group flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-secondary/50 hover:border-primary/20 transition-all duration-200"
-                                    >
-                                        <div className="flex-1 min-w-0 pr-3">
-                                            <p className="font-medium text-sm text-foreground leading-relaxed line-clamp-2 break-words">
-                                                {c.name}
-                                            </p>
+                                            <div className="flex-1 min-w-0 pr-3">
+                                                <p className="font-medium text-sm text-foreground leading-relaxed line-clamp-2 break-words">
+                                                    {c.name}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => addDraftCriteria(c.id, c.name)}
+                                                disabled={isSaving || isResetting}
+                                                className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary flex-shrink-0"
+                                            >
+                                                {t('tenders.columns.add')}
+                                            </Button>
                                         </div>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => addDraftCriteria(c.id, c.name)}
-                                            disabled={isSaving || isResetting}
-                                            className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary flex-shrink-0"
-                                        >
-                                            {t('tenders.columns.add')}
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center text-muted-foreground py-12 text-sm">
-                                <div className="p-4 bg-secondary/30 rounded-lg">
-                                    {availableCriteria.length === 0 
-                                        ? t('tenders.columns.noCriteriaAvailable')
-                                        : t('tenders.columns.allCriteriaAdded')}
+                                    ))}
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </ScrollArea>
+                            ) : (
+                                <div className="text-center text-muted-foreground py-12 text-sm">
+                                    <div className="p-4 bg-secondary/30 rounded-lg">
+                                        {availableCriteria.length === 0
+                                            ? t('tenders.columns.noCriteriaAvailable')
+                                            : t('tenders.columns.allCriteriaAdded')}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </ScrollArea>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
 
     // Render data filters content
     // Render data filters content with beige/brown color scheme
