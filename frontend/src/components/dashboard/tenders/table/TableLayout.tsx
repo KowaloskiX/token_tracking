@@ -80,21 +80,6 @@ interface SidebarItem {
     description: string;
 }
 
-const SIDEBAR_ITEMS: SidebarItem[] = [
-    {
-        id: 'columns',
-        label: 'Kolumny',
-        icon: Table,
-        description: 'Zarządzaj kolumnami i układem tabeli'
-    },
-    {
-        id: 'dataFilters',
-        label: 'Filtry Danych',
-        icon: Filter,
-        description: 'Kontroluj uwzględniane dane przetargów'
-    }
-];
-
 export const TableLayout: React.FC<TableLayoutProps> = ({
     isOpen,
     onClose,
@@ -117,7 +102,6 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
     showIncludeExternal,
 }) => {
     const t = useTranslations();
-    const tTenders = useTendersTranslations();
 
     const MIN_VISIBLE = 3;
 
@@ -131,6 +115,22 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
+    // Sidebar items with translations
+    const SIDEBAR_ITEMS: SidebarItem[] = [
+        {
+            id: 'columns',
+            label: t('tenders.columns.manageColumns'),
+            icon: Table,
+            description: t('tenders.columns.tableLayoutDescription')
+        },
+        {
+            id: 'dataFilters',
+            label: t('tenders.columns.dataFilters'),
+            icon: Filter,
+            description: t('tenders.columns.dataFiltersDescription')
+        }
+    ];
+
     // Function to get translated column label
     const getTranslatedColumnLabel = (column: ColumnConfig): string => {
         if (isCriteriaColumn(column)) {
@@ -142,23 +142,23 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         
         switch (standardColumn.type) {
             case 'source':
-                return 'Źródło';
+                return t('tenders.columns.columnTypes.source');
             case 'name':
-                return tTenders('tenders.list.order');
+                return t('tenders.columns.columnTypes.name');
             case 'organization':
-                return tTenders('tenders.details.client');
+                return t('tenders.columns.columnTypes.organization');
             case 'publication_date':
-                return tTenders('tenders.details.publicationDate');
+                return t('tenders.columns.columnTypes.publication_date');
             case 'deadline_progress':
-                return 'Postęp';
+                return t('tenders.columns.columnTypes.deadline_progress');
             case 'submission_deadline':
-                return tTenders('tenders.details.submissionDeadline');
+                return t('tenders.columns.columnTypes.submission_deadline');
             case 'board_status':
-                return tTenders('tenders.list.boardStatus');
+                return t('tenders.columns.columnTypes.board_status');
             case 'score':
-                return tTenders('tenders.list.relevance');
+                return t('tenders.columns.columnTypes.score');
             case 'actions':
-                return 'Akcje';
+                return t('tenders.columns.columnTypes.actions');
             default:
                 return standardColumn.label || standardColumn.id;
         }
@@ -314,7 +314,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 onClose();
             }, 1000);
         } catch (error) {
-            setSaveError(error instanceof Error ? error.message : 'Failed to save table layout');
+            setSaveError(error instanceof Error ? error.message : t('tenders.columns.messages.saveFailed'));
         } finally {
             setIsSaving(false);
         }
@@ -329,7 +329,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             await onResetToDefaults();
             onClose();
         } catch (error) {
-            setSaveError(error instanceof Error ? error.message : 'Failed to reset table layout');
+            setSaveError(error instanceof Error ? error.message : t('tenders.columns.messages.resetFailed'));
         } finally {
             setIsResetting(false);
         }
@@ -351,10 +351,10 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         <div className="w-64 border-r bg-gradient-to-b from-secondary/30 to-secondary/50 flex flex-col flex-shrink-0">
             <div className="p-4 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex-shrink-0">
                 <h3 className="font-medium text-sm text-primary uppercase tracking-wide">
-                    Ustawienia Tabeli
+                    {t('tenders.columns.tableSettings')}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Personalizuj widok i dane
+                    {t('tenders.columns.personalizeView')}
                 </p>
             </div>
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto min-h-0">
@@ -413,17 +413,17 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                     </div>
                     <div>
                         <h3 className="text-lg font-semibold text-foreground">
-                            Zarządzanie Kolumnami
+                            {t('tenders.columns.manageColumns')}
                         </h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Kontroluj widoczność kolumn i ich opcje wyświetlania
+                            {t('tenders.columns.columnVisibilityDescription')}
                         </p>
                     </div>
                 </div>
                 
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">Widoczne:</span>
+                        <span className="text-muted-foreground">{t('tenders.columns.visible')}:</span>
                         <span className="font-medium text-foreground">
                             {visibleDraftCount}/{draftColumns.length}
                         </span>
@@ -441,7 +441,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             disabled={isSaving || isResetting}
                             className="h-8 text-xs"
                         >
-                            Pokaż wszystkie
+                            {t('tenders.columns.showAll')}
                         </Button>
                         <Button
                             variant="outline"
@@ -460,7 +460,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             disabled={isSaving || isResetting}
                             className="h-8 text-xs"
                         >
-                            Ukryj wszystkie
+                            {t('tenders.columns.hideAll')}
                         </Button>
                     </div>
                 </div>
@@ -472,7 +472,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 <div className="flex-1 flex flex-col min-h-0 p-6">
                     <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
                         <div className="w-2 h-2 bg-primary rounded-full"></div>
-                        Aktualne Kolumny
+                        {t('tenders.columns.currentColumns')}
                     </h4>
                     
                     <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
@@ -506,14 +506,14 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 </span>
                                                 {isCriteriaColumn(col) && (
                                                     <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-                                                        Kryterium
+                                                        {t('tenders.columns.criteria')}
                                                     </Badge>
                                                 )}
                                             </div>
                                             
                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                <span>Pozycja: {col.order + 1}</span>
-                                                <span>Szerokość: {col.width}px</span>
+                                                <span>{t('tenders.columns.order')}: {col.order + 1}</span>
+                                                <span>{t('tenders.columns.width')}: {col.width}px</span>
                                             </div>
 
                                             {isCriteriaColumn(col) && (
@@ -534,8 +534,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                     {getDisplayModeIcon((col as CriteriaColumnConfig).displayMode)}
                                                     <span>
                                                         {(col as CriteriaColumnConfig).displayMode === 'text'
-                                                            ? 'Tekst'
-                                                            : 'Wskaźnik'}
+                                                            ? t('tenders.columns.displayMode.text')
+                                                            : t('tenders.columns.displayMode.indicator')}
                                                     </span>
                                                 </button>
                                             )}
@@ -544,7 +544,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-2">
-                                            <Label className="text-xs text-muted-foreground">Szer:</Label>
+                                            <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
                                             <Input
                                                 type="number"
                                                 value={col.width}
@@ -584,12 +584,12 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 <div className="w-80 flex flex-col min-h-0 p-6 border-l">
                     <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
                         <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                        Dodaj Kryteria
+                        {t('tenders.columns.addCriteria')}
                     </h4>
                     
                     {availableCriteria.length > 3 && (
                         <Input
-                            placeholder="Szukaj kryteriów..."
+                            placeholder={t('tenders.columns.searchCriteria')}
                             value={searchCriteria}
                             onChange={e => setSearchCriteria(e.target.value)}
                             className="mb-4"
@@ -623,7 +623,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 disabled={isSaving || isResetting}
                                                 className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary"
                                             >
-                                                Dodaj
+                                                {t('tenders.columns.add')}
                                             </Button>
                                         </div>
                                     ))}
@@ -632,8 +632,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                 <div className="text-center text-muted-foreground py-12 text-sm">
                                     <div className="p-4 bg-secondary/30 rounded-lg">
                                         {availableCriteria.length === 0 
-                                            ? 'Brak dostępnych kryteriów'
-                                            : 'Wszystkie kryteria zostały dodane'}
+                                            ? t('tenders.columns.noCriteriaAvailable')
+                                            : t('tenders.columns.allCriteriaAdded')}
                                     </div>
                                 </div>
                             )}
@@ -654,9 +654,9 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         <Filter className="h-5 w-5" />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-foreground">Filtry Danych</h3>
+                        <h3 className="text-lg font-semibold text-foreground">{t('tenders.columns.dataFilters')}</h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Kontroluj, które typy danych o przetargach są uwzględniane w analizie
+                            {t('tenders.columns.dataFiltersControlDescription')}
                         </p>
                     </div>
                 </div>
@@ -664,29 +664,29 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 {/* Active filters summary */}
                 <div className="flex items-center gap-2 mt-4">
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Aktywne filtry:
+                        {t('tenders.columns.activeFilters')}:
                     </span>
                     <div className="flex gap-2">
                         {includeHistorical && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-bold rounded-full text-xs font-medium">
                                 <Clock className="h-3 w-3" />
-                                Historyczne
+                                {t('tenders.columns.historical')}
                             </div>
                         )}
                         {includeFiltered && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-bold rounded-full text-xs font-medium">
                                 <Database className="h-3 w-3" />
-                                Przefiltrowane
+                                {t('tenders.columns.filtered')}
                             </div>
                         )}
                         {includeExternal && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
                                 <Globe className="h-3 w-3" />
-                                Zewnętrzne
+                                {t('tenders.columns.external')}
                             </div>
                         )}
                         {!includeHistorical && !includeFiltered && !includeExternal && (
-                            <span className="text-xs text-muted-foreground italic">Tylko standardowe dane</span>
+                            <span className="text-xs text-muted-foreground italic">{t('tenders.columns.standardDataOnly')}</span>
                         )}
                     </div>
                 </div>
@@ -718,7 +718,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-2">
                                             <h4 className="text-base font-semibold text-foreground">
-                                                Przetargi Historyczne
+                                                {t('tenders.columns.historicalTenders')}
                                             </h4>
                                             <Switch
                                                 checked={includeHistorical}
@@ -728,7 +728,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         </div>
                                         
                                         <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                            Uwzględnij przetargi z przeszłych okresów oraz zarchiwizowane dane
+                                            {t('tenders.columns.historicalDescription')}
                                         </p>
                                         
                                         {includeHistorical && (
@@ -736,9 +736,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 <div className="flex items-start gap-2">
                                                     <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                                                     <p className="text-xs text-blue-700 leading-relaxed">
-                                                        Dane historyczne obejmują zakończone, wygasłe i zarchiwizowane 
-                                                        możliwości przetargowe, które mogą dostarczyć wartościowego 
-                                                        kontekstu dla analizy.
+                                                        {t('tenders.columns.historicalNote')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -773,7 +771,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-2">
                                             <h4 className="text-base font-semibold text-foreground">
-                                                Przetargi Przefiltrowane
+                                                {t('tenders.columns.filteredTenders')}
                                             </h4>
                                             <Switch
                                                 checked={includeFiltered}
@@ -783,7 +781,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         </div>
                                         
                                         <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                            Uwzględnij przetargi odfiltrowane przez wstępną selekcję
+                                            {t('tenders.columns.filteredDescription')}
                                         </p>
                                         
                                         {includeFiltered && (
@@ -791,8 +789,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 <div className="flex items-start gap-2">
                                                     <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></div>
                                                     <p className="text-xs text-amber-700 leading-relaxed">
-                                                        Przefiltrowane przetargi zostały automatycznie wykluczone na podstawie 
-                                                        kryteriów, ale mogą zawierać możliwości warte ręcznego przeglądu.
+                                                        {t('tenders.columns.filteredNote')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -827,7 +824,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-2">
                                                 <h4 className="text-base font-semibold text-foreground">
-                                                    Źródła Zewnętrzne
+                                                    {t('tenders.columns.externalSources')}
                                                 </h4>
                                                 <Switch
                                                     checked={includeExternal}
@@ -837,7 +834,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                             </div>
                                             
                                             <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                                Uwzględnij przetargi z zewnętrznych baz danych i źródeł partnerskich
+                                                {t('tenders.columns.externalDescription')}
                                             </p>
                                             
                                             {includeExternal && (
@@ -845,8 +842,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                     <div className="flex items-start gap-2">
                                                         <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
                                                         <p className="text-xs text-purple-700 leading-relaxed">
-                                                            Źródła zewnętrzne dostarczają dodatkowych możliwości przetargowych 
-                                                            z baz danych partnerskich i platform zewnętrznych.
+                                                            {t('tenders.columns.externalNote')}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -869,11 +865,10 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-foreground mb-1">
-                                        Automatyczne odświeżanie
+                                        {t('tenders.columns.autoRefresh')}
                                     </p>
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        Zmiany w filtrach danych automatycznie odświeżą listę przetargów 
-                                        i zaktualizują wyniki analizy.
+                                        {t('tenders.columns.autoRefreshDescription')}
                                     </p>
                                 </div>
                             </div>
@@ -889,10 +884,10 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             <DialogContent className="max-w-6xl h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
                 <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-secondary/30 to-secondary/20 flex-shrink-0">
                     <DialogTitle className="text-lg font-semibold text-foreground">
-                        Ustawienia Tabeli
+                        {t('tenders.columns.tableSettings')}
                     </DialogTitle>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Dostosuj kolumny i filtry danych według swoich potrzeb
+                        {t('tenders.columns.customizeDescription')}
                     </p>
                 </DialogHeader>
 
@@ -909,7 +904,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             <Alert className="border-green-200 bg-green-50">
                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                                 <AlertDescription className="text-green-800">
-                                    Ustawienia zostały pomyślnie zapisane!
+                                    {t('tenders.columns.tableLayoutSaved')}
                                 </AlertDescription>
                             </Alert>
                         )}
@@ -931,18 +926,17 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 <Separator className="flex-shrink-0" />
                 <div className="flex justify-between items-center p-6 bg-gradient-to-r from-secondary/30 to-secondary/20 flex-shrink-0">
                     <Button
-                        variant="outline"
+                        variant="destructive"
                         onClick={handleReset}
                         disabled={isResetting || isSaving}
-                        className="border-destructive/20 text-destructive hover:bg-destructive/10"
                     >
                         {isResetting ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Resetowanie...
+                                {t('tenders.columns.resetting')}
                             </>
                         ) : (
-                            'Przywróć domyślne'
+                            t('tenders.columns.resetDefaults')
                         )}
                     </Button>
 
@@ -950,7 +944,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         {activeSection === 'columns' && visibleDraftCount < MIN_VISIBLE && (
                             <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 px-3 py-2 rounded-lg">
                                 <AlertCircle className="h-4 w-4" />
-                                <span>Wybierz co najmniej {MIN_VISIBLE} kolumny</span>
+                                <span>{t('tenders.columns.selectMinColumns', { min: MIN_VISIBLE })}</span>
                             </div>
                         )}
                         <Button
@@ -958,7 +952,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             onClick={onClose}
                             disabled={isSaving || isResetting}
                         >
-                            Anuluj
+                            {t('common.cancel')}
                         </Button>
                         {activeSection === 'columns' && (
                             <Button
@@ -969,10 +963,10 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                 {isSaving ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Zapisywanie...
+                                        {t('tenders.columns.saving')}
                                     </>
                                 ) : (
-                                    'Zapisz zmiany'
+                                    t('tenders.columns.saveChanges')
                                 )}
                             </Button>
                         )}
@@ -981,7 +975,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                 onClick={onClose}
                                 className="bg-primary hover:bg-primary-hover"
                             >
-                                Gotowe
+                                {t('tenders.columns.done')}
                             </Button>
                         )}
                     </div>
