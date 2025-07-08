@@ -42,7 +42,6 @@ export const useTenderTableActions = ({
   const lastClickTimeRef = useRef<number>(0);
   const [sidebarVisible, setSidebarVisible] = useState(false);
 
-
   const isUpdatedAfterOpened = useCallback((result: TenderAnalysisResult) => {
     if (!result.updated_at || !result.opened_at) return false;
     const updatedTime = new Date(result.updated_at).getTime();
@@ -73,10 +72,9 @@ export const useTenderTableActions = ({
     operationInProgressRef.current.add(result._id!);
 
     try {
-      if (currentPage > 1) {
-        setLastKnownPage(currentPage);
-      }
-
+      // REMOVED: No longer save page when opening sidebar
+      // The user should stay on current page when they close the sidebar
+      
       const tenderBoards = getTenderBoards(result._id!);
       const boardStatus = tenderBoards.length
         ? tenderBoards.length === 1
@@ -88,7 +86,7 @@ export const useTenderTableActions = ({
 
       setCurrentTenderBoardStatus(boardStatus);
       setSelectedResult(result);
-      setSidebarVisible(true); // NEW: Set sidebar visible when opening
+      setSidebarVisible(true);
       drawerRef.current?.setVisibility(true);
 
       startTransition(() => {
@@ -166,7 +164,6 @@ export const useTenderTableActions = ({
     setAllResults,
     markAsOpened,
     isUpdatedAfterOpened,
-    setLastKnownPage
   ]);
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
@@ -179,7 +176,7 @@ export const useTenderTableActions = ({
       
       try {
         justMarkedAsUnreadRef.current = result._id!;
-        setSidebarVisible(false); // NEW: Set sidebar not visible when marking as unread
+        setSidebarVisible(false);
         setSelectedResult(null);
         drawerRef.current?.setVisibility(false);
         
@@ -247,10 +244,9 @@ export const useTenderTableActions = ({
   };
 
   const closeDrawer = () => {
-    if (currentPage > 1) {
-      setLastKnownPage(currentPage);
-    }
-    setSidebarVisible(false); // NEW: Set sidebar not visible when closing
+    // MODIFIED: Don't save current page when closing drawer
+    // User should stay on the current page, not revert to previous page
+    setSidebarVisible(false);
     setSelectedResult(null);
     drawerRef.current?.setVisibility(false);
 

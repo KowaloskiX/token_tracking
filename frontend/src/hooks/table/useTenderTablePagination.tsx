@@ -38,6 +38,9 @@ export const useTenderTablePagination = ({
   const prevDateFilterType = useRef(dateFilterType);
   const pageBeforeSearch = useRef(currentPage);
 
+  // NEW: Track if we should restore page (only for specific scenarios, not when sidebar closes)
+  const shouldRestorePage = useRef(false);
+
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   // Function to safely get page number from URL
@@ -154,12 +157,27 @@ export const useTenderTablePagination = ({
     }
   }, [filters, searchQuery, selectedDate, dateFilterType, initialLoadComplete]);
 
+  // NEW: Function to enable page restoration for specific scenarios
+  const enablePageRestoration = useCallback(() => {
+    shouldRestorePage.current = true;
+  }, []);
+
+  // MODIFIED: Only restore page when explicitly enabled and drawer closes
+  // This prevents unwanted restoration when user simply closes the sidebar
+  useEffect(() => {
+    if (shouldRestorePage.current && lastKnownPage > 1) {
+      updateCurrentPage(lastKnownPage, false);
+      shouldRestorePage.current = false; // Reset the flag
+    }
+  }, [lastKnownPage, updateCurrentPage]);
+
   return {
     currentPage,
     totalPages,
     lastKnownPage,
     setLastKnownPage,
     updateCurrentPage,
-    getPageFromUrl
+    getPageFromUrl,
+    enablePageRestoration, // NEW: Export this function for specific use cases
   };
 };

@@ -281,13 +281,6 @@ const TendersList: React.FC<TendersListProps> = ({
     fetchKanbanBoards();
   }, [fetchKanbanBoards]);
 
-  // Restore page when drawer closes
-  useEffect(() => {
-    if (!selectedResult && lastKnownPage > 1) {
-      updateCurrentPage(lastKnownPage, false);
-    }
-  }, [selectedResult, lastKnownPage, updateCurrentPage]);
-
   const currentResults = sortedResults.slice(
     (currentPage - 1) * LOCAL_ITEMS_PER_PAGE,
     currentPage * LOCAL_ITEMS_PER_PAGE
