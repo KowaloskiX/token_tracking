@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from playwright.async_api import async_playwright
 
 from minerva.core.database.database import db
@@ -319,6 +320,8 @@ class BaseTedCountryExtractor:
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 1)
         start_date_str = inputs.get("start_date")  # e.g., "2025-01-01"
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         
         # Add random initial delay to spread out concurrent requests
         initial_delay = random.uniform(5, 15)
@@ -431,17 +434,71 @@ class BaseTedCountryExtractor:
                                     except Exception:
                                         iso_initiation_date = publication_date_str
 
+                                    # Pinecone check for tenders older than start_dt
                                     if start_date_str and iso_initiation_date:
                                         try:
                                             start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
                                             publication_dt = datetime.strptime(iso_initiation_date, "%Y-%m-%d")
                                             if publication_dt < start_dt:
-                                                logging.info(
-                                                    f"Found older date {iso_initiation_date} "
-                                                    f"than start date {start_date_str}"
-                                                )
-                                                found_older = True
-                                                break
+                                                try:
+                                                    query_config = QueryConfig(
+                                                        index_name=tender_names_index_name,
+                                                        namespace="",
+                                                        embedding_model=embedding_model
+                                                    )
+                                                    query_tool = QueryTool(config=query_config)
+                                                    filter_conditions = {"details_url": detail_url}
+                                                    default_index_results = await query_tool.query_by_id(
+                                                        id=detail_url,
+                                                        top_k=1,
+                                                        filter_conditions=filter_conditions
+                                                    )
+                                                    if default_index_results.get("matches"):
+                                                        logging.info(f"{self.source_type_name}: Encountered tender dated {iso_initiation_date} older than start_date {start_date_str} and found in Pinecone. Stopping extraction.")
+                                                        found_older = True
+                                                        break
+                                                    else:
+                                                        # Not in Pinecone, include but set initiation_date to start_dt
+                                                        country = (await cells.nth(3).inner_text()).strip()
+                                                        submission_deadline = ""
+                                                        if cell_count > 5:
+                                                            submission_deadline_raw = (await cells.nth(5).inner_text()).strip()
+                                                            if '(' in submission_deadline_raw:
+                                                                submission_deadline_raw = submission_deadline_raw.split('(')[0].strip()
+                                                            try:
+                                                                if ':00' in submission_deadline_raw and submission_deadline_raw.count(':') > 1:
+                                                                    dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M:%S")
+                                                                else:
+                                                                    dt = datetime.strptime(submission_deadline_raw, "%d/%m/%Y %H:%M")
+                                                                submission_deadline = dt.strftime("%Y-%m-%d %H:%M")
+                                                            except Exception:
+                                                                submission_deadline = submission_deadline_raw
+                                                        organization, notice_type = await self.get_organization_from_detail_page(context, detail_url)
+                                                        # Skip if this is a result notice
+                                                        if notice_type and "Result" in notice_type:
+                                                            logging.info(f"Skipping result notice at {detail_url}")
+                                                            continue
+                                                        tender_data = {
+                                                            "name": name,
+                                                            "organization": organization or "Unknown from detail page",
+                                                            "location": country,
+                                                            "submission_deadline": submission_deadline,
+                                                            "initiation_date": start_dt.strftime("%Y-%m-%d"),
+                                                            "details_url": detail_url,
+                                                            "content_type": "tender",
+                                                            "source_type": self.source_type_name
+                                                        }
+                                                        try:
+                                                            tender = Tender(**tender_data)
+                                                            tenders.append(tender)
+                                                            logging.info(f"{self.source_type_name}: Encountered tender dated {iso_initiation_date} older than start_date {start_date_str} but not found in Pinecone. Saving tender...")
+                                                        except Exception as te:
+                                                            logging.error(f"Error creating Tender object for {self.source_type_name} at URL: {detail_url}")
+                                                        continue
+                                                except Exception as e:
+                                                    logging.error(f"{self.source_type_name}: Error querying Pinecone when checking older tender: {e}")
+                                                    found_older = True
+                                                    break
                                         except ValueError as e:
                                             logging.error(f"Error parsing dates: {e}")
 

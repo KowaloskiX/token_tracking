@@ -29,20 +29,30 @@ _available_api_keys = [
 ]
 
 def _get_next_api_key() -> Optional[str]:
-    """Get the next available API key, cycling through available keys."""
-    global _current_api_key_index
+    """Get the next available API key, cycling through available keys.
     
-    # Filter out None values
-    valid_keys = [key for key in _available_api_keys if key is not None]
+    This now (1) re-reads environment variables on every call to pick up
+    runtime changes and (2) ignores empty strings in addition to `None`.
+    """
+    global _current_api_key_index, _available_api_keys
+    
+    # Always re-read the environment so we pick up changes made after import
+    _available_api_keys = [
+        os.getenv("GEMINI_API_KEY"),
+        os.getenv("GEMINI_API_KEY_2")
+    ]
+    
+    # Filter out missing **or empty** values
+    valid_keys = [key for key in _available_api_keys if key]
     
     if not valid_keys:
         return None
     
-    # Get current key
-    if _current_api_key_index < len(valid_keys):
-        return valid_keys[_current_api_key_index]
+    # Ensure the index is within range – reset if necessary
+    if _current_api_key_index >= len(valid_keys):
+        _current_api_key_index = 0
     
-    return None
+    return valid_keys[_current_api_key_index]
 
 def _rotate_api_key() -> Optional[str]:
     """Rotate to the next API key. Returns the new key or None if no more keys available."""
@@ -90,7 +100,14 @@ def _is_rate_limit_error(error: Exception) -> bool:
         "quota", "resource_exhausted", "rate limit", "429", 
         "too many requests", "quota exceeded"
     ]
-    return any(indicator in error_str for indicator in rate_limit_indicators)
+    matched_indicators = [indicator for indicator in rate_limit_indicators if indicator in error_str]
+    
+    if matched_indicators:
+        logger.debug(f"Rate limit error detected - matched indicators: {matched_indicators}")
+        return True
+    
+    logger.debug(f"Error not classified as rate limit error: {type(error).__name__}: {str(error)}")
+    return False
 
 def _clean_schema_for_gemini(schema: Any) -> Any:
     """
@@ -165,7 +182,7 @@ class GeminiLLM:
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash-preview-05-20",
+        model: str = "gemini-2.5-flash",
         *,
         stream: bool = False,
         temperature: Optional[float] = 1.0,
@@ -210,9 +227,13 @@ class GeminiLLM:
             except Exception as e:
                 last_exception = e
                 
+                # Log the specific error details for debugging
+                logger.error(f"Gemini API call failed on attempt {attempt + 1}/{max_attempts} with API key {_current_api_key_index + 1}: {type(e).__name__}: {str(e)}", exc_info=True)
+                
                 # Check if this is a rate limit error that should trigger rotation
                 if _is_rate_limit_error(e) and attempt < max_attempts - 1:
                     logger.warning(f"Gemini API key {_current_api_key_index + 1} hit rate limit, rotating to next key")
+                    logger.info(f"Rate limit error details: {type(e).__name__}: {str(e)}")
                     
                     # Try to rotate to next API key
                     next_key = _rotate_api_key()
@@ -226,9 +247,14 @@ class GeminiLLM:
                         break
                 else:
                     # Not a rate limit error, or we've exhausted all attempts
+                    if not _is_rate_limit_error(e):
+                        logger.error(f"Gemini API call failed with non-rate-limit error: {type(e).__name__}: {str(e)}")
+                    else:
+                        logger.error(f"Exhausted all {max_attempts} API key attempts, last error: {type(e).__name__}: {str(e)}")
                     break
         
         # If we get here, all attempts failed
+        logger.error(f"All Gemini API key attempts failed, raising last exception: {type(last_exception).__name__}: {str(last_exception)}")
         raise last_exception
 
     # ------------------------------------------------------------------
@@ -243,6 +269,8 @@ class GeminiLLM:
         # Always reset API key rotation to start with the first key for each new request
         _reset_api_key_rotation()
         self._refresh_client()
+
+        logger.info(f"Starting Gemini API call with model: {self.model_name}, stream: {self.stream}, temperature: {self.temperature}, max_tokens: {self.max_tokens}")
 
         # Convert chat messages → Gemini ``Content`` objects.
         contents: List[types.Content] = []
@@ -272,8 +300,10 @@ class GeminiLLM:
             cfg_kwargs["system_instruction"] = self.instructions
 
         gen_config: Optional[types.GenerateContentConfig] = (
-            types.GenerateContentConfig(**cfg_kwargs, thinking_config=types.ThinkingConfig(thinking_budget=0)) if cfg_kwargs else None
+            types.GenerateContentConfig(**cfg_kwargs) if cfg_kwargs else None
         )
+
+        logger.debug(f"Gemini API config: {cfg_kwargs}")
 
         # --------------------------- Call model with API key rotation -------------------------
         if not self.stream:
@@ -295,6 +325,8 @@ class GeminiLLM:
                     'completion_tokens': getattr(response.usage_metadata, 'candidates_token_count', 0),
                     'total_tokens': getattr(response.usage_metadata, 'total_token_count', 0)
                 }
+            
+            logger.info(f"Gemini API call successful, usage: {usage_info}")
             
             # Extract content from response
             content = self._extract_first_candidate(response)

@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Dict
 
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from playwright.async_api import async_playwright
 
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
@@ -123,6 +124,11 @@ class LogintradeNetExtractor:
                 "metadata": ExtractorMetadata(...)
             }
         """
+        # Pinecone config (standardized)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
+        pinecone_tool = QueryTool(QueryConfig(index_name=tender_names_index_name, embedding_model=embedding_model))
+
         max_pages = inputs.get("max_pages", 10)
         start_date_str = inputs.get("start_date", None)
 
@@ -153,7 +159,8 @@ class LogintradeNetExtractor:
 
                 tenders = []
                 current_page = 1
-                while current_page <= max_pages:
+                stop_extraction = False
+                while current_page <= max_pages and not stop_extraction:
                     logging.info(f"[LogintradeNetExtractor] Scraping page {current_page}/{max_pages}...")
 
                     rows = await page.query_selector_all(".defaultTable tbody tr:not(:first-child)")
@@ -211,25 +218,41 @@ class LogintradeNetExtractor:
 
                             # Convert the publication date to a datetime
                             publication_dt = None
-                            if pub_date_str:
-                                try:
+                            try:
+                                if pub_date_str:
                                     publication_dt = datetime.strptime(pub_date_str, "%Y-%m-%d")
-                                except ValueError:
-                                    logging.warning(f"Could not parse publication date from '{pub_date_str}'")
-                            
+                            except ValueError:
+                                logging.warning(f"Could not parse publication date from '{pub_date_str}'")
                             # Convert deadline to a datetime
                             submission_dt = None
-                            if deadline_str:
-                                try:
+                            try:
+                                if deadline_str:
                                     submission_dt = datetime.strptime(deadline_str, "%Y-%m-%d")
-                                except ValueError:
-                                    logging.warning(f"Could not parse deadline from '{deadline_str}'")
-                            
-                            # Skip if tender is older than start date
+                            except ValueError:
+                                logging.warning(f"Could not parse deadline from '{deadline_str}'")
+                            # --- Standardized Pinecone logic for tenders older than start_dt ---
                             if start_dt and publication_dt and (publication_dt < start_dt):
-                                logging.info(f"Skipping older tender '{name}' published at {publication_dt}")
-                                continue
-                            
+                                try:
+                                    if pinecone_tool and detail_url:
+                                        filter_conditions = {"details_url": detail_url}
+                                        pinecone_result = await pinecone_tool.query_by_id(
+                                                id=detail_url,
+                                                top_k=1,
+                                                filter_conditions=filter_conditions
+                                            )
+                                        if pinecone_result.get("matches"):
+                                            logging.info(f"[LogintradeNetExtractor] Found tender in Pinecone, stopping extraction: {detail_url}")
+                                            stop_extraction = True
+                                            break
+                                        else:
+                                            logging.info(f"[LogintradeNetExtractor] Tender not found in Pinecone, including with initiation_date set to start_dt: {detail_url}")
+                                            publication_dt = start_dt
+                                    else:
+                                        logging.info(f"Skipping older tender '{name}' published at {publication_dt}")
+                                        continue
+                                except Exception as e:
+                                    logging.error(f"[LogintradeNetExtractor] Error querying Pinecone for {detail_url}: {str(e)}")
+                                    continue
                             # Fetch additional details from the detail page
                             detail_info = {}
                             if detail_url:
@@ -286,8 +309,7 @@ class LogintradeNetExtractor:
                     
                     # Check for pagination and go to the next page if available
                     current_page += 1
-                    if current_page <= max_pages:
-                        # Construct the next page URL
+                    if current_page <= max_pages and not stop_extraction:
                         next_page_url = f"{self.base_url}?page={current_page}"
                         logging.info(f"[LogintradeNetExtractor] Navigating to page {current_page}: {next_page_url}")
                         

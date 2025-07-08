@@ -171,3 +171,19 @@ export interface TenderAnalysisUpdate {
   update_date: string;
   update_link?: string;
 }
+
+// Add this interface for the API request
+export interface SingleTenderAnalysisRequest {
+  tender_url: string;
+  analysis_id: string;
+  save_to_db: boolean;
+}
+
+// Add this interface for the API response
+export interface SingleTenderAnalysisResponse {
+  status: 'success' | 'failed';
+  message: string;
+  result?: TenderAnalysisResult;
+  tender_url: string;
+  analysis_id: string;
+}

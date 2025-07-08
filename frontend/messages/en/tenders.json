@@ -405,6 +405,22 @@
       "mainCpv": "Main CPV",
       "additionalCpv": "Additional CPV",
       "viewOriginalTender": "View original tender"
+    },
+    "singleAnalysis": {
+      "title": "Analyze single tender",
+      "addSingle": "Add tender",
+      "urlLabel": "Tender link",
+      "urlPlaceholder": "https://example.com/tender/12345",
+      "urlHelper": "Paste the link to the tender page from any supported platform",
+      "urlRequired": "Tender link is required",
+      "invalidUrl": "The provided link is invalid",
+      "analyze": "Analyze",
+      "analyzing": "Analyzing...",
+      "loading": "Loading...",
+      "processing": "Processing tender...",
+      "analysisError": "An error occurred while analyzing the tender",
+      "success": "Tender was successfully analyzed",
+      "failed": "Tender analysis failed"
     }
   },
   "errors": {
@@ -502,7 +518,7 @@
     "historicalNote": "Historical data includes completed, expired and archived tender opportunities that may provide valuable context for analysis.",
     "filteredTenders": "Filtered Tenders",
     "filteredDescription": "Include tenders filtered by preliminary selection",
-    "filteredNote": "Filtered tenders were automatically excluded based on criteria, but may contain opportunities worth manual review.",
+    "filteredNote": "The filtered tenders were automatically excluded based on the description and any user instructions",
     "externalSources": "External Sources",
     "externalDescription": "Include tenders from external databases and partner sources",
     "externalNote": "External sources provide additional tender opportunities from partner databases and external platforms.",

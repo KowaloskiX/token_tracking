@@ -1015,8 +1015,8 @@ class RAGManager:
             try:
                 # Base prompt
                 base_prompt = (
-                    f"Please answer this question based on the documentation content:\n"
-                    f"<QUESTION>{criterion.description}</QUESTION>\n"
+                    f"Please answer this user question based on the documentation content:\n"
+                    f"<USER_QUESTION>{criterion.description}</USER_QUESTION>\n"
                 )
 
                 has_instruction = False
@@ -1026,24 +1026,24 @@ class RAGManager:
                 # Separate instruction guidance from JSON template
                 instruction_guidance = ""
                 if has_instruction:
-                    instruction_guidance = f"\nIMPORTANT INSTRUCTIONS: When writing your summary, follow this guidance: {criterion.instruction}\n"
+                    instruction_guidance = f"\n<IMPORTANT_USER_INSTRUCTIONS>\n When writing your summary, please remember: '{criterion.instruction}'.\nBTW this is not part of the documentation. These are instructions from the user.\n</IMPORTANT_USER_INSTRUCTIONS>\n"
                 
                 # Clean placeholder for JSON template
-                summary_placeholder = f"<Your concise answer to the '{criterion.description}' question based on the documentation{' following the instructions provided' if has_instruction else ''}>"
+                summary_placeholder = f"<Your concise answer to the '{criterion.description}' question based on the documentation and/or keyword presence{' strictly following the instructions provided' if has_instruction else ''}>"
                 
-                format_instructions = (
-                    f"Return your answer in JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <QUESTION> tag provided in the input.\n"
+                prompt_instructions = (
                     f"{instruction_guidance}"
-                    f"The summary response must ALWAYS be in {self.language} unless the instruction states otherwise. Use native characters directly in JSON (no Unicode escapes like \\uXXXX). Ensure proper JSON formatting with escaped quotes and backslashes where needed.\n"
-                    f"FORMATTING: Present your summary in clean, readable format using:\n"
+                    f"<FORMATTING_GUIDE>\nPresent your summary in clean, readable format using:\n"
                     f"- **Bold text** for important terms and quantities\n"
                     f"- Lists (1. 2. 3. or -) to organize multiple items clearly\n"
-                    f"- Line breaks between different topics for better readability\n"
+                    f"- Line breaks between different topics for better readability\n</FORMATTING_GUIDE>"
+                    f"The summary response must ALWAYS be in {self.language} unless the instruction states otherwise. Use native characters directly in JSON (no Unicode escapes like \\uXXXX). Ensure proper JSON formatting with escaped quotes and backslashes where needed.\n"
                     f"CRITICAL CITATION REQUIREMENT: In the 'citations' array, include ONLY the specific text fragments from the documentation that you actually used to support your analysis and 'criteria_met' decision. Each citation must contain the EXACT, UNMODIFIED text from the source document - do NOT add ellipsis (...), do NOT truncate, do NOT paraphrase, do NOT modify in any way. The citation text must be searchable with Ctrl+F in the original document.\n"
-                    f"If you cannot find ANY relevant information in the provided documentation to answer the question or support your analysis, return an empty citations array []. However, only return empty citations when there is truly NO related information available - if there is even partial or tangentially related information that helps inform your decision, include those citations.\n"
+                    f"If you cannot find ANY relevant information in the provided tender documentation/keywords to answer the question or support your analysis, return an empty citations array []. However, only return empty citations when there is truly NO related information available - if there is even partial or tangentially related information that helps inform your decision, include those citations.\n"
+                    f"Return your answer in the following JSON format. The value for the 'criteria' field in your JSON response MUST be an exact copy of the text from the <USER_QUESTION> tag provided in the input:\n"
                 ) + f"""
                 {{
-                    "criteria": "<Exact copy of the input <QUESTION>>",
+                    "criteria": "<Exact copy of the input <USER_QUESTION>>",
                     "analysis": {{
                         "summary": "{summary_placeholder}",
                         "confidence": "<LOW|MEDIUM|HIGH - Your confidence in the summary and 'criteria_met' assessment based on the available information.>",
@@ -1057,10 +1057,11 @@ class RAGManager:
                         }}
                     ]
                 }}
+                -----PUBLIC TENDER DOCUMENTATION STARTS HERE:
                 """
                 
                 # Combine all parts
-                prompt = base_prompt + format_instructions
+                prompt = base_prompt + prompt_instructions
 
                 # Get vector search results
                 keyword_validation_results = None
@@ -1084,7 +1085,7 @@ class RAGManager:
                     
                     # Add subcriteria results to the prompt
                     if any(result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0 for result in subcriteria_results):
-                        subcriteria_context = "\n\n<DOCUMENTATION_CONTEXT>\n"
+                        subcriteria_context = "\n\n<TENDER_DOCUMENTATION_CONTEXT>\n"
                         
                         for result in subcriteria_results:
                             has_results = result["vector_total_matches"] > 0 or result["elasticsearch_total_matches"] > 0
@@ -1096,11 +1097,11 @@ class RAGManager:
                                     for idx, match in enumerate(result["vector_results"], 1):
                                         subcriteria_context += f"{idx}. From {match['metadata'].get('source', 'unknown')} ):\n{match['metadata'].get('text', '')}\n"
                                 
-                        subcriteria_context += "\n</DOCUMENTATION_CONTEXT>\n"
+                        subcriteria_context += "\n</TENDER_DOCUMENTATION_CONTEXT>\n"
                         prompt += subcriteria_context
 
                 if keyword_validation_results and self.use_elasticsearch:
-                    kw_ctx  = "\n\n<KEYWORD_PRESENCE>\n"
+                    kw_ctx  = "\n\n<TENDER_DOCUMENTATION_KEYWORD_PRESENCE>\n"
                     if keyword_validation_results["hits"]:
                         kw_ctx += "The following keywords were found in tender documentation:\n"
                         for hit in keyword_validation_results["hits"]:
@@ -1108,13 +1109,13 @@ class RAGManager:
                             for i, snippet in enumerate(hit["snippets"], 1):
                                 score_info = f" (score: {snippet.get('score', 'N/A'):.2f})" if 'score' in snippet else ""
                                 kw_ctx += f"   {i}. From {snippet['source']}{score_info}: \"{snippet['text']}\"\n"
-                    if keyword_validation_results["missing"]:
-                        kw_ctx += (
-                            "The following keywords **were NOT found** in tender documentation: "
-                            + ", ".join(keyword_validation_results["missing"])
-                            + "\n"
-                        )
-                    kw_ctx += "</KEYWORD_PRESENCE>\n"
+                    # if keyword_validation_results["missing"]:
+                    #     kw_ctx += (
+                    #         "The following keywords **were NOT found** in tender documentation: "
+                    #         + ", ".join(keyword_validation_results["missing"])
+                    #         + "\n"
+                    #     )
+                    kw_ctx += "</TENDER_DOCUMENTATION_KEYWORD_PRESENCE>\n"
                     prompt += kw_ctx
 
                 # Rest of your function remains the same
@@ -1146,7 +1147,7 @@ class RAGManager:
                                         "properties": {
                                             "text": {"type": "string", "description": "EXACT, UNMODIFIED text fragment from documentation - must be searchable with Ctrl+F in original document. NO ellipsis (...), NO truncation, NO modification."},
                                             "source": {"type": "string", "description": "Source filename or document identifier."},
-                                            "keyword": {"type": "string", "description": "Keyword that led to this citation either from KEYWORD_PRESENCE or QUESTION."}
+                                            "keyword": {"type": "string", "description": "Keyword that led to this citation either from TENDER_DOCUMENTATION_KEYWORD_PRESENCE or QUESTION."}
                                         },
                                         "required": ["text", "source", "keyword"],
                                         "additionalProperties": False
@@ -1166,7 +1167,7 @@ class RAGManager:
                 provider, max_tokens = get_model_config(model_to_use)
                 
                 # Use optimal max_tokens for high complexity task
-                max_tokens = get_optimal_max_tokens(model_to_use, "high")
+                max_tokens = get_optimal_max_tokens(model_to_use, "low")
                 
                 # print(f"using model: {model_to_use}, max_tokens: {max_tokens}, provider: {provider}")
                 request_data = LLMRAGRequest(
@@ -1186,7 +1187,7 @@ class RAGManager:
                         You excel at finding the information in public tender documentation and determining if it is worth a proposal.
                         In your work you always ground your responses in the documentation context and respond thoughtfully, never making false assessments as it is a critical branch of our business.
                         Even the smallest mistake can cost millions and you perform the most accurate search you can.
-                        You have access to DOCUMENTATION_CONTEXT which is result of vector search in public tender documents.
+                        You have access to TENDER_DOCUMENTATION_CONTEXT which is result of vector search in public tender documents.
 
                         CRITICAL CITATION RULE: When providing citations, you MUST include the EXACT, UNMODIFIED text from the source documents. Never add ellipsis (...), never truncate, never paraphrase, never modify the text in any way. The citation text must be exactly as it appears in the source document so it can be found with Ctrl+F search. This is absolutely critical for document verification.
                         Include ONLY the specific text fragments you actually used to make your assessment. Be precise and selective - include only the most relevant excerpts that directly support your analysis.
@@ -1559,6 +1560,7 @@ class RAGManager:
                 {batch}
                 </TENDERS_LIST>
                 """
+                print(f'description prompt: \n{prompt}')
                 
                 # Use model configuration helper
                 filter_model = "o4-mini"
@@ -1651,7 +1653,7 @@ class RAGManager:
             {tenders_list_to_analyze}
             </TENDERS_LIST>
             """
-            
+            print(f'description prompt: \n{prompt}')
             # Use model configuration helper
             filter_model = "o4-mini"
             filter_provider, filter_max_tokens = get_model_config(filter_model)

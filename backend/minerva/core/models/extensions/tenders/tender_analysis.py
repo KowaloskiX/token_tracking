@@ -95,13 +95,15 @@ class TenderAnalysisResult(BaseModel):
     tender_pinecone_id: Optional[str] = None
     uploaded_files: List[File]
     updates: List[PyObjectId] = []
-    status: Literal["inactive", "active", "archived"] = "inactive"
+    status: Literal["inactive", "active", "archived", "filtered", "external"] = "inactive"
     updated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     opened_at: Optional[datetime] = None
     order_number: Optional[int] = None
     language: Optional[str] = None
     finished_id: Optional[str] = None
+    external_best_url: Optional[str] = None  # NEW: URL to the best external source
+    external_compare_status: Optional[Literal["our_unique", "overlap_oferent", "overlap_bizpol", "external_unique"]] = None  # NEW: Status of external comparison
 
     class Config:
         arbitrary_types_allowed = True
@@ -139,6 +141,7 @@ class TenderAnalysis(BaseModel):
     active: bool = Field(default=True)
     assigned_users: List[str] = Field(default_factory=list)  # Add this field
     email_recipients: List[str] = Field(default_factory=list)  # NEW: Users who receive email notifications
+    include_external_sources: Optional[bool] = Field(default=False)  # NEW: Include external sources in analysis
     
     # NEW: Table layout configurations per user
     table_layouts: Optional[List[TableLayout]] = Field(default_factory=list)

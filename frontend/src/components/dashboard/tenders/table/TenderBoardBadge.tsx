@@ -51,7 +51,7 @@ export const TenderBoardBadge: React.FC<TenderBoardBadgeProps> = ({
   switch (status) {
     case 'inactive':
       return (
-        <Badge variant="outline" className="border-zinc-200 text-zinc-400 font-normal">
+        <Badge variant="outline" className="border-stone-200 text-stone-400 font-normal">
           {t('tenders.status.inactive')}
         </Badge>
       );
@@ -69,9 +69,9 @@ export const TenderBoardBadge: React.FC<TenderBoardBadgeProps> = ({
       );
 
        case 'filtered':
-        return <Badge variant="default" className="bg-yellow-600/80 hover:bg-yellow-600/80 font-normal">{t('tenders.status.filtered')}</Badge>;
+        return <Badge variant="default" className="bg-stone-600 hover:bg-stone-600 font-normal">{t('tenders.status.filtered')}</Badge>;
       case 'external':
-        return <Badge variant="default" className="bg-primary hover:bg-primary/80 font-normal">{t('tenders.status.external')}</Badge>;
+        return <Badge variant="default" className="bg-secondary-hover text-primary/70 font-normal">{t('tenders.status.external')}</Badge>;
     default:
       return (
         <Badge variant="outline">

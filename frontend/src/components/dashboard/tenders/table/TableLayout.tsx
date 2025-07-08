@@ -386,15 +386,15 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
         <div className="flex-1 flex flex-col min-h-0 h-full">
             {/* Header */}
             <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
-                        <Table className="h-5 w-5" />
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-secondary text-muted-foreground rounded-md shadow-sm">
+                        <Table className="h-4 w-4" />
                     </div>
                     <div>
-                        <h3 className="text-lg font-semibold text-foreground">
+                        <h3 className="text-md font-semibold text-foreground">
                             {t('tenders.columns.manageColumns')}
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-sm text-muted-foreground">
                             {t('tenders.columns.columnVisibilityDescription')}
                         </p>
                     </div>
@@ -449,12 +449,11 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
             <div className="flex-1 flex gap-6 min-h-0">
                 {/* Current Columns */}
                 <div className="flex-1 flex flex-col min-h-0 p-6">
-                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full"></div>
+                    <h4 className="font-medium text-foreground text-bold flex items-center gap-2">
                         {t('tenders.columns.currentColumns')}
                     </h4>
 
-                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                    <ScrollArea className="flex-1 border rounded-md bg-card/50 scrollbar-brown-thin">
                         <div className="p-4 space-y-3">
                             {sortedDraft.map((col, idx) => (
                                 <div
@@ -465,7 +464,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                     onDragEnd={finishDrag}
                                     onDrop={finishDrag}
                                     className={cn(
-                                        'group flex items-start gap-4 p-4 border rounded-xl bg-card transition-all duration-200',
+                                        'group flex items-center gap-4 p-4 border rounded-md bg-card transition-all duration-200',
                                         col.visible ? 'opacity-100 shadow-sm' : 'opacity-60',
                                         dragOverIndex === idx && 'ring-2 ring-primary/30 scale-[1.02]',
                                         draggedIndex === idx && 'opacity-40 scale-95',
@@ -473,14 +472,15 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         !isSaving && !isResetting && 'hover:shadow-md cursor-grab active:cursor-grabbing'
                                     )}
                                 >
-                                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                                        <span className="text-muted-foreground group-hover:text-primary transition-colors mt-1">
+                                    {/* Left side: Drag handle + content */}
+                                    <div className="flex items-center gap-3 flex-1 items-center">
+                                        <span className="text-muted-foreground group-hover:text-muted-foreground transition-colors flex-shrink-0">
                                             ≡
                                         </span>
 
-                                        <div className="flex-1 min-w-0">
+                                        <div className="flex-1 items-center">
                                             <div className="flex items-start gap-2 mb-1">
-                                                <div className="flex-1 min-w-0">
+                                                <div className="flex-1 items-center">
                                                     <span className={cn(
                                                         "font-medium text-sm text-foreground leading-relaxed",
                                                         // Show up to 2 lines for criteria columns, then truncate with ellipsis
@@ -500,7 +500,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
                                             {isCriteriaColumn(col) && (
                                                 <div className="flex items-center gap-2 mt-2">
-                                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                                                    <Badge variant="outline" className="text-xs bg-secondary-hover/10 text-muted-foreground border-primary/20">
                                                         {t('tenders.columns.criteria')}
                                                     </Badge>
                                                     <button
@@ -529,7 +529,8 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                         </div>
                                     </div>
 
-                                    <div className="flex items-start gap-3 flex-shrink-0 mt-1">
+                                    {/* Right side: Controls - properly centered */}
+                                    <div className="flex items-center gap-3 flex-shrink-0">
                                         <div className="flex items-center gap-2">
                                             <Label className="text-xs text-muted-foreground">{t('tenders.columns.widthShort')}:</Label>
                                             <Input
@@ -569,8 +570,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
                 {/* Add Criteria Section - Also with text wrapping */}
                 <div className="w-80 flex flex-col min-h-0 p-6 border-l">
-                    <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full"></div>
+                    <h4 className="font-medium text-foreground text-bold flex items-center gap-2">
                         {t('tenders.columns.addCriteria')}
                     </h4>
 
@@ -584,7 +584,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         />
                     )}
 
-                    <ScrollArea className="flex-1 border rounded-xl bg-card/50 scrollbar-brown-thin">
+                    <ScrollArea className="flex-1 border rounded-md bg-card/50 scrollbar-brown-thin">
                         <div className="p-4">
                             {filteredAvailableCriteria.length ? (
                                 <div className="space-y-3">
@@ -593,7 +593,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                             key={`criteria-${c.id}`}
                                             className="group flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-secondary/50 hover:border-primary/20 transition-all duration-200"
                                         >
-                                            <div className="flex-1 min-w-0 pr-3">
+                                            <div className="flex-1 items-center pr-3">
                                                 <p className="font-medium text-sm text-foreground leading-relaxed line-clamp-2 break-words">
                                                     {c.name}
                                                 </p>
@@ -603,7 +603,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                                                 size="sm"
                                                 onClick={() => addDraftCriteria(c.id, c.name)}
                                                 disabled={isSaving || isResetting}
-                                                className="h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary flex-shrink-0"
+                                                className="h-8 text-xs bg-secondary-hover/5 hover:bg-secondary-hover/10 border-primary/20 text-muted-foreground hover:text-muted-foreground flex-shrink-0"
                                             >
                                                 {t('tenders.columns.add')}
                                             </Button>
@@ -628,13 +628,15 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
 
     // Render data filters content
     // Render data filters content with beige/brown color scheme
+    // Replace the renderDataFiltersContent function in TableLayout.tsx with this:
+
     const renderDataFiltersContent = () => (
         <div className="flex-1 flex flex-col min-h-0 h-full">
             {/* Header Section */}
             <div className="p-6 pb-4 border-b border-sidebar-border bg-sidebar/30 flex-shrink-0">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2.5 bg-primary/10 text-primary rounded-xl shadow-sm">
-                        <Filter className="h-5 w-5" />
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-secondary text-muted-foreground rounded-md shadow-sm">
+                        <Filter className="h-4 w-4" />
                     </div>
                     <div>
                         <h3 className="text-lg font-semibold text-foreground">{t('tenders.columns.dataFilters')}</h3>
@@ -651,19 +653,19 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                     </span>
                     <div className="flex gap-2">
                         {includeHistorical && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/15 text-primary rounded-full text-xs font-medium border border-primary/20">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-secondary text-muted-foreground rounded-full text-xs font-medium border border-primary/20">
                                 <Clock className="h-3 w-3" />
                                 {t('tenders.columns.historicalTenders')}
                             </div>
                         )}
                         {includeFiltered && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-primary-hover/20 text-primary rounded-full text-xs font-medium border border-primary-hover/30">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-secondary text-muted-foreground rounded-full text-xs font-medium border border-primary/20">
                                 <Database className="h-3 w-3" />
                                 {t('tenders.columns.filteredTenders')}
                             </div>
                         )}
                         {includeExternal && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-muted text-primary rounded-full text-xs font-medium border border-primary/20">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-secondary text-muted-foreground rounded-full text-xs font-medium border border-primary/20">
                                 <Globe className="h-3 w-3" />
                                 {t('tenders.columns.externalSources')}
                             </div>
@@ -675,175 +677,150 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 </div>
             </div>
 
-            {/* Scrollable Content - Takes remaining height */}
+            {/* Scrollable Content */}
             <div className="flex-1 overflow-hidden min-h-0">
                 <ScrollArea className="h-full scrollbar-brown-thin">
-                    <div className="p-6 space-y-5">
+                    <div className="p-6 space-y-4">
                         {/* Historical Tenders */}
                         <div className={cn(
-                            "group relative overflow-hidden transition-all duration-300 ease-out",
-                            "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                            includeHistorical
-                                ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
-                                : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
+                            "group flex items-start gap-4 p-4 border rounded-md bg-card transition-all shadow-sm duration-200",
+                            includeHistorical ? 'opacity-100 shadow-sm' : 'opacity-100',
+                            'hover:shadow-md'
                         )}>
-                            <div className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className={cn(
-                                        "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                        includeHistorical
-                                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                            : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
-                                    )}>
-                                        <Clock className="h-6 w-6" />
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h4 className="text-base font-semibold text-foreground">
-                                                {t('tenders.columns.historicalTenders')}
-                                            </h4>
-                                            <Switch
-                                                checked={includeHistorical}
-                                                onCheckedChange={onToggleHistorical}
-                                                className="data-[state=checked]:bg-primary"
-                                            />
-                                        </div>
-
-                                        <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                            {t('tenders.columns.historicalDescription')}
-                                        </p>
-
-                                        {includeHistorical && (
-                                            <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
-                                                <div className="flex items-start gap-2">
-                                                    <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
-                                                    <p className="text-xs text-primary leading-relaxed">
-                                                        {t('tenders.columns.historicalNote')}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            <div className={cn(
+                                "flex-shrink-0 p-3 rounded-md transition-all duration-200",
+                                includeHistorical
+                                    ? "bg-foreground text-secondary-hover shadow-sm"
+                                    : "bg-secondary text-muted-foreground group-hover:bg-secondary-hover"
+                            )}>
+                                <Clock className="h-4 w-4" />
                             </div>
 
-                            {/* Subtle gradient overlay for visual depth */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+                            <div className="flex-1 items-center">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-base font-semibold text-foreground">
+                                        {t('tenders.columns.historicalTenders')}
+                                    </h4>
+                                    <Switch
+                                        checked={includeHistorical}
+                                        onCheckedChange={onToggleHistorical}
+                                        className="data-[state=checked]:bg-primary"
+                                    />
+                                </div>
+
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                    {t('tenders.columns.historicalDescription')}
+                                </p>
+
+                                {includeHistorical && (
+                                    <div className="mt-4 p-3 bg-secondary/50 rounded-lg border">
+                                        <div className="flex items-start gap-2">
+                                            <div className="w-1.5 h-1.5 bg-secondary-hover rounded-full mt-2 flex-shrink-0"></div>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                {t('tenders.columns.historicalNote')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Filtered Tenders */}
                         <div className={cn(
-                            "group relative overflow-hidden transition-all duration-300 ease-out",
-                            "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                            includeFiltered
-                                ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
-                                : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
+                            "group flex items-start gap-4 p-4 border rounded-md bg-card transition-all shadow-sm duration-200",
+                            includeFiltered ? 'opacity-100 shadow-sm' : 'opacity-100',
+                            'hover:shadow-md'
                         )}>
-                            <div className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className={cn(
-                                        "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                        includeFiltered
-                                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                            : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
-                                    )}>
-                                        <Database className="h-6 w-6" />
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h4 className="text-base font-semibold text-foreground">
-                                                {t('tenders.columns.filteredTenders')}
-                                            </h4>
-                                            <Switch
-                                                checked={includeFiltered}
-                                                onCheckedChange={onToggleFiltered}
-                                                className="data-[state=checked]:bg-primary"
-                                            />
-                                        </div>
-
-                                        <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                            {t('tenders.columns.filteredDescription')}
-                                        </p>
-
-                                        {includeFiltered && (
-                                            <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
-                                                <div className="flex items-start gap-2">
-                                                    <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
-                                                    <p className="text-xs text-primary leading-relaxed">
-                                                        {t('tenders.columns.filteredNote')}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            <div className={cn(
+                                "flex-shrink-0 p-3 rounded-md transition-all duration-200",
+                                includeFiltered
+                                    ? "bg-foreground text-secondary-hover shadow-sm"
+                                    : "bg-secondary text-muted-foreground group-hover:bg-secondary-hover"
+                            )}>
+                                <Database className="h-4 w-4" />
                             </div>
 
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+                            <div className="flex-1 items-center">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-base font-semibold text-foreground">
+                                        {t('tenders.columns.filteredTenders')}
+                                    </h4>
+                                    <Switch
+                                        checked={includeFiltered}
+                                        onCheckedChange={onToggleFiltered}
+                                        className="data-[state=checked]:bg-primary"
+                                    />
+                                </div>
+
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                    {t('tenders.columns.filteredDescription')}
+                                </p>
+
+                                {includeFiltered && (
+                                    <div className="mt-4 p-3 bg-secondary/50 rounded-lg border">
+                                        <div className="flex items-start gap-2">
+                                            <div className="w-1.5 h-1.5 bg-secondary-hover rounded-full mt-2 flex-shrink-0"></div>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                {t('tenders.columns.filteredNote')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* External Sources */}
                         {showIncludeExternal && (
                             <div className={cn(
-                                "group relative overflow-hidden transition-all duration-300 ease-out",
-                                "border-2 rounded-xl shadow-sm hover:shadow-lg",
-                                includeExternal
-                                    ? "border-primary/30 bg-gradient-to-br from-primary/8 to-primary/12 shadow-primary/10"
-                                    : "border-border bg-card hover:border-primary/25 hover:bg-primary/5"
+                                "group flex items-start gap-4 p-4 border rounded-md bg-card shadow-sm transition-all duration-200",
+                                includeExternal ? 'opacity-100 shadow-sm' : 'opacity-100',
+                                'hover:shadow-md'
                             )}>
-                                <div className="p-5">
-                                    <div className="flex items-start gap-4">
-                                        <div className={cn(
-                                            "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
-                                            includeExternal
-                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                : "bg-primary/15 text-primary group-hover:bg-primary/20 group-hover:scale-105"
-                                        )}>
-                                            <Globe className="h-6 w-6" />
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <h4 className="text-base font-semibold text-foreground">
-                                                    {t('tenders.columns.externalSources')}
-                                                </h4>
-                                                <Switch
-                                                    checked={includeExternal}
-                                                    onCheckedChange={onToggleExternal}
-                                                    className="data-[state=checked]:bg-primary"
-                                                />
-                                            </div>
-
-                                            <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                                                {t('tenders.columns.externalDescription')}
-                                            </p>
-
-                                            {includeExternal && (
-                                                <div className="mt-4 p-3 bg-background/80 backdrop-blur-sm rounded-lg border border-primary/20">
-                                                    <div className="flex items-start gap-2">
-                                                        <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></div>
-                                                        <p className="text-xs text-primary leading-relaxed">
-                                                            {t('tenders.columns.externalNote')}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                                <div className={cn(
+                                    "flex-shrink-0 p-3 rounded-md transition-all duration-200",
+                                    includeExternal
+                                        ? "bg-foreground text-secondary-hover shadow-sm"
+                                        : "bg-secondary text-muted-foreground group-hover:bg-secondary-hover"
+                                )}>
+                                    <Globe className="h-4 w-4" />
                                 </div>
 
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-primary/8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+                                <div className="flex-1 items-center">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-base font-semibold text-foreground">
+                                            {t('tenders.columns.externalSources')}
+                                        </h4>
+                                        <Switch
+                                            checked={includeExternal}
+                                            onCheckedChange={onToggleExternal}
+                                            className="data-[state=checked]:bg-primary"
+                                        />
+                                    </div>
+
+                                    <p className="text-sm text-muted-foreground leading-relaxed">
+                                        {t('tenders.columns.externalDescription')}
+                                    </p>
+
+                                    {includeExternal && (
+                                        <div className="mt-4 p-3 bg-secondary/50 rounded-lg border">
+                                            <div className="flex items-start gap-2">
+                                                <div className="w-1.5 h-1.5 bg-secondary-hover rounded-full mt-2 flex-shrink-0"></div>
+                                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                                    {t('tenders.columns.externalNote')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
 
                     {/* Footer info */}
                     <div className="px-6 pb-6">
-                        <div className="p-4 bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl border border-primary/20">
+                        <div className="p-4 bg-card rounded-md border shadow-sm">
                             <div className="flex items-start gap-3">
-                                <div className="p-2 bg-primary/10 text-primary rounded-lg flex-shrink-0">
+                                <div className="p-2 bg-secondary-hover/10 text-muted-foreground rounded-lg flex-shrink-0">
                                     <AlertCircle className="h-4 w-4" />
                                 </div>
                                 <div>
@@ -909,7 +886,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 <Separator className="flex-shrink-0" />
                 <div className="flex justify-between items-center p-6 bg-sidebar/30 border-t border-sidebar-border flex-shrink-0">
                     <Button
-                        variant="destructive"
+                        variant="outline"
                         onClick={handleReset}
                         disabled={isResetting || isSaving}
                     >
@@ -941,7 +918,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                             <Button
                                 onClick={commitChanges}
                                 disabled={visibleDraftCount < MIN_VISIBLE || isSaving || isResetting}
-                                className="bg-primary hover:bg-primary-hover"
+                                className="bg-primary hover:bg-foreground"
                             >
                                 {isSaving ? (
                                     <>
@@ -956,7 +933,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                         {activeSection === 'dataFilters' && (
                             <Button
                                 onClick={onClose}
-                                className="bg-primary hover:bg-primary-hover"
+                                className="bg-primary hover:bg-foreground"
                             >
                                 {t('tenders.columns.done')}
                             </Button>

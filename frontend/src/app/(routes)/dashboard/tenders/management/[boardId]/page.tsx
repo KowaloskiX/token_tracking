@@ -163,8 +163,8 @@ export default function BoardManagementPage() {
   }
   
   return (
-    <div className="p-4 w-full space-y-4">
-      <header className="flex items-center justify-between gap-4">
+    <div className="p-4 w-full h-full flex flex-col space-y-4">
+      <header className="flex items-center justify-between gap-4 flex-shrink-0">
         {selectedBoard ? (
           <>
             {editBoardName ? (
@@ -232,7 +232,7 @@ export default function BoardManagementPage() {
       </header>
 
       {boards.length > 0 && (
-        <div className="border-b pb-2">
+        <div className="border-b pb-2 flex-shrink-0">
           <KanbanBoardTabs 
             boards={boards}
             currentBoardId={selectedBoard?.id}
@@ -250,9 +250,9 @@ export default function BoardManagementPage() {
           </Button>
         </div>
       ) : selectedBoard ? (
-        <div className="w-full relative h-[calc(100vh-200px)]">
-          <div className="absolute inset-0 overflow-y-auto overflow-x-auto">
-            <div className="min-w-max pb-4">
+        <div className="w-full relative flex-1 min-h-0">
+          <div className="absolute inset-0 overflow-y-auto">
+            <div className="min-w-max pb-4 h-full">
               <KanbanLayout 
                 board={selectedBoard} 
                 onBoardUpdated={refreshCurrentBoard}
@@ -268,7 +268,7 @@ export default function BoardManagementPage() {
                 drawerRef={drawerRef} allResults={[]} 
                 setAllResults={function (value: SetStateAction<TenderAnalysisResult[]>): void {
                   console.log("")
-                } }
+                }}
             />
           </div>
         </div>

@@ -19,6 +19,8 @@ class ExtractorMetadata(BaseModel):
 class ExtractionRequest(BaseModel):
     max_pages: Optional[int] = 50
     start_date: Optional[str] = None
+    tender_names_index_name: Optional[str] = None
+    
     
 class ExtractionResponse(BaseModel):
     tenders: List[Tender]

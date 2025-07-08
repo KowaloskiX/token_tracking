@@ -13,6 +13,7 @@ import { ScoreIndicator } from './ScoreIndicator';
 import { DeadlineProgressBar } from './DeadlineProgressBar';
 import { useTendersTranslations } from '@/hooks/useTranslations';
 import { formatDate, extractHour, formatDateTime, truncateText } from '@/utils/tenderDateUtils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DynamicTableRowProps {
   result: TenderAnalysisResult;
@@ -27,6 +28,7 @@ interface DynamicTableRowProps {
   onUnopened: (result: TenderAnalysisResult) => void;
   onDelete: (event: React.MouseEvent, resultId: string) => void;
   onAddToKanban: (result: TenderAnalysisResult) => void;
+  isPending?: boolean; // ✅ ADD THIS: Optional pending state prop
 }
 
 export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
@@ -41,7 +43,8 @@ export const DynamicTableRow: React.FC<DynamicTableRowProps> = ({
   onStatusChange,
   onUnopened,
   onDelete,
-  onAddToKanban
+  onAddToKanban,
+  isPending = false, // ✅ ADD THIS: Default to false
 }) => {
   const t = useTendersTranslations();
 
@@ -338,6 +341,83 @@ const renderCriteriaCell = (column: CriteriaColumnConfig) => {
         );
     }
   };
+
+  // ✅ IMPROVED: Enhanced skeleton rendering that matches table structure
+  if (isPending) {
+    return (
+      <TableRow className="animate-pulse bg-primary/5">
+        {columns.map((column) => {
+          const cellStyle = getCellStyle(column);
+          
+          return (
+            <TableCell key={column.id} style={cellStyle} className="py-3">
+              {/* Render different skeleton types based on column type */}
+              {column.type === 'source' && (
+                <div className="flex items-center justify-center">
+                  <Skeleton className="h-8 w-8 rounded bg-primary/20" />
+                </div>
+              )}
+              
+              {column.type === 'name' && (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full bg-primary/20" />
+                  <Skeleton className="h-3 w-3/4 bg-primary/15" />
+                </div>
+              )}
+              
+              {column.type === 'organization' && (
+                <Skeleton className="h-4 w-5/6 bg-primary/20" />
+              )}
+              
+              {column.type === 'score' && (
+                <div className="flex items-center justify-center">
+                  <Skeleton className="h-6 w-12 rounded-full bg-primary/20" />
+                </div>
+              )}
+              
+              {column.type === 'deadline_progress' && (
+                <div className="space-y-1">
+                  <Skeleton className="h-2 w-full rounded-full bg-primary/20" />
+                  <Skeleton className="h-3 w-16 bg-primary/15" />
+                </div>
+              )}
+              
+              {(column.type === 'submission_deadline' || column.type === 'publication_date') && (
+                <Skeleton className="h-4 w-20 bg-primary/20" />
+              )}
+              
+              {column.type === 'board_status' && (
+                <Skeleton className="h-5 w-16 rounded-full bg-primary/20" />
+              )}
+              
+              {column.type === 'criteria' && (
+                <div className="flex items-center justify-center">
+                  <Skeleton className="h-4 w-4 rounded-full bg-primary/20" />
+                </div>
+              )}
+              
+              {column.type === 'actions' && (
+                <div className="flex items-center justify-center gap-1">
+                  <Skeleton className="h-6 w-6 rounded bg-primary/15" />
+                  <Skeleton className="h-6 w-6 rounded bg-primary/15" />
+                </div>
+              )}
+              
+              {/* Default skeleton for other column types */}
+              {!['source', 'name', 'organization', 'score', 'deadline_progress', 'submission_deadline', 'publication_date', 'board_status', 'criteria', 'actions'].includes(column.type) && (
+                <Skeleton className="h-4 w-full bg-primary/20" />
+              )}
+            </TableCell>
+          );
+        })}
+        
+        {/* Column manager placeholder cell */}
+        <TableCell className="w-10">
+          <Skeleton className="h-4 w-4 bg-primary/15" />
+        </TableCell>
+      </TableRow>
+    );
+  }
 
   return (
     <TableRow

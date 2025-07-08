@@ -544,68 +544,16 @@ async def analyze_relevant_tenders_with_our_rag(
                     }
                 )
 
-            # (Save filtered_out logic - existing code)
-            description_filtered_tenders_results = []
-            for filtered_out_tender in filtered_out_tenders:
-                # Create file storage info while maintaining the existing processed_files structure
-                file_storage_info = []
-                for file in filtered_out_tender.uploaded_files:
-                    # Store the entire file_pinecone_config object if available
-                    pinecone_config = None
-                    if hasattr(file, 'file_pinecone_config') and file.file_pinecone_config:
-                        pinecone_config = {
-                            "query_config": {
-                                "index_name": file.file_pinecone_config.query_config.index_name,
-                                "namespace": file.file_pinecone_config.query_config.namespace,
-                                "embedding_model": file.file_pinecone_config.query_config.embedding_model
-                            },
-                            "pinecone_unique_id_prefix": file.file_pinecone_config.pinecone_unique_id_prefix
-                        }
-                        
-                    file_info = {
-                        "filename": file.filename,
-                        "blob_url": file.blob_url if hasattr(file, 'blob_url') and file.blob_url else None,
-                        "file_pinecone_config": pinecone_config,
-                        "deletion_status": "pending",
-                        "deletion_timestamp": None,
-                        "deletion_error": None
-                    }
-                    file_storage_info.append(file_info)
-                    
-                # Maintain the original processed_files structure while adding storage info
-                processed_files = {
-                    "successful_count": len(filtered_out_tender.uploaded_files),
-                    "filenames": [file.filename for file in filtered_out_tender.uploaded_files],
-                    "storage_info": file_storage_info
-                }
-                    
-                description_filtered_tender = FilteredTenderAnalysisResult(
-                    tender_id=str(filtered_out_tender.id),
-                    tender_name=filtered_out_tender.tender_metadata.name,
-                    organization=filtered_out_tender.tender_metadata.organization,
-                    location=filtered_out_tender.location.model_dump_json() if filtered_out_tender.location else None,
-                    analysis_id=str(analysis_id),
-                    filter_stage=FilterStage.AI_DESCRIPTION_FILTER,
-                    filter_reason="Filtered out based on description analysis",
-                    search_phrase=tender_analysis.search_phrase,
-                    tender_description=filtered_out_tender.tender_description,
-                    details_url=filtered_out_tender.tender_url,
-                    processed_files=processed_files,
-                    user_id=str(current_user.id) if current_user else None
-                )
-                description_filtered_tenders_results.append(description_filtered_tender)
-
-            # Save tenders filtered out by description to the database
-            if description_filtered_tenders_results:
-                logger.info(f"Saving {len(description_filtered_tenders_results)} tenders filtered out by description analysis")
-                await db.filtered_tender_analysis_results.insert_many(
-                    [tender.model_dump(by_alias=True) for tender in description_filtered_tenders_results]
-                )
-
             # --- Final Save and Update Logic (existing code) ---
             for final_result in filtered_tenders:
                 await db.tender_analysis_results.insert_one(final_result.dict(by_alias=True))
                 logger.info(f"Successfully analyzed and saved tender: {final_result.id}")
+
+            for final_result in filtered_out_tenders:
+                res = final_result.dict(by_alias=True)
+                res["status"] = "filtered"
+                await db.tender_analysis_results.insert_one(res)
+                logger.info(f"Successfully analyzed and saved filtered on description tender: {final_result.id}")
 
             await db.tender_analysis.update_one(
                 {"_id": ObjectId(analysis_id)},

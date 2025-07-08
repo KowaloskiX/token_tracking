@@ -11,6 +11,7 @@ from playwright.async_api import async_playwright, Page
 from minerva.core.utils.date_standardizer import DateStandardizer
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
 
 class Eb2bTenderExtractor:
@@ -52,6 +53,8 @@ class Eb2bTenderExtractor:
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 50)
         start_date_str = inputs.get("start_date")
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         start_dt = None
         if start_date_str:
             try:
@@ -102,6 +105,77 @@ class Eb2bTenderExtractor:
 
                     for row in rows:
                         try:
+                            columns = await row.query_selector_all("td.x-grid-cell")
+                            if len(columns) < 17:
+                                continue
+                            detail_link_el = await columns[1].query_selector("a")
+                            if not detail_link_el:
+                                continue
+                            detail_href = await detail_link_el.get_attribute("href")
+                            detail_url = self._format_detail_url(detail_href)
+                            initiation_raw = (await columns[15].inner_text()).strip()
+                            initiation_date_formatted = ""
+                            dt_obj = None
+                            if initiation_raw:
+                                try:
+                                    dt_str = initiation_raw.split(" ")[0]
+                                    dt_obj = datetime.strptime(dt_str, "%Y-%m-%d")
+                                    initiation_date_formatted = dt_obj.strftime("%Y-%m-%d")
+                                except Exception as e:
+                                    logging.warning(f"Unable to parse initiation_date for row for {self.source_type}: {initiation_raw} => {e}")
+                            # Pinecone check for tenders older than start_dt
+                            if start_dt and dt_obj and dt_obj < start_dt:
+                                try:
+                                    query_config = QueryConfig(
+                                        index_name=tender_names_index_name,
+                                        namespace="",
+                                        embedding_model=embedding_model
+                                    )
+                                    query_tool = QueryTool(config=query_config)
+                                    filter_conditions = {"details_url": detail_url}
+                                    default_index_results = await query_tool.query_by_id(
+                                        id=detail_url,
+                                        top_k=1,
+                                        filter_conditions=filter_conditions
+                                    )
+                                    if default_index_results.get("matches"):
+                                        logging.info(f"{self.source_type}: Encountered tender dated {initiation_date_formatted} older than start_date {start_date_str} and found in Pinecone. Stopping extraction.")
+                                        found_older = True
+                                        break
+                                    else:
+                                        # Not in Pinecone, include but set initiation_date to start_dt
+                                        columns = await row.query_selector_all("td.x-grid-cell")
+                                        name_el = await columns[4].query_selector("a")
+                                        name_text = (
+                                            (await name_el.inner_text()).strip()
+                                            if name_el
+                                            else (await columns[4].inner_text()).strip()
+                                        )
+                                        organization = (await columns[6].inner_text()).strip()
+                                        submission_raw = (await columns[16].inner_text()).strip()
+                                        submission_deadline = DateStandardizer.standardize_deadline(submission_raw)
+                                        tender_data = {
+                                            "name": name_text,
+                                            "organization": organization,
+                                            "location": "",
+                                            "submission_deadline": submission_deadline,
+                                            "initiation_date": start_dt.strftime("%Y-%m-%d"),
+                                            "details_url": detail_url,
+                                            "content_type": "tender",
+                                            "source_type": self.source_type,
+                                        }
+                                        try:
+                                            t_obj = Tender(**tender_data)
+                                            tenders.append(t_obj)
+                                            logging.info(f"{self.source_type}: Encountered tender dated {initiation_date_formatted} older than start_date {start_date_str} but not found in Pinecone. Saving tender...")
+                                        except Exception as te:
+                                            logging.error(f"Error creating Tender object for {self.source_type} at URL: {detail_url}")
+                                        continue  # Continue to next row
+                                except Exception as e:
+                                    logging.error(f"{self.source_type}: Error querying Pinecone when checking older tender: {e}")
+                                    found_older = True
+                                    break
+                            # ...existing code for normal case...
                             tender_obj = await self._parse_tender_row(row, start_dt)
                             if tender_obj is None:
                                 found_older = True

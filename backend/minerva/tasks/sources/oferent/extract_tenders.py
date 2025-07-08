@@ -411,9 +411,9 @@ class OferentReportExtractor:
             
             # Extract submission information
             try:
-                submission_elem = await detail_page.query_selector('tr:has(th:text("Miejsce i termin składania")) td')
-                if submission_elem:
-                    submission_text = (await submission_elem.inner_text()).strip()
+                addded_elem = await detail_page.query_selector('tr:has(th:text("Miejsce i termin składania")) td')
+                if addded_elem:
+                    submission_text = (await addded_elem.inner_text()).strip()
                     tender_data["submission_info"]["text"] = submission_text
                     
                     # Parse deadline and place
@@ -434,6 +434,20 @@ class OferentReportExtractor:
                     
             except Exception as submission_error:
                 logging.warning(f"Error extracting submission info: {submission_error}")
+
+            try:
+                addded_elem = await detail_page.query_selector('tr:has(th:text("Data dodania")) td')
+                if addded_elem:
+                    added_date = (await addded_elem.inner_text()).strip()
+                    tender_data["added_date"] = added_date
+                    tender_data["initiation_date"] = DateStandardizer.standardize_deadline(added_date)
+
+                    logging.debug("Detail: Found initiation_date info")
+                else:
+                    logging.debug("No initiation_date info found")
+                    
+            except Exception as initiation_date_error:
+                logging.warning(f"Error extracting initiation_date info: {initiation_date_error}")
             
             # Set location if not already set
             if not tender_data["location"] and tender_data["client"]["region"]:

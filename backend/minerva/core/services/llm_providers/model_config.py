@@ -82,11 +82,11 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         context_length=1048576,
         description="Gemini 2.5 Flash - Adaptive thinking"
     ),
-    "gemini-2.5-pro-preview-06-05": ModelConfig(
+    "gemini-2.5-pro": ModelConfig(
         provider="google",
         max_tokens=65536,
         context_length=1048576,
-        description="Gemini 2.5 Pro Preview - Advanced reasoning"
+        description="Gemini 2.5 Pro - Advanced reasoning"
     ),
     "gemini-2.0-flash": ModelConfig(
         provider="google",

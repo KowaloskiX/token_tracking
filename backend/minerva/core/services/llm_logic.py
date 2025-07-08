@@ -30,6 +30,7 @@ MODEL_PRICING = {
     # Gemini models
     "gemini-2.5-flash-preview-05-20": {"input_cost_per_million": 0.30, "output_cost_per_million": 2.50},
     "gemini-2.5-flash": {"input_cost_per_million": 0.30, "output_cost_per_million": 2.50},
+    "gemini-2.5-pro": {"input_cost_per_million": 1.25, "output_cost_per_million": 10.00},
     "gemini-1.5-pro": {"input_cost_per_million": 3.50, "output_cost_per_million": 10.50},
     "gemini-1.5-flash": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
     "gemini-2.0-flash-exp": {"input_cost_per_million": 0.075, "output_cost_per_million": 0.30},
@@ -72,13 +73,19 @@ def _is_provider_error(error: Exception, provider: str) -> bool:
     }
     
     # Check for general fallback keywords
-    if any(keyword in error_str for keyword in fallback_keywords):
+    matched_keywords = [keyword for keyword in fallback_keywords if keyword in error_str]
+    if matched_keywords:
+        logger.info(f"Provider error detected for {provider} - matched keywords: {matched_keywords}")
         return True
         
     # Check for provider-specific patterns
     if provider in provider_patterns:
-        return any(pattern in error_str for pattern in provider_patterns[provider])
+        matched_patterns = [pattern for pattern in provider_patterns[provider] if pattern in error_str]
+        if matched_patterns:
+            logger.info(f"Provider error detected for {provider} - matched provider-specific patterns: {matched_patterns}")
+            return True
     
+    logger.info(f"Error not classified as provider error for {provider}: {type(error).__name__}: {str(error)}")
     return False
 
 def _is_gemini_rate_limit_error(error: Exception) -> bool:
@@ -88,7 +95,14 @@ def _is_gemini_rate_limit_error(error: Exception) -> bool:
         "quota", "resource_exhausted", "rate limit", "429", 
         "too many requests", "quota exceeded"
     ]
-    return any(indicator in error_str for indicator in gemini_rate_limit_indicators)
+    matched_indicators = [indicator for indicator in gemini_rate_limit_indicators if indicator in error_str]
+    
+    if matched_indicators:
+        logger.info(f"Gemini rate limit error detected - matched indicators: {matched_indicators}")
+        return True
+    
+    logger.debug(f"Error not classified as Gemini rate limit error: {type(error).__name__}: {str(error)}")
+    return False
 
 def _get_llm_instance(provider: str, model: str, request: LLMSearchRequest):
     """Get an LLM instance for the specified provider and model."""
@@ -150,6 +164,9 @@ async def _try_llm_with_universal_fallback(
             return response
             
     except Exception as error:
+        # Log the specific error details for debugging
+        logger.error(f"Primary provider {primary_provider}:{primary_model} failed with error: {error}", exc_info=True)
+        
         # Special handling for Gemini rate limit errors - try API key rotation first
         if primary_provider == "google" and _is_gemini_rate_limit_error(error):
             logger.warning(f"Gemini rate limit detected, API key rotation was already attempted in GeminiLLM class")
@@ -161,6 +178,7 @@ async def _try_llm_with_universal_fallback(
         
         if ENABLE_LLM_FALLBACK and error_detected:
             logger.warning(f"Provider {primary_provider}:{primary_model} failed, falling back to {FALLBACK_PROVIDER}:{FALLBACK_MODEL}")
+            logger.info(f"Fallback triggered due to error: {type(error).__name__}: {str(error)}")
             
             # Don't fallback to the same provider that just failed
             if FALLBACK_PROVIDER == primary_provider:
@@ -215,11 +233,13 @@ async def _try_llm_with_universal_fallback(
                     return response
                     
             except Exception as fallback_error:
-                logger.error(f"Fallback provider {FALLBACK_PROVIDER}:{FALLBACK_MODEL} also failed: {fallback_error}")
+                logger.error(f"Fallback provider {FALLBACK_PROVIDER}:{FALLBACK_MODEL} also failed with error: {fallback_error}", exc_info=True)
+                logger.error(f"Fallback error details: {type(fallback_error).__name__}: {str(fallback_error)}")
                 # Re-raise the original error since fallback also failed
                 raise error
         else:
             # Re-raise non-fallback errors or if fallback is disabled
+            logger.info(f"Not attempting fallback - ENABLE_LLM_FALLBACK: {ENABLE_LLM_FALLBACK}, error_detected: {error_detected}")
             raise
 
 
@@ -345,7 +365,7 @@ async def llm_rag_search_logic(request: LLMSearchRequest, tender_pinecone_id: st
                     formatted_chunks.append(
                         f"{idx}. From {match['metadata'].get('source', 'unknown')}:\n{snippet}\n"
                     )
-                search_context = "\n<DOCUMENTATION_CONTEXT>\n" + "\n".join(formatted_chunks) + "\n</DOCUMENTATION_CONTEXT>\n"
+                search_context = "\n<TENDER_DOCUMENTATION_CONTEXT>\n" + "\n".join(formatted_chunks) + "\n</TENDER_DOCUMENTATION_CONTEXT>\n"
                 user_content += search_context
 
             vector_search_results = [

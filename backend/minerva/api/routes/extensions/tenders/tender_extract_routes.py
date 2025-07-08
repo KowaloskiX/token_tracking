@@ -2,12 +2,15 @@ from datetime import datetime
 import os
 import json
 import logging
+from pprint import pprint
 import re
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+from minerva.core.helpers.external_comparison import TenderExternalComparison
 from rapidfuzz import fuzz
 from bson import ObjectId
 from minerva.core.middleware.auth.jwt import get_current_user
-from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysis
+from minerva.core.models.extensions.tenders.tender_analysis import FileExtractionStatus, TenderAnalysis, TenderAnalysisResult, TenderLocation, TenderMetadata
 from minerva.core.models.user import User
 from minerva.core.database.database import db
 from minerva.tasks.services.search_service import perform_tender_search
@@ -36,7 +39,9 @@ from minerva.tasks.sources.tender_source_manager import TenderSourceManager
 from openai import OpenAI
 from pinecone import Pinecone
 from pydantic import BaseModel
+from minerva.tasks.sources.biznespolska.extract_tenders import BiznesPolskaReportExtractor
 from minerva.core.helpers.biznespolska_oferent_shared import (
+    get_best_tender_url,
     normalize_eb2b_id,
     prepare_tender_analysis,
     run_search_and_filter,
@@ -49,6 +54,8 @@ from minerva.core.helpers.biznespolska_oferent_shared import (
 
 openai = OpenAI()
 pinecone = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+
+load_dotenv()
 
 router = APIRouter()
 
@@ -540,7 +547,6 @@ async def compare_to_biznespolska(
     try:
         # Step 1: Extract tenders from BiznesPolska
         # --- PRODUCTION: Use extractor for real data ---
-        from minerva.tasks.sources.biznespolska.extract_tenders import BiznesPolskaReportExtractor
         username = request.username
         password = request.password
         profile_name = request.profile_name
@@ -664,3 +670,222 @@ async def compare_to_biznespolska(
     except Exception as e:
         logging.error(f"Extraction and comparison failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Extraction and comparison failed: {str(e)}")
+    
+
+class SimpleExtractRequest(BaseModel):
+    analysis_id: str
+    user_id: str
+    date: str
+    profile: Optional[str] = None  # For BiznesPolska, if needed
+
+@router.post("/extract-and-save/oferent")
+async def extract_and_save_oferent(request: SimpleExtractRequest):
+    # Get credentials from env
+    user = request.user_id
+    account_num = os.getenv(f"ANALYSIS_{request.analysis_id}_OFERENT_ACCOUNT_NUMBER")
+    email = os.getenv(f"ANALYSIS_{request.analysis_id}_OFERENT_EMAIL")
+    if not account_num or not email:
+        raise HTTPException(status_code=400, detail="Missing Oferent credentials in environment variables.")
+    extractor = OferentReportExtractor()
+    try:
+        inputs = {"target_date": request.date}
+        inputs["account_number"] = account_num
+        inputs["email"] = email
+        try:
+            datetime.strptime(request.date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {request.date}. Use YYYY-MM-DD")
+        result = await extractor.execute(inputs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+    
+    tenders = result.get('tenders', [])
+    results = []
+    for tender in tenders:
+        # Fill as much as possible, leave the rest empty
+        tender = tender.model_dump(by_alias=True)
+        tender_metadata = TenderMetadata(
+            name=tender.get('name', ''),
+            organization=tender.get('organization', ''),
+            submission_deadline=tender.get('submission_deadline', ''),
+            procedure_type=tender.get('procedure_type', None),
+            initiation_date=tender.get('initiation_date', None)
+        )
+        location = TenderLocation(
+            country="Polska",
+            voivodeship=tender.get('regoin', ''),
+            city=tender.get('city', '')
+        )
+        file_extraction_status = FileExtractionStatus(
+            user_id=user,
+            files_processed=0,
+            files_uploaded=0,
+            status="not_extracted"
+        )
+        result = TenderAnalysisResult(
+            user_id=ObjectId(user),
+            tender_analysis_id=ObjectId(request.analysis_id),
+            tender_url=tender.get('details_url', ''),
+            source="oferent",
+            location=location,
+            tender_score=None,
+            tender_metadata=tender_metadata,
+            tender_description=tender.get('description', None),
+            file_extraction_status=file_extraction_status,
+            criteria_analysis=[],
+            criteria_analysis_archive=None,
+            criteria_analysis_edited=False,
+            company_match_explanation="",
+            assistant_id=None,
+            pinecone_config=None,
+            tender_pinecone_id=None,
+            uploaded_files=[],
+            updates=[],
+            status="external",
+            updated_at=None,
+            created_at=datetime.utcnow(),
+            opened_at=None,
+            order_number=None,
+            language=None,
+            external_best_url=get_best_tender_url(tender)
+        )
+        # Save to DB
+        await db.tender_analysis_results.insert_one(result.model_dump(by_alias=True))
+        results.append(result)
+    return {"saved": len(results), "tenders": [r.tender_metadata.name for r in results]}
+
+@router.post("/extract-and-save/biznespolska")
+async def extract_and_save_biznespolska(request: SimpleExtractRequest):
+    user = request.user_id
+    username = os.getenv(f"ANALYSIS_{request.analysis_id}_BIZNESPOLSKA_USERNAME")
+    password = os.getenv(f"ANALYSIS_{request.analysis_id}_BIZNESPOLSKA_PASSWORD")
+    profile = request.profile
+    if not username or not password or not profile:
+        raise HTTPException(status_code=400, detail="Missing BiznesPolska credentials in environment variables.")
+    extractor = BiznesPolskaReportExtractor()
+    try:
+        result = await extractor.execute(
+            inputs={
+                "username": username,
+                "password": password,
+                "profile_name": profile,
+                "date_from": request.date,
+                "date_to": request.date,
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+    tenders = result.get('tenders', [])
+    results = []
+    for tender in tenders:
+        tender = tender.model_dump(by_alias=True)
+        tender_metadata = TenderMetadata(
+            name=tender.get('name', ''),
+            organization=tender.get('organization', ''),
+            submission_deadline=tender.get('submission_deadline', ''),
+            procedure_type=tender.get('procedure_type', None),
+            initiation_date=tender.get('initiation_date', None)
+        )
+        location = TenderLocation(
+            country="Polska",
+            voivodeship=tender.get('regoin', ''),
+            city=tender.get('city', '')
+        )
+        file_extraction_status = FileExtractionStatus(
+            user_id=user,
+            files_processed=0,
+            files_uploaded=0,
+            status="not_extracted"
+        )
+        result = TenderAnalysisResult(
+            user_id=ObjectId(user),
+            tender_analysis_id=ObjectId(request.analysis_id),
+            tender_url=tender.get('details_url', ''),
+            source="biznespolska",
+            location=location,
+            tender_score=None,
+            tender_metadata=tender_metadata,
+            tender_description=tender.get('description', None),
+            file_extraction_status=file_extraction_status,
+            criteria_analysis=[],
+            criteria_analysis_archive=None,
+            criteria_analysis_edited=False,
+            company_match_explanation="",
+            assistant_id=None,
+            pinecone_config=None,
+            tender_pinecone_id=None,
+            uploaded_files=[],
+            updates=[],
+            status="external",
+            updated_at=None,
+            created_at=datetime.utcnow(),
+            opened_at=None,
+            order_number=None,
+            language=None,
+            external_best_url=get_best_tender_url(tender)
+        )
+        await db.tender_analysis_results.insert_one(result.model_dump(by_alias=True))
+        results.append(result)
+    return {"saved": len(results), "tenders": [r.tender_metadata.name for r in results]}
+
+class CompareExternalRequest(BaseModel):
+    analysis_id: str
+    start_date: str  
+    end_date: str
+
+@router.post("/external-comparison")
+async def compare_external_tenders(
+    request: CompareExternalRequest
+) -> Dict:
+    """
+    Compare external and internal tender results for a specific analysis and date.
+    
+    This endpoint:
+    1. Validates that the analysis exists and has external sources enabled
+    2. Queries tender results for the specified date
+    3. Compares external vs internal results
+    4. Updates external_compare_status for all results
+    
+    Args:
+        analysis_id: The tender analysis ID
+        target_date: Date to filter results (format: YYYY-MM-DD)
+        
+    Returns:
+        Dictionary containing comparison results and update statistics
+        
+    Raises:
+        HTTPException: If analysis not found, external sources disabled, or other errors
+    """
+    try:
+        # Validate ObjectId format
+        try:
+            ObjectId(request.analysis_id)
+        except Exception:
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid analysis_id format. Must be a valid ObjectId."
+            )
+        
+        # Initialize comparison service
+        comparison_service = TenderExternalComparison()
+        
+        # Perform comparison and updates
+        result = await comparison_service.update_external_compare_status(
+            analysis_id=request.analysis_id,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+        
+        return result
+        
+    except ValueError as e:
+        # Handle business logic errors (analysis not found, external sources disabled, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    except Exception as e:
+        # Handle unexpected errors
+        logging.error(f"Unexpected error in external comparison: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="An unexpected error occurred while processing the comparison"
+        )

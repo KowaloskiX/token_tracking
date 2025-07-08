@@ -405,6 +405,22 @@
       "mainCpv": "Haupt-CPV",
       "additionalCpv": "Zusätzliche CPV",
       "viewOriginalTender": "Originalausschreibung anzeigen"
+    },
+    "singleAnalysis": {
+      "title": "Einzelne Ausschreibung analysieren",
+      "addSingle": "Ausschreibung hinzufügen",
+      "urlLabel": "Link zur Ausschreibung",
+      "urlPlaceholder": "https://example.com/tender/12345",
+      "urlHelper": "Fügen Sie den Link zur Ausschreibungsseite von einer beliebigen unterstützten Plattform ein",
+      "urlRequired": "Link zur Ausschreibung ist erforderlich",
+      "invalidUrl": "Der angegebene Link ist ungültig",
+      "analyze": "Analysieren",
+      "analyzing": "Analysiere...",
+      "loading": "Lade...",
+      "processing": "Ausschreibung wird verarbeitet...",
+      "analysisError": "Ein Fehler ist bei der Analyse der Ausschreibung aufgetreten",
+      "success": "Ausschreibung wurde erfolgreich analysiert",
+      "failed": "Die Analyse der Ausschreibung ist fehlgeschlagen"
     }
   },
   "errors": {
@@ -502,7 +518,7 @@
     "historicalNote": "Historische Daten umfassen abgeschlossene, abgelaufene und archivierte Ausschreibungsmöglichkeiten, die wertvollen Kontext für die Analyse liefern können.",
     "filteredTenders": "Gefilterte Ausschreibungen",
     "filteredDescription": "Durch Vorauswahl gefilterte Ausschreibungen einbeziehen",
-    "filteredNote": "Gefilterte Ausschreibungen wurden automatisch basierend auf Kriterien ausgeschlossen, können aber Möglichkeiten enthalten, die eine manuelle Überprüfung wert sind.",
+    "filteredNote": "Die gefilterten Ausschreibungen wurden automatisch anhand der Beschreibung und gegebenenfalls der Benutzeranweisung ausgeschlossen.",
     "externalSources": "Externe Quellen",
     "externalDescription": "Ausschreibungen aus externen Datenbanken und Partnerquellen einbeziehen",
     "externalNote": "Externe Quellen bieten zusätzliche Ausschreibungsmöglichkeiten aus Partner-Datenbanken und externen Plattformen.",

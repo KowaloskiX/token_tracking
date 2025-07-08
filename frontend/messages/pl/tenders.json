@@ -405,6 +405,22 @@
       "citationPlural": "cytaty",
       "clickToView": "Kliknij, aby wyświetlić {filename}",
       "noProducts": "Nie znaleziono produktów w tym przetargu"
+    },
+    "singleAnalysis": {
+      "title": "Analizuj pojedynczy przetarg",
+      "addSingle": "Dodaj przetarg",
+      "urlLabel": "Link do przetargu",
+      "urlPlaceholder": "https://example.com/tender/12345",
+      "urlHelper": "Wklej link do strony przetargu z dowolnej obsługiwanej platformy",
+      "urlRequired": "Link do przetargu jest wymagany",
+      "invalidUrl": "Podany link jest nieprawidłowy",
+      "analyze": "Analizuj",
+      "analyzing": "Analizowanie...",
+      "loading": "Ładowanie...",
+      "processing": "Przetwarzanie przetargu...",
+      "analysisError": "Wystąpił błąd podczas analizy przetargu",
+      "success": "Przetarg został pomyślnie przeanalizowany",
+      "failed": "Analiza przetargu nie powiodła się"
     }
   },
   "errors": {

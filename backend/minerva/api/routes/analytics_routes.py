@@ -1487,7 +1487,7 @@ async def get_login_patterns(
                     "last_login": 1,
                     "recent_logins": {
                         "$filter": {
-                            "input": "$login_history",
+                            "input": {"$ifNull": ["$login_history", []]},
                             "cond": {"$gte": ["$$this.timestamp", start_dt]}
                         }
                     }
@@ -1498,9 +1498,9 @@ async def get_login_patterns(
                     "email": 1,
                     "login_count": 1,
                     "last_login": 1,
-                    "recent_login_count": {"$size": "$recent_logins"},
+                    "recent_login_count": {"$size": {"$ifNull": ["$recent_logins", []]}},
                     "login_methods_used": {
-                        "$setUnion": ["$recent_logins.login_method", []]
+                        "$setUnion": [{"$ifNull": ["$recent_logins.login_method", []]}, []]
                     }
                 }
             }

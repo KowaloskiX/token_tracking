@@ -14,6 +14,7 @@ from minerva.core.models.file import File
 from minerva.core.models.request.ai import LLMSearchRequest
 from minerva.core.services.deep_search_service import extract_text_from_files
 from minerva.core.services.llm_logic import ask_llm_logic
+from minerva.core.services.llm_providers.model_config import get_model_config, get_optimal_max_tokens
 from minerva.core.services.tender_notification_service import notify_tender_updates
 from minerva.tasks.services.analyze_tender_files import RAGManager
 from minerva.tasks.sources.source_types import TenderSourceType
@@ -141,12 +142,20 @@ class TenderMonitoringService:
                         file_summaries = []
                 
                 overall_summary = ""
+                new_submission_deadline = None
                 if file_summaries:
                     try:
                         overall_summary = await self.generate_overall_summary(file_summaries, tender_id_str)
                         logging.info(f"Generated overall summary for tender {tender_id_str}.")
                     except Exception as e:
                         logging.error(f"Failed to generate overall summary for tender {tender_id_str}: {str(e)}")
+                    # Detect and update submission deadline change
+                    try:
+                        new_submission_deadline = await self.detect_submission_deadline_change(file_summaries, tender_id_str)
+                        if new_submission_deadline:
+                            logging.info(f"Detected new submission deadline for tender {tender_id_str}: {new_submission_deadline}")
+                    except Exception as e:
+                        logging.error(f"Failed to detect submission deadline change for tender {tender_id_str}: {str(e)}")
 
                 # (B) Create a new doc in `tender_analysis_updates`
                 update_doc = {
@@ -162,14 +171,18 @@ class TenderMonitoringService:
 
                 new_update_id = insert_result.inserted_id
 
-                db["tender_analysis_results"].update_one(
-                {"_id": ObjectId(tender_id_str)},
-                {
+                update_fields = {
                     "$push": {"updates": new_update_id},
                     "$set": {
-                    "updated_at": now_utc
+                        "updated_at": now_utc
                     }
                 }
+                if new_submission_deadline:
+                    update_fields["$set"]["tender_metadata.submission_deadline"] = new_submission_deadline
+
+                db["tender_analysis_results"].update_one(
+                    {"_id": ObjectId(tender_id_str)},
+                    update_fields
                 )
 
                 logging.info(f"DB updated for tender {tender_id_str}. Created update doc {new_update_id}.")
@@ -180,7 +193,8 @@ class TenderMonitoringService:
                     "update_id": str(new_update_id),
                     "files_uploaded": [f.filename for f in new_tender_files],
                     "file_summaries": file_summaries if file_summaries else [],
-                    "overall_summary": overall_summary
+                    "overall_summary": overall_summary,
+                    "new_submission_deadline": new_submission_deadline
                 })
         finally:
             print("")
@@ -189,9 +203,9 @@ class TenderMonitoringService:
         try:
             if updates_summary:
                 notification_results = await notify_tender_updates(updates_summary)
-                logger.info(f"Notification results: {notification_results}")
+                logging.info(f"Notification results: {notification_results}")
         except Exception as e:
-            logger.error(f"Failed to send notifications for tender updates: {str(e)}")
+            logging.error(f"Failed to send notifications for tender updates: {str(e)}")
         
         return updates_summary
     
@@ -245,6 +259,12 @@ class TenderMonitoringService:
         
         summaries = []
         # Process each chunk separately
+        model_to_use = "gemini-2.5-flash-preview-05-20" 
+        # model_to_use = "gpt-4.1-mini"
+        provider, max_tokens = get_model_config(model_to_use)
+
+        max_tokens = get_optimal_max_tokens(model_to_use, "high")
+
         for i, chunk in enumerate(chunks):
             prompt = f"""
             document_name: {filename}
@@ -253,10 +273,10 @@ class TenderMonitoringService:
             request_data = LLMSearchRequest(
                 query=prompt,
                 llm={
-                    "provider": "openai",
-                    "model": "gpt-4.1",
+                    "provider": provider,
+                    "model": model_to_use,
                     "temperature": 0.6,
-                    "max_tokens": 30000,
+                    "max_tokens": max_tokens,
                     "system_message": system_message,
                     "stream": False,
                     "response_format": {
@@ -294,10 +314,10 @@ class TenderMonitoringService:
             consolidation_request_data = LLMSearchRequest(
                 query=consolidation_prompt,
                 llm={
-                    "provider": "openai",
-                    "model": "gpt-4.1",
+                    "provider": provider,
+                    "model": model_to_use,
                     "temperature": 0.6,
-                    "max_tokens": 30000,
+                    "max_tokens": max_tokens,
                     "system_message": """
                     You will get a document name and a set of partial summaries.
                     These partial summaries are from different parts of the same document.
@@ -360,14 +380,20 @@ class TenderMonitoringService:
         file_summaries:
         {summaries_text}
         """
+
+        model_to_use = "gemini-2.5-flash-preview-05-20" 
+        # model_to_use = "gpt-4.1-mini"
+        provider, max_tokens = get_model_config(model_to_use)
+
+        max_tokens = get_optimal_max_tokens(model_to_use, "high")
         
         request_data = LLMSearchRequest(
             query=prompt,
             llm={
-                "provider": "openai",
-                "model": "gpt-4.1",
+                "provider": provider,
+                "model": model_to_use,
                 "temperature": 0.6,
-                "max_tokens": 30000,
+                "max_tokens": max_tokens,
                 "system_message": system_message,
                 "stream": False,
                 "response_format": {
@@ -392,3 +418,75 @@ class TenderMonitoringService:
         parsed_output = json_repair.repair_json(response.llm_response, return_objects=True, ensure_ascii=False)
         
         return parsed_output["summary"]
+
+    @staticmethod
+    async def detect_submission_deadline_change(file_summaries: List[Dict], tender_id: str) -> Optional[str]:
+        """
+        Use LLM to detect if there is a change in the submission deadline ("Termin składania") in the tender documents.
+        If a new deadline is detected, update it in the tender_analysis_result in the DB.
+        Returns the new deadline as a string if found, else None.
+        """
+        system_message = """
+        You will receive a list of summaries from different files related to a tender.
+        Your task is to detect if there has been a change in the submission deadline ("Termin składania" in Polish).
+        If you detect a new deadline, provide it in the format YYYY-MM-DD HH:MM (24-hour time, e.g. 2025-07-06 15:30). If you do not detect any change, return empty string.
+        Respond only with the date and hour or empty string.
+        """
+
+        # Format file summaries for the prompt
+        formatted_summaries = []
+        for summary in file_summaries:
+            formatted_summaries.append(f"Filename: {summary['filename']}\nSummary: {summary['summary']}")
+        summaries_text = "\n\n".join(formatted_summaries)
+
+        prompt = f"""
+        tender_id: {tender_id}
+        file_summaries:
+        {summaries_text}
+        """
+
+        model_to_use = "gemini-2.5-flash-preview-05-20" 
+        # model_to_use = "gpt-4.1-mini"
+        provider, max_tokens = get_model_config(model_to_use)
+
+        max_tokens = get_optimal_max_tokens(model_to_use, "high")
+
+        request_data = LLMSearchRequest(
+            query=prompt,
+            llm={
+                "provider": provider,
+                "model": model_to_use,
+                "temperature": 0.0,
+                "max_tokens": max_tokens,
+                "system_message": system_message,
+                "stream": False,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "submission_deadline_change",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "submission_deadline": {"type": "string"}
+                            },
+                            "required": ["submission_deadline"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
+            }
+        )
+
+        response = await ask_llm_logic(request_data)
+        parsed_output = json_repair.repair_json(response.llm_response, return_objects=True, ensure_ascii=False)
+        new_deadline = parsed_output.get("submission_deadline")
+        # Validate date format YYYY-MM-DD HH:MM
+        if new_deadline:
+            try:
+                datetime.strptime(new_deadline, "%Y-%m-%d %H:%M")
+            except Exception:
+                return None
+        else:
+            return None
+        return new_deadline

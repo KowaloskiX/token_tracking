@@ -266,7 +266,7 @@ class BiznesPolskaReportExtractor:  # pylint: disable=too-many-public-methods
         script = """
         () => {
           const ids = new Set();
-          const stopIds = ['inwestycje', 'sprzedaz', 'sprzedaż', 'zlecenia', 'wyniki'];
+          const stopIds = ['inwestycje', 'sprzedaz', 'sprzedaż', 'zlecenia', 'wyniki', 'kupno'];
           const startRow = document.querySelector('tr#przetargi');
           if (!startRow) { return []; }
           let node = startRow.nextElementSibling;

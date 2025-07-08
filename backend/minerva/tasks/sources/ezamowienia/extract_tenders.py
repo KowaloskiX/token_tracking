@@ -12,6 +12,7 @@ import random
 import httpx
 from minerva.core.models.extensions.tenders.tender_analysis import TenderAnalysisResult
 from minerva.core.services.ai_pick_main_doc import ai_pick_main_doc
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from playwright.async_api import async_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 from minerva.core.utils.date_standardizer import DateStandardizer
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
@@ -661,6 +662,8 @@ class TenderExtractor:
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get('max_pages', 50)
         start_date = inputs.get('start_date', None)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         if start_date:
             pass
         else:
@@ -699,6 +702,7 @@ class TenderExtractor:
             
             tenders = []
             current_page = 1
+            next_button = None
             found_older = False
             while current_page <= max_pages and not found_older:
                 logging.info(f"{self.source_type}: Scraping page {current_page}...")
@@ -731,52 +735,7 @@ class TenderExtractor:
                         initiation_date_str = await cells[8].inner_text()
                         iso_initiation_date = await self.format_date(initiation_date_str)
                         tender_dt = datetime.strptime(iso_initiation_date, "%Y-%m-%d")
-                        if start_dt and tender_dt < start_dt:
-                            logging.info(f"{self.source_type}: Encountered tender dated {iso_initiation_date} older than start_date {start_date}. Stopping extraction.")
-                            found_older = True
-                            break
-
                         details_url = f"https://ezamowienia.gov.pl/mp-client/search/list/{await cells[1].inner_text()}"
-    #                 # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-2a41354a-d98b-11eb-b885-f28f91688073"
-        #         urls = [
-        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-7f606198-7c39-44bf-b073-9dbb83dffb7f"
-        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-208c72a2-c265-4218-9a11-80ec369b5c6c"
-        #             # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-6e690f84-3965-4424-a901-0158e43fee8e",    
-        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-76cc5f3c-d294-4138-8f3d-a80d00f8998e",
-        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-49c3f2c7-65ca-46be-9c5f-52e4f67f879c",
-        #             "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a1ae3b96-99f6-4687-b8aa-c1d47f1738c4", 
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-53ffee8b-35d2-427c-bea3-a8a507785efc",
-                    
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-0707797a-a74f-4167-b592-b6a60198edc2",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-dc148ec1-cde9-4c71-b7ee-91cadcd9cd5d",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-1d886427-dde0-4b6e-bf69-c3d77ca178d1",
-            # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-1753a030-32b6-4626-ad53-4b6474cc4b5f",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-e2023da6-c15e-4293-b023-b8ff48bd0a76",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-7243505d-583d-404c-8354-21e6055c5ccf",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a17f198c-9ffa-47ba-bf3f-8d5b5077a42e",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a6706d6c-092f-4b55-ade8-19bbb71d5567",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a2da15c5-33a9-44aa-af08-181e47cac0a6",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-36a4325a-aeb6-4e7a-bca9-4d2e84f23f6d",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-3875957c-d5f8-44e1-b1e2-05985b04ffd2",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-4063ce75-2b04-46a7-8b8b-11ba07856a7a",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-d0cb1559-f182-41eb-b626-e4a27e2215c4",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a80f7ed3-2999-4337-b3af-543a76bb1589",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a28bea89-b27f-41ed-8690-ab430e3dda5d",
-            # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-33c2a645-a9d1-4c37-a105-4739e9f8485f",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-f41f1505-b069-485e-b32d-be249f06c078",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-3cf724df-de23-44d6-8425-8d1a62102f94",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-a78cd957-aa75-4a22-a5d4-cba939a97a07",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-23fe6312-d451-4ce3-840f-0f721a24c952",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-c7c5ac88-8f0d-461a-a84f-49d8ecacb38a",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-76cc5f3c-d294-4138-8f3d-a80d00f8998e",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-c3aa163b-4ed6-4238-a74d-f3a19ccd2c29",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-f824337c-6396-41ff-96a4-5fe33ab39b59",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-cb3bf044-a228-42d7-8ed4-40a30b67874a",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-0d9ef285-4df9-4573-99e7-f5f871f57bb9",
-        # "https://ezamowienia.gov.pl/mp-client/search/list/ocds-148610-51ab35dd-244c-4890-9708-5e1888280a47"
-    #   ]
-                # for details_url in urls:
-                    # try:
                         subject = await self._fetch_tender_subject(context, details_url)
                         if not subject:
                             subject = ""  # graceful fallback: listing title
@@ -785,18 +744,48 @@ class TenderExtractor:
                             "organization": await cells[4].inner_text(),
                             "location": await cells[5].inner_text(),
                             "submission_deadline": DateStandardizer.standardize_deadline(await cells[7].inner_text()),
-                            #  "name": "Realizacja wywiadów wspomaganych komputerowo na potrzeby badania \"TRASY VELOMAŁOPOLSKA: profil, potrzeby i oczekiwania użytkowników, infrastruktura, wpływ na rozwój społeczno-gospodarczy\"",
-                            # "organization": "",
-                            # "location": "",
-                            # "submission_deadline": DateStandardizer.standardize_deadline("23 czerwca 2025, godz 09:00"),
                             "initiation_date": iso_initiation_date,
-                            # "initiation_date": "2025-06-13",
                             "details_url": details_url,
                             "content_type": "tender",
                             "source_type": self.source_type,
                             "tender_subject": subject,    
                         }
-                        # pprint.pprint(tender_data)
+                        # Pinecone check for tenders older than start_dt
+                        if start_dt and tender_dt < start_dt:
+                            # Check if tender exists in Pinecone index
+                            try:
+                                query_config = QueryConfig(
+                                    index_name=tender_names_index_name,
+                                    namespace="",
+                                    embedding_model=embedding_model
+                                )
+                                query_tool = QueryTool(config=query_config)
+                                filter_conditions = {"details_url": details_url}
+                                
+                                default_index_results = await query_tool.query_by_id(
+                                    id=details_url,
+                                    top_k=1,
+                                    filter_conditions=filter_conditions
+                                )
+                                if default_index_results.get("matches"):
+                                    logging.info(f"{self.source_type}: Encountered tender dated {iso_initiation_date} older than start_date {start_date} and found in Pinecone. Stopping extraction.")
+                                    found_older = True
+                                    break
+                                else:
+                                    # Not in Pinecone, include but set initiation_date to start_dt
+                                    tender_data["initiation_date"] = start_date
+                                    logging.info(f"{self.source_type}: Encountered tender dated {iso_initiation_date} older than start_date {start_date} but not found in Pinecone. Saving tender...")
+                                    try:
+                                        tender = Tender(**tender_data)
+                                        tenders.append(tender)
+                                    except Exception as e:
+                                        logging.error(f"{self.source_type}: Error creating tender object: {e}. Skipping tender.")
+                                    continue  # Continue to next row
+                            except Exception as e:
+                                logging.error(f"{self.source_type}: Error querying Pinecone when checking older tender: {e}")
+                                found_older = True
+                                break
+
                         try:
                             tender = Tender(**tender_data)
                             tenders.append(tender)

@@ -17,7 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Check, Pencil } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Check, Pencil, Settings2, Plus } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { useTender } from "@/context/TenderContext";
 import { TenderAnalysisResult } from "@/types/tenders";
@@ -25,6 +25,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { TenderFilters, Filters } from "./TenderFilters";
 import { useTendersTranslations, useCommonTranslations } from "@/hooks/useTranslations";
 import { AddToKanbanDialog } from "./AddToKanbanDialog";
+import { SingleTenderDialog } from './SingleTenderDialog';
 
 // Import the new components and hooks
 import { useTenderTablePagination } from "@/hooks/table/useTenderTablePagination";
@@ -155,6 +156,9 @@ const TendersList: React.FC<TendersListProps> = ({
 
   // Show external toggle only if analysis supports it
   const showIncludeExternal = !!selectedAnalysis?.include_external_sources;
+
+  // ADD THIS: Missing state for single tender dialog
+  const [showSingleTenderDialog, setShowSingleTenderDialog] = useState(false);
 
   // Inline title editing & settings modal state
   const [isEditing, setIsEditing] = useState(false);
@@ -430,6 +434,41 @@ const TendersList: React.FC<TendersListProps> = ({
     }
   };
 
+  // Add this function near the top of the TendersList component
+  const refreshData = useCallback(() => {
+    // Force a data refresh by resetting current page to trigger useEffect
+    if (selectedAnalysis?._id) {
+      console.log('Forcing data refresh for analysis:', selectedAnalysis._id);
+      
+      // Option 1: If you have access to a refresh function from useTenderTableData
+      // refetch?.(); // Uncomment if this exists
+      
+      // Option 2: Force re-fetch by updating a dependency
+      setFilters(prev => ({ ...prev })); // This will trigger useEffect in useTenderTableData
+      
+      // Option 3: Direct API call to refresh results
+      const token = localStorage.getItem("token");
+      if (token) {
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/tender-analysis/${selectedAnalysis._id}/results?page=1&limit=50&include_historical=${includeHistorical}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.results) {
+            console.log('Refreshed data received:', data.results.length, 'tenders');
+            setAllResults(data.results);
+          }
+        })
+        .catch(error => {
+          console.error('Error refreshing data:', error);
+        });
+      }
+    }
+  }, [selectedAnalysis?._id, includeHistorical, setAllResults, setFilters]);
+
   return (
     <div className="sm:px-4 py-2 w-full h-full flex flex-col">
       <Card className="rounded-none sm:rounded-lg shadow flex flex-col flex-1 min-h-0 h-full">
@@ -490,6 +529,33 @@ const TendersList: React.FC<TendersListProps> = ({
                 }
               </CardDescription>
             </div>
+
+            <div className="flex gap-2">
+              {/* NEW: Add single tender button - only icon, no text */}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7 w-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow"
+                onClick={() => setShowSingleTenderDialog(true)}
+                disabled={!selectedAnalysis}
+                title={t('tenders.singleAnalysis.addSingle')}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              
+            {/* Settings button moved from former TenderHeader */}
+            {selectedAnalysis && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7 text-foreground hover:shadow-none border-2 hover:bg-secondary-hover border-secondary-border border bg-white/20 shadow ml-auto"
+                onClick={() => setIsSettingsOpen(true)}
+              >
+                <Settings2 className="h-4 w-4" />
+                <span className="hidden sm:block">{t('tenders.actions.searchSettings')}</span>
+              </Button>
+            )}
+          </div>
           </div>
 
           <TenderFilters
@@ -679,6 +745,34 @@ const TendersList: React.FC<TendersListProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* NEW: Single tender dialog */}
+      {selectedAnalysis && (
+        <SingleTenderDialog
+          open={showSingleTenderDialog}
+          onOpenChange={setShowSingleTenderDialog}
+          analysisId={selectedAnalysis._id!}
+          onAnalysisStart={(pendingTender) => {
+            // Add pending tender to the top of results
+            setAllResults(prev => [pendingTender, ...prev]);
+          }}
+          onAnalysisComplete={(completedTender, pendingTenderId) => {
+            // Replace pending tender with completed one
+            setAllResults(prev => 
+              prev.map(tender => 
+                tender._id === pendingTenderId ? completedTender : tender
+              )
+            );
+          }}
+          onAnalysisError={(pendingTenderId) => {
+            // Remove failed tender from list
+            setAllResults(prev => 
+              prev.filter(tender => tender._id !== pendingTenderId)
+            );
+          }}
+          onRefreshData={refreshData} // ✅ NEW: Pass refresh callback
+        />
       )}
     </div>
   );

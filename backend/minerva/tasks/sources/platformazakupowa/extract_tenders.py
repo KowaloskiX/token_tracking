@@ -2,13 +2,16 @@ import logging
 from datetime import datetime
 import os
 from pathlib import Path
+from pprint import pprint
 import random
+import re
 import shutil
 import tempfile
 from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 import urllib.parse
+from minerva.core.services.ai_pick_main_doc import ai_pick_main_doc
 from minerva.core.services.vectorstore.file_content_extract.base import ExtractorRegistry
 # Import helper functions for BZP
 from minerva.tasks.sources.helpers import extract_bzp_plan_fields, scrape_bzp_budget_row
@@ -18,6 +21,7 @@ from playwright.async_api import async_playwright
 from minerva.core.utils.date_standardizer import DateStandardizer
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
 
 class PlatformaZakupowaTenderExtractor:
@@ -83,7 +87,7 @@ class PlatformaZakupowaTenderExtractor:
 
             # Get publication date
             pub_date_div = soup.select_one(
-                "div.proceeding-info-list-item:-soup-contains('Zamieszczenia')"
+                "li.proceeding-info-list-item:-soup-contains('Zamieszczenia')"
             )
             if pub_date_div:
                 date_text = pub_date_div.select_one("span.proceeding-info-date")
@@ -167,7 +171,8 @@ class PlatformaZakupowaTenderExtractor:
                         tender_id = details_url.split('/')[-1]
                         
                         # First extract requirements and evaluation criteria
-                        soup = BeautifulSoup(await page.content(), 'html.parser')
+                        html = await page.content()
+                        soup = BeautifulSoup(html, 'html.parser')
                         
                         # Create content for tender details text file
                         details_content = []
@@ -178,33 +183,12 @@ class PlatformaZakupowaTenderExtractor:
                             details_content.append("=== Wymagania i specyfikacja ===")
                             details_content.append(requirements_div.get_text(strip=True))
                             details_content.append("\n")
-                        
+
                         # Extract Subject of the request content
-                        # Look for the table that contains the subject details (after "Subject of the request" header)
-                        subject_table = soup.select_one("table.table.on-table.table-hover:not(.table-criterium)")
-                        if subject_table:
-                            details_content.append("=== Przedmiot zamówienia ===")
-                            # Extract table headers
-                            headers = subject_table.select("thead th")
-                            if headers:
-                                header_texts = [header.get_text(strip=True) for header in headers]
-                                details_content.append("Headers: " + " | ".join(header_texts))
-                                details_content.append("\n")
-                            
-                            # Extract table rows
-                            rows = subject_table.select("tbody tr")
-                            for row in rows:
-                                cells = row.select("td")
-                                if cells:
-                                    row_texts = []
-                                    for cell in cells:
-                                        cell_text = cell.get_text(strip=True)
-                                        # Skip empty cells or cells with just form elements
-                                        if cell_text and not cell_text.isspace():
-                                            row_texts.append(cell_text)
-                                    if row_texts:
-                                        details_content.append(" | ".join(row_texts))
-                            details_content.append("\n")
+                        subject_text = self._extract_subject_from_html(html)
+                        details_content.append("=== Przedmiot zamówienia ===")
+                        details_content.append(subject_text if subject_text else "")
+
                         
                         # Extract Criteria and formal conditions content
                         criteria_table = soup.select_one("table.table-criterium")
@@ -416,11 +400,216 @@ class PlatformaZakupowaTenderExtractor:
                 logging.error(f"Error during cleanup: {str(e)}")
 
         return processed_files
+    
+    def _extract_subject_from_html(self, html: str) -> Optional[str]:
+        logging.info("Extracting subject from HTML content.")
+        soup = BeautifulSoup(html, "lxml")
+        
+        # ── ① find the <h2> that *contains* either "Przedmiot zamówienia" or "Przedmiot zapytania"
+        header = soup.find(
+            lambda tag: tag.name == "h2"
+            and re.search(r"\bPrzedmiot\s+(zamówienia|zapytania)\b",
+                        tag.get_text(" ", strip=True), re.I)
+        )
+        if not header:
+            logging.warning("Could not locate the 'Przedmiot zamówienia' or 'Przedmiot zapytania' section header in HTML.")
+            return None                   # could not locate the section
+        
+        # ── ② walk forward until we hit the first relevant table
+        # Look for tables with class "on-table" or "transaction-table"
+        tbl = None
+        for el in header.next_elements:
+            if isinstance(el, Tag):
+                if el.name == "h2":       # next section – abort
+                    logging.info("Encountered next <h2> section before finding the table. Aborting search for subject table.")
+                    break
+                if el.name == "table":
+                    table_classes = el.get("class", [])
+                    if "on-table" in table_classes or "transaction-table" in table_classes:
+                        tbl = el
+                        logging.info(f"Found <table class='{' '.join(table_classes)}'> after 'Przedmiot zamówienia/zapytania' header.")
+                        break
+        if not tbl:
+            logging.warning("No relevant table found after 'Przedmiot zamówienia/zapytania' header.")
+            return None
+        
+        # ── ③ build "Name – Description" for every row
+        rows = []
+        
+        # Handle different table structures
+        tbody = tbl.find("tbody")
+        if tbody:
+            table_rows = tbody.find_all("tr")
+        else:
+            table_rows = tbl.find_all("tr")
+        
+        for tr in table_rows:
+            # Skip header rows
+            if tr.find("th"):
+                continue
+                
+            tds = tr.find_all("td")
+            if len(tds) >= 3:
+                # For both structures, typically:
+                # Column 0: Line number/index
+                # Column 1: Name/title
+                # Column 2: Description (may span multiple columns)
+                
+                name = tds[1].get_text(" ", strip=True)
+                desc = tds[2].get_text(" ", strip=True)
+                
+                # Clean up the description - remove excessive whitespace and line breaks
+                desc = re.sub(r'\s+', ' ', desc).strip()
+                
+                if name or desc:
+                    if name and desc:
+                        rows.append(f"{name} – {desc}")
+                    elif name:
+                        rows.append(name)
+                    elif desc:
+                        rows.append(desc)
+        
+        if rows:
+            logging.info(f"Extracted {len(rows)} subject row(s) from table.")
+        else:
+            logging.warning("No subject rows found in the table after 'Przedmiot zamówienia/zapytania' header.")
+        
+        return "; ".join(rows) if rows else None
+
+    async def _fetch_tender_subject(self, context, detail_url: str) -> Optional[str]:
+        logging.info(f"Fetching tender subject from detail URL: {detail_url}")
+        page = await context.new_page()
+        try:
+            await self._goto_with_retry(page, detail_url,
+                                        wait_until="domcontentloaded",
+                                        timeout=30000, retries=3,
+                                        purpose="subject scrape")
+            html = await page.content()
+            txt = self._extract_subject_from_html(html)
+            if txt:
+                logging.info("Successfully extracted tender subject from HTML.")
+                return txt                                     # ✅ success – no download
+
+            file_data = await page.evaluate('''() => {
+                            const files = [];
+                            document.querySelectorAll('#allAttachmentsTable tbody tr').forEach(row => {
+                                const nameCell = row.querySelector('td:first-child');
+                                const downloadLink = row.querySelector('a.proceeding-file-download');
+                                if (nameCell && downloadLink) {
+                                    let filename = nameCell.textContent.trim();
+                                    // Remove icon text if present
+                                    filename = filename.replace(/^[^a-zA-Z0-9]*/, '').trim();
+                                    files.push({
+                                        filename: filename,
+                                        downloadUrl: downloadLink.href
+                                    });
+                                }
+                            });
+                            return files;
+                        }''')
+
+            if not file_data:
+                logging.warning(f"No file data found")
+                return None  # No files to download
+            file_entries = []
+            for file_info in file_data:
+                file_entries.append(
+                    (file_info['filename'], file_info['filename'])
+                )
+            choosen_file = await ai_pick_main_doc(file_entries)
+            logging.info(f"Choosen: {choosen_file.selected}")
+                                        
+            if choosen_file.selected is not None:
+                temp_dir = None
+                try:
+                    unique_id = str(uuid4())
+                    temp_dir = Path(os.getcwd()) / "temp_downloads" / unique_id
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    extraction_service = FileExtractionService()
+                    chosen_file_data = file_data[choosen_file.selected["index"]]
+                    # Download the file using the existing method
+                    
+                    filename = chosen_file_data['filename']
+                    download_url = chosen_file_data['downloadUrl']
+                    
+                    if download_url.startswith('//'):
+                        download_url = f'https:{download_url}'
+                    
+                    # Try to find the download link element
+                    download_links = await page.query_selector_all('a.proceeding-file-download')
+                    download_link = None
+                    
+                    for link in download_links:
+                        href = await link.get_attribute('href')
+                        if href and (href == download_url or f'https:{href}' == download_url):
+                            download_link = link
+                            break
+                    
+                    if not download_link:
+                        logging.error(f"Download link not found for {filename}")
+                        return None
+                    # Ensure the download link is visible and not covered
+                    # await download_link.scroll_into_view_if_needed()
+                    # try:
+                    #     close_button = await page.query_selector('button.on-widget-close-button')
+                    #     if close_button:
+                    #         await close_button.click()
+                    #         await page.wait_for_timeout(500)  # Brief wait for close
+                    # except Exception as e:
+                    #     logging.debug(f"No chatbot close button found: {e}")
+                    
+                    # Setup download handling with timeout
+                    logging.info(f"Downloading file: {filename} from {download_url}")
+                    async with page.expect_download(timeout=30000) as download_info:
+                        await download_link.click()
+                        download = await download_info.value
+                        
+                        # Generate unique temp path
+                        temp_path = temp_dir / f"{filename}"
+                        
+                        # Save download directly to temp path
+                        await download.save_as(temp_path)
+                        
+                        if temp_path.exists() and temp_path.stat().st_size > 0:
+                            # Process the file using async wrapper
+                            file_results = await extraction_service.process_file_async(temp_path)
+                            for (file_content, filename, preview_chars, original_bytes, original_filename) in file_results:
+                                try:
+                                    decoded_content = file_content.decode('utf-8')
+                                    logging.info(f"Content: {decoded_content[:5000]}")
+                                    return decoded_content[:5000]
+                                except UnicodeDecodeError:
+                                    logging.warning(f"Could not decode {filename} as UTF-8, trying next file if available")
+                                    continue
+                                except Exception as e:
+                                    logging.error(f"Error processing file {filename}: {e}")
+                                    continue
+
+                            logging.warning("No files could be successfully decoded")
+                            return None
+                except Exception as e:
+                    logging.error(f"Error during file download process: {e}")
+                    return None
+                finally:
+                    try:
+                        await page.close()
+                        if temp_dir and temp_dir.exists():
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                    except Exception as e:
+                        logging.error(f"Error during cleanup: {str(e)}")
+
+        finally:
+            await page.close()
+        logging.warning("Failed to extract tender subject from both HTML and fallback PDF.")
+        return None
+
 
     async def execute(self, inputs: Dict) -> Dict:
         """Main execution method to scrape tenders"""
         max_pages = inputs.get('max_pages', 70)
         start_date = inputs.get('start_date', None)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         
         start_dt = None
         if start_date:
@@ -540,14 +729,57 @@ class PlatformaZakupowaTenderExtractor:
                                     submission_deadline = ""
                                 logging.info(f'[Tender: {name[:30]}...] Final submission deadline: "{submission_deadline}"')
 
-                                # Check publication date against start_date if provided
+                                # Create tender object
+                                subject = await self._fetch_tender_subject(context, detail_url)      # NEW
+
+                                pub_dt = None
+                                
                                 if start_dt and detail_info.get("initiation_date"):
                                     pub_dt = datetime.strptime(detail_info["initiation_date"], "%Y-%m-%d")
                                     if pub_dt < start_dt:
-                                        logging.info(f"Skipping tender published at {pub_dt} (before {start_dt})")
-                                        continue
+                                        # Pinecone check for older tenders
+                                        try:
 
-                                # Create tender object
+                                            tender_id = detail_url
+                                            query_config = QueryConfig(
+                                                index_name=tender_names_index_name,
+                                                namespace="",
+                                                embedding_model=embedding_model
+                                            )
+                                            query_tool = QueryTool(config=query_config)
+                                            filter_conditions = {"details_url": detail_url}
+                                            default_index_results = await query_tool.query_by_id(
+                                                id=tender_id,
+                                                top_k=1,
+                                                filter_conditions=filter_conditions
+                                            )
+                                            if default_index_results.get("matches"):
+                                                logging.info(f"Stopping extraction: found older tender in Pinecone (id={tender_id}, date={pub_dt})")
+                                                break
+                                            else:
+                                                # Not in Pinecone, include but set initiation_date to start_dt
+                                                tender_data = {
+                                                    "name": name,
+                                                    "organization": detail_info.get("org_name") or organization,
+                                                    "location": detail_info.get("location", ""),
+                                                    "submission_deadline": submission_deadline,
+                                                    "initiation_date": start_dt.strftime("%Y-%m-%d"),
+                                                    "details_url": detail_url,
+                                                    "content_type": "tender",
+                                                    "source_type": "platformazakupowa",
+                                                    "tender_subject": subject or "",
+                                                }
+                                                try:
+                                                    tender = Tender(**tender_data)
+                                                    tenders.append(tender)
+                                                    logging.info(f"Added older tender (not in Pinecone): {tender.name}")
+                                                except Exception as e:
+                                                    logging.error(f"Error creating Tender object: {str(e)}")
+                                                continue
+                                        except Exception as e:
+                                            logging.error(f"Stopping extraction: error when quering Pinecone (id={tender_id}, date={pub_dt})")
+                                            break
+
                                 tender_data = {
                                     "name": name,
                                     "organization": detail_info.get("org_name") or organization,
@@ -557,6 +789,7 @@ class PlatformaZakupowaTenderExtractor:
                                     "details_url": detail_url,
                                     "content_type": "tender",
                                     "source_type": "platformazakupowa",
+                                    "tender_subject": subject or "",                                  # NEW
                                 }
 
                                 try:

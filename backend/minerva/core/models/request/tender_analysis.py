@@ -50,6 +50,7 @@ class TenderAnalysisUpdate(BaseModel):
     org_id: Optional[str] = None
     assigned_users: Optional[List[str]] = None
     email_recipients: Optional[List[str]] = None
+    include_external_sources: Optional[bool] = None
     table_layouts: Optional[List[TableLayout]] = None
 
 class TenderAnalysisResultUpdate(BaseModel):

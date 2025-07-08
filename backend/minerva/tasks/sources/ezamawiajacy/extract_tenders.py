@@ -14,6 +14,7 @@ from minerva.core.services.vectorstore.file_content_extract.base import Extracto
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
 from playwright.async_api import async_playwright, Page, TimeoutError, Locator, BrowserContext
 from bs4 import BeautifulSoup
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
 from minerva.core.utils.date_standardizer import DateStandardizer
@@ -171,17 +172,10 @@ class EzamawiajacyTenderExtractor:
         return detail_data
 
     async def execute(self, inputs: Dict) -> Dict:
-        """
-        Main entry point for tender extraction.
-
-        inputs dict should include:
-          - max_pages: int, maximum number of listing pages to traverse.
-          - start_date: str in "YYYY-MM-DD" format to skip tenders older than this date (if tender date is extractable).
-          - username: login username/email.
-          - password: login password.
-        """
         max_pages = 150
         start_date_str = inputs.get("start_date", None)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         username = os.getenv("ONEPLACE_EMAIL")
         password = os.getenv("ONEPLACE_PASSWORD")
 
@@ -263,12 +257,51 @@ class EzamawiajacyTenderExtractor:
                             # Only save tenders where we got detail data from a valid ezamawiajacy.pl page.
                             if detail_info.get("updated_url", None):
                                 tender_date_str = detail_info.get("initiation_date", None)
-                                if start_dt and tender_date_str and datetime.strptime(tender_date_str, "%Y-%m-%d") < start_dt:
-                                    logging.info(f"{self.source_type}: Skipping tender '{title}' published on {tender_date_str} before start_date {start_date_str}")
-                                    # continue
-                                    metadata = {"total_tenders": len(tenders), "pages_scraped": current_page - 1}
-                                    return {"tenders": tenders, "metadata": metadata}
-
+                                if start_dt and tender_date_str:
+                                    pub_dt = datetime.strptime(tender_date_str, "%Y-%m-%d")
+                                    if pub_dt < start_dt:
+                                        try:
+                                            # Pinecone check for older tenders
+                                            tender_id = detail_info.get("updated_url", None)
+                                            query_config = QueryConfig(
+                                                index_name=tender_names_index_name,
+                                                namespace="",
+                                                embedding_model=embedding_model
+                                            )
+                                            query_tool = QueryTool(config=query_config)
+                                            filter_conditions = {"details_url": detail_info.get("updated_url", None)}
+                                            default_index_results = await query_tool.query_by_id(
+                                                id=tender_id,
+                                                top_k=1,
+                                                filter_conditions=filter_conditions
+                                            )
+                                            if default_index_results.get("matches"):
+                                                logging.info(f"Stopping extraction: found older tender in Pinecone (id={tender_id}, date={pub_dt})")
+                                                metadata = {"total_tenders": len(tenders), "pages_scraped": current_page - 1}
+                                                await list_page.close()
+                                                return {"tenders": tenders, "metadata": metadata}
+                                            else:
+                                                # Not in Pinecone, include but set initiation_date to start_dt
+                                                tender_data = {
+                                                    "name": title,
+                                                    "organization": organization,
+                                                    "details_url": detail_info.get("updated_url", None),
+                                                    "source_type": self.source_type,
+                                                    "location": "",
+                                                    "submission_deadline": detail_info.get("submission_deadline", ""),
+                                                    "initiation_date": start_dt.strftime("%Y-%m-%d"),
+                                                }
+                                                tender_obj = Tender(**tender_data)
+                                                tenders.append(tender_obj)
+                                                logging.info(f"{self.source_type}: Extracted older tender (not in Pinecone): '{title}'")
+                                                continue
+                                        except Exception as e:
+                                            logging.error(f"{self.source_type}: Error checking Pinecone for tender '{title}': {str(e)}")
+                                            logging.info(f"Stopping extraction: found older tender in Pinecone (id={tender_id}, date={pub_dt})")
+                                            metadata = {"total_tenders": len(tenders), "pages_scraped": current_page - 1}
+                                            await list_page.close()
+                                            return {"tenders": tenders, "metadata": metadata}
+                                # Normal case
                                 tender_data = {
                                     "name": title,
                                     "organization": organization,
@@ -281,7 +314,6 @@ class EzamawiajacyTenderExtractor:
                                 tender_obj = Tender(**tender_data)
                                 tenders.append(tender_obj)
                                 logging.info(f"{self.source_type}: Extracted tender '{title}'")
-
                         except Exception as e:
                             logging.error(f"{self.source_type}: Error processing a tender row on page {current_page}: {str(e)}")
                             continue

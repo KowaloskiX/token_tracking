@@ -15,6 +15,7 @@ import urllib.parse
 from minerva.core.services.vectorstore.file_content_extract.base import ExtractorRegistry
 # Import helper functions for BZP
 from minerva.tasks.sources.helpers import extract_bzp_plan_fields, scrape_bzp_budget_row
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 
 
 class BazaKonkurencyjnosciTenderExtractor:
@@ -202,6 +203,8 @@ class BazaKonkurencyjnosciTenderExtractor:
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = inputs.get("max_pages", 50)
         start_date_str = inputs.get("start_date", None)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         start_dt = None
         if start_date_str:
             try:
@@ -283,8 +286,6 @@ class BazaKonkurencyjnosciTenderExtractor:
                                     except Exception:
                                         continue
 
-                            if start_dt and publication_dt and publication_dt < start_dt:
-                                continue
 
                             detail_info = await self.fetch_detail_info(context, detail_url)
                             final_pub_dt = detail_info.get("publication_dt") or publication_dt
@@ -294,6 +295,47 @@ class BazaKonkurencyjnosciTenderExtractor:
                             nip_val = detail_info.get("nip", "")
 
                             init_date_str = final_pub_dt.strftime("%Y-%m-%d") if final_pub_dt else ""
+                            # Pinecone check for tenders older than start_dt
+                            if start_dt and final_pub_dt and final_pub_dt < start_dt:
+                                try:
+                                    query_config = QueryConfig(
+                                        index_name=tender_names_index_name,
+                                        namespace="",
+                                        embedding_model=embedding_model
+                                    )
+                                    query_tool = QueryTool(config=query_config)
+                                    filter_conditions = {"details_url": detail_url}
+                                    default_index_results = await query_tool.query_by_id(
+                                        id=detail_url,
+                                        top_k=1,
+                                        filter_conditions=filter_conditions
+                                    )
+                                    if default_index_results.get("matches"):
+                                        logging.info(f"{self.source_type}: Encountered tender dated {publication_dt} older than start_date {start_date_str} and found in Pinecone. Stopping extraction.")
+                                        break
+                                    else:
+                                        # Not in Pinecone, include but set initiation_date to start_dt
+                                        init_date_str = start_dt.strftime("%Y-%m-%d")
+                                        tender_data = {
+                                            "name": name,
+                                            "organization": org_name,
+                                            "location": location,
+                                            "submission_deadline": DateStandardizer.standardize_deadline(submission_deadline),
+                                            "initiation_date": init_date_str,
+                                            "details_url": detail_url,
+                                            "content_type": "tender",
+                                            "source_type": self.source_type,
+                                        }
+                                        try:
+                                            t_obj = Tender(**tender_data)
+                                            tenders.append(t_obj)
+                                            logging.info(f"{self.source_type}: Encountered tender dated {publication_dt} older than start_date {start_date_str} but not found in Pinecone. Saving tender...")
+                                        except Exception as te:
+                                            logging.error(f"Error creating Tender object for {self.source_type} at URL: {detail_url}")
+                                        continue  # Continue to next row
+                                except Exception as e:
+                                    logging.error(f"{self.source_type}: Error querying Pinecone when checking older tender: {e}")
+                                    break
 
                             tender_data = {
                                 "name": name,

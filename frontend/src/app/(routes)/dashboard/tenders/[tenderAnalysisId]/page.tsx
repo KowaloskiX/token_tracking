@@ -1,7 +1,6 @@
 "use client"
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import TenderHeader from "@/components/dashboard/tenders/TenderHeader";
 import TendersList from "@/components/dashboard/tenders/TendersList";
 import TenderResultSidebar from "@/components/dashboard/tenders/TenderResultSidebar";
 import { FilePreview } from "@/components/dashboard/FilePreview";
@@ -103,16 +102,7 @@ const TenderAnalysis = () => {
         <>
             <div className="flex h-[100svh] flex-1 overflow-hidden min-w-0">
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                    <div className="flex-none">
-                        <TenderHeader
-                            // drawerRef={drawerRef}
-                            // allResults={allResults}
-                            // setAllResults={setAllResults}
-                            // isDrawerVisible={isDrawerVisible || isDrawerAnimating} 
-                            // onDrawerVisibilityChange={handleDrawerVisibilityChange}
-                            // setCurrentTenderBoardStatus={setCurrentTenderBoardStatus}
-                        />
-                    </div>
+                    {/* TenderHeader removed as it has been integrated into TendersList */}
                     <div className="flex-1 overflow-auto scrollbar-hide">
                         <TendersList
                             allResults={allResults}

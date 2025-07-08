@@ -58,7 +58,7 @@ class TenderNotificationService:
             updates_summary: List of update summaries from TenderMonitoringService
             
         Returns:
-            Dict containing notification results
+        Dict containing notification results
         """
         notification_results = {
             "notifications_sent": 0,
@@ -73,13 +73,13 @@ class TenderNotificationService:
                 if not tender_id:
                     continue
                     
-                # Get the tender analysis result to extract analysis_id
+                # Get the tender analysis result to extract analysis_id - only if active
                 tender_result = await db.tender_analysis_results.find_one(
-                    {"_id": ObjectId(tender_id)}
+                    {"_id": ObjectId(tender_id), "status": "active"}
                 )
                 
                 if not tender_result:
-                    logger.warning(f"Tender analysis result {tender_id} not found for update notification")
+                    logger.warning(f"Active tender analysis result {tender_id} not found for update notification")
                     continue
                     
                 # Get users who should be notified for this tender
@@ -219,18 +219,19 @@ class TenderNotificationService:
         """
         Notify users about tender outcomes using direct tender analysis result IDs.
         This is more efficient as it avoids URL-based lookups.
+        Only considers active TenderAnalysisResult objects.
         """
         logger.info(f"Notifying outcomes for {len(tender_analysis_ids)} tender analysis results by ID")
         
         for tender_id in tender_analysis_ids:
             try:
-                # Get the tender analysis result directly
+                # Get the tender analysis result directly - only if active
                 tender_result = await db.tender_analysis_results.find_one(
-                    {"_id": ObjectId(tender_id)}
+                    {"_id": ObjectId(tender_id), "status": "active"}
                 )
                 
                 if not tender_result:
-                    logger.warning(f"Tender analysis result {tender_id} not found")
+                    logger.warning(f"Active tender analysis result {tender_id} not found")
                     continue
                 
                 # Get users who should be notified for this tender
@@ -312,6 +313,7 @@ class TenderNotificationService:
         """
         Notify users about tender outcomes using URL-based lookup (fallback method).
         This is less efficient but maintains backward compatibility.
+        Only considers active TenderAnalysisResult objects.
         """
         logger.info("Using URL-based notification lookup for tender outcomes")
         
@@ -337,13 +339,13 @@ class TenderNotificationService:
                     logger.info(f"No users to notify for tender URL {tender_url}")
                     continue
                 
-                # Get tender metadata from any result with this URL (they should all have the same metadata)
+                # Get tender metadata from any active result with this URL (they should all have the same metadata)
                 tender_result = await db.tender_analysis_results.find_one(
-                    {"tender_url": tender_url}
+                    {"tender_url": tender_url, "status": "active"}
                 )
                 
                 if not tender_result:
-                    logger.warning(f"No tender analysis result found for URL {tender_url} despite having users to notify")
+                    logger.warning(f"No active tender analysis result found for URL {tender_url} despite having users to notify")
                     continue
                 
                 # Get tender metadata for notification
@@ -425,13 +427,13 @@ class TenderNotificationService:
             List of user information dictionaries
         """
         try:
-            # Get the tender analysis result to extract the URL
+            # Get the tender analysis result to extract the URL - only if active
             tender_result = await db.tender_analysis_results.find_one(
-                {"_id": ObjectId(tender_id)}
+                {"_id": ObjectId(tender_id), "status": "active"}
             )
             
             if not tender_result:
-                logger.warning(f"Tender analysis result {tender_id} not found")
+                logger.warning(f"Active tender analysis result {tender_id} not found")
                 return []
             
             tender_url = tender_result.get("tender_url")
@@ -455,6 +457,9 @@ class TenderNotificationService:
         finds ALL such instances and collects users from ALL associated TenderAnalysis
         configurations to ensure every stakeholder gets notified.
         
+        Only considers active TenderAnalysisResult objects (status: "active") and
+        active TenderAnalysis objects (active: true).
+        
         Args:
             tender_url: The tender URL to search for
             
@@ -462,32 +467,32 @@ class TenderNotificationService:
             List of unique user information dictionaries (deduplicated across all configurations)
         """
         try:
-            # Find ALL tender analysis results with this URL
+            # Find ALL active tender analysis results with this URL
             tender_results_cursor = db.tender_analysis_results.find(
-                {"tender_url": tender_url}
+                {"tender_url": tender_url, "status": "active"}
             )
             tender_results = await tender_results_cursor.to_list(length=None)
             
             if not tender_results:
-                logger.warning(f"No tender analysis results found for URL {tender_url}")
+                logger.warning(f"No active tender analysis results found for URL {tender_url}")
                 return []
             
-            logger.info(f"Found {len(tender_results)} tender analysis results for URL {tender_url}")
+            logger.info(f"Found {len(tender_results)} active tender analysis results for URL {tender_url}")
             
             # Collect all unique tender_analysis_ids
             analysis_ids = list(set(result["tender_analysis_id"] for result in tender_results))
             
-            # Get all associated tender analysis configurations
+            # Get all associated active tender analysis configurations
             tender_analyses_cursor = db.tender_analysis.find(
-                {"_id": {"$in": analysis_ids}}
+                {"_id": {"$in": analysis_ids}, "active": True}
             )
             tender_analyses = await tender_analyses_cursor.to_list(length=None)
             
             if not tender_analyses:
-                logger.warning(f"No tender analysis configurations found for URL {tender_url}")
+                logger.warning(f"No active tender analysis configurations found for URL {tender_url}")
                 return []
             
-            logger.info(f"Found {len(tender_analyses)} tender analysis configurations for URL {tender_url}")
+            logger.info(f"Found {len(tender_analyses)} active tender analysis configurations for URL {tender_url}")
             
             # Collect all unique users from all configurations
             all_users = {}  # Use dict to avoid duplicates, key = user_id
@@ -530,7 +535,7 @@ class TenderNotificationService:
                             }
             
             users_to_notify = list(all_users.values())
-            logger.info(f"Found {len(users_to_notify)} unique users to notify for tender URL {tender_url}")
+            logger.info(f"Found {len(users_to_notify)} unique users to notify for active tender URL {tender_url}")
             
             return users_to_notify
             

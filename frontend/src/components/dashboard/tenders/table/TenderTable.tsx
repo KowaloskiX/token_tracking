@@ -10,6 +10,7 @@ import { TableLayout } from './TableLayout';
 import { useTableColumns } from '@/hooks/table/useTableColumns';
 import { ColumnConfig } from '@/types/tableColumns';
 import { useTendersTranslations } from '@/hooks/useTranslations';
+import { Skeleton } from "@/components/ui/skeleton"; // Make sure this import exists
 
 interface TenderTableProps {
   currentResults: TenderAnalysisResult[];
@@ -336,23 +337,29 @@ export const TenderTable: React.FC<TenderTableProps> = ({
                   columnCount={visibleColumns.length + 1}
                 />
               ) : (
-                currentResults.map((result: TenderAnalysisResult) => (
-                  <DynamicTableRow
-                    key={result._id}
-                    result={result}
-                    selectedResult={selectedResult}
-                    columns={visibleColumns}
-                    isUpdatedAfterOpened={isUpdatedAfterOpened}
-                    calculateDaysRemaining={calculateDaysRemaining}
-                    getTenderBoards={getTenderBoards}
-                    boardsLoading={boardsLoading}
-                    onRowClick={onRowClick}
-                    onStatusChange={onStatusChange}
-                    onUnopened={onUnopened}
-                    onDelete={onDelete}
-                    onAddToKanban={onAddToKanban}
-                  />
-                ))
+                currentResults.map((result: TenderAnalysisResult) => {
+                  // Check if this is a pending analysis
+                  const isPending = (result as any).isPending;
+                  
+                  return (
+                    <DynamicTableRow
+                      key={result._id}
+                      result={result}
+                      selectedResult={selectedResult}
+                      columns={visibleColumns}
+                      isUpdatedAfterOpened={isUpdatedAfterOpened}
+                      calculateDaysRemaining={calculateDaysRemaining}
+                      getTenderBoards={getTenderBoards}
+                      boardsLoading={boardsLoading}
+                      onRowClick={onRowClick}
+                      onStatusChange={onStatusChange}
+                      onUnopened={onUnopened}
+                      onDelete={onDelete}
+                      onAddToKanban={onAddToKanban}
+                      isPending={isPending} // Pass pending state
+                    />
+                  );
+                })
               )}
             </TableBody>
           </Table>

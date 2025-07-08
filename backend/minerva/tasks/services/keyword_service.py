@@ -61,7 +61,7 @@ class KeywordPresenceValidator:
         self,
         tender_id: str,
         keywords: List[str],
-        max_snippets_per_kw: int = 10,
+        max_snippets_per_kw: int = 100,
         fragment_size: int = 1000,
     ) -> Dict[str, Any]:
         hits: list[dict[str, Any]] = []
@@ -177,17 +177,30 @@ class KeywordPresenceValidator:
                             }
                         })
             
+            # ------------------------------------------------------------------
+            # SAFETY GUARD: if we ended up with no search clauses, skip this kw
+            # ------------------------------------------------------------------
+            if not should_clauses:
+                logger.info("No valid search clauses generated for keyword '%s'; treating as missing.", kw)
+                missing.append(kw)
+                continue
+            
+            # Build the bool query for the keyword.  We only set
+            # `minimum_should_match` when there is more than one clause – this
+            # avoids Elasticsearch parse errors for a single-clause / empty list
+            # situation.
+            bool_query = {
+                "should": should_clauses
+            }
+            if len(should_clauses) > 1:
+                bool_query["minimum_should_match"] = 1
+            
             # Create a more flexible query that handles Polish inflections
             query = {
                 "bool": {
                     "must": [
                         {"term": {"metadata.tender_pinecone_id.keyword": tender_id}},
-                        {
-                            "bool": {
-                                "should": should_clauses,
-                                "minimum_should_match": 1
-                            }
-                        }
+                        {"bool": bool_query}
                     ]
                 }
             }

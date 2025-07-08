@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Dict, Any
+from minerva.core.helpers.external_comparison import TenderExternalComparison
 from minerva.tasks.analyses.analysis_queue import AnalysisQueue
 from minerva.tasks.services.analysis_service import analyze_relevant_tenders_with_our_rag
 from minerva.tasks.sources.helpers import assign_order_numbers
@@ -68,7 +69,15 @@ class SimpleAnalysisWorker:
             
             # Assign order numbers (same as existing)
             await assign_order_numbers(ObjectId(analysis_id), current_user)
-            
+
+            # Perform comparison
+            comparison_service = TenderExternalComparison()
+            result = await comparison_service.update_external_compare_status(
+                analysis_id=analysis_id,
+                start_date=target_date,
+                end_date=target_date,
+            )
+                
             # Update analysis timestamp (same as existing)
             await db.tender_analysis.update_one(
                 {"_id": ObjectId(analysis_id)},

@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from playwright_stealth import stealth_async  # Import the stealth helper
 
 from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
+from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.core.models.request.tender_extract import ExtractorMetadata, Tender
 
 
@@ -252,6 +253,8 @@ class EGospodarkaTenderExtractor:
     async def execute(self, inputs: Dict) -> Dict:
         max_pages = 3
         start_date = inputs.get('start_date', None)
+        tender_names_index_name = inputs.get('tender_names_index_name', "tenders")
+        embedding_model = inputs.get('embedding_model', "text-embedding-3-large")
         start_dt = None
         if start_date:
             try:
@@ -334,9 +337,7 @@ class EGospodarkaTenderExtractor:
                                 pub_date = dates[0].strip() if len(dates) > 0 else ""
                                 end_date = dates[1].strip() if len(dates) > 1 else ""
                                 pub_dt = datetime.strptime(self.format_date(pub_date), "%Y-%m-%d")
-                                if start_dt and pub_dt < start_dt:
-                                    found_old_tender = True
-                                    break
+                                # Pinecone check for tenders older than start_dt
                                 adjusted_pub_dt = pub_dt + timedelta(days=1)
                                 adjusted_pub_date = adjusted_pub_dt.strftime("%Y-%m-%d")
                                 location = await cells[1].inner_text()
@@ -348,7 +349,47 @@ class EGospodarkaTenderExtractor:
                                 name = await name_link.inner_text()
                                 detail_url = await name_link.get_attribute("href")
                                 if detail_url.startswith("/"):
-                                    detail_url = f"{self.base_url}{detail_url}"
+                                    detail_url = f"https://www.przetargi.egospodarka.pl{detail_url}"
+
+                                if start_dt and adjusted_pub_dt < start_dt:
+                                    try:
+                                        query_config = QueryConfig(
+                                            index_name=tender_names_index_name,
+                                            namespace="",
+                                            embedding_model=embedding_model
+                                        )
+                                        query_tool = QueryTool(config=query_config)
+                                        filter_conditions = {"details_url": detail_url}
+                                        default_index_results = await query_tool.query_by_id(
+                                            id=detail_url,
+                                            top_k=1,
+                                            filter_conditions=filter_conditions
+                                        )
+                                        if default_index_results.get("matches"):
+                                            logging.info(f"{self.__class__.__name__}: Encountered tender dated {pub_date} older than start_date {start_date} and found in Pinecone. Stopping extraction.")
+                                            found_old_tender = True
+                                            break
+                                        else:
+                                            # Not in Pinecone, include but set initiation_date to start_dt
+                                            tender_data = {
+                                                "name": name.strip(),
+                                                "organization": organization.strip(),
+                                                "location": location.strip(),
+                                                "submission_deadline": self.format_date(end_date),
+                                                "initiation_date": start_dt.strftime("%Y-%m-%d"),
+                                                "details_url": detail_url,
+                                                "content_type": "tender",
+                                                "source_type": "egospodarka",
+                                                "category": category.strip() if category else ""
+                                            }
+                                            tender = Tender(**tender_data)
+                                            tenders.append(tender)
+                                            logging.info(f"{self.__class__.__name__}: Encountered tender dated {pub_date} older than start_date {start_date} but not found in Pinecone. Saving tender...")
+                                            continue  # Continue to next row
+                                    except Exception as e:
+                                        logging.error(f"{self.__class__.__name__}: Error querying Pinecone when checking older tender: {e}")
+                                        found_old_tender = True
+                                        break
                                 tender_data = {
                                     "name": name.strip(),
                                     "organization": organization.strip(),

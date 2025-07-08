@@ -50,7 +50,9 @@ async def ai_pick_main_doc(
         "(Polish: \"Ogłoszenie o zamówieniu\") **or** the tender specification "
         "(Polish: \"SWZ\", full name \"Specyfikacja warunków zamówienia\"). "
         "Only PDF, DOC or DOCX files may be selected. "
-        "If nothing looks like a notice nor an SWZ, return null."
+        "If nothing looks like a notice nor an SWZ, try to choose file you think"
+        "has most probability of containing the subject of request or products"
+        "if no files meet requirements or extensions return null. "
     )
 
     user_message = (
@@ -70,8 +72,8 @@ async def ai_pick_main_doc(
     )
 
     # 3️⃣  model config (reuse your helper)
-    # model_to_use = "gemini-2.5-flash-preview-05-20" 
-    model_to_use = "gpt-4.1-mini"
+    model_to_use = "gemini-2.5-flash-preview-05-20" 
+    # model_to_use = "gpt-4.1-mini"
     provider, max_tokens = get_model_config(model_to_use)
 
     max_tokens = get_optimal_max_tokens(model_to_use, "high")

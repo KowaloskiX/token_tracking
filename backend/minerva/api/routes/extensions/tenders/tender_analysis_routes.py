@@ -1,6 +1,7 @@
 import asyncio
 import os
 from pathlib import Path
+from pprint import pprint
 import shutil
 import tempfile
 from uuid import uuid4
@@ -118,6 +119,7 @@ def _get_projection_for_results(include_criteria_for_filtering: bool) -> dict:
             "order_number": 1,
             "criteria_analysis.criteria": 1,
             "criteria_analysis.analysis.criteria_met": 1,
+            "external_compare_status": 1
         }
     else:
         # Original projection - exclude heavy data
@@ -162,6 +164,7 @@ def _get_table_projection_with_criteria() -> dict:
         "criteria_analysis.analysis.summary": 1,
         "criteria_analysis.analysis.confidence_level": 1,
         "criteria_analysis.analysis.weight": 1,  # Include weight too
+        "external_compare_status": 1
     }
 
 class TenderAnalysisResultSummary(BaseModel):
@@ -179,6 +182,7 @@ class TenderAnalysisResultSummary(BaseModel):
 class SingleTenderAnalysisRequest(BaseModel):
     tender_url: str = Field(..., description="URL of the tender to analyze")
     analysis_id: str = Field(..., description="ID of the analysis configuration to use")
+    save_to_db: bool = Field(default=False, embed=True)
 
 
 # kanban helper functions:
@@ -287,7 +291,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-06-30"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-07-07"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -623,6 +627,7 @@ async def delete_tender_analysis(
             detail=f"Error deleting tender analysis: {str(e)}"
         )
 
+
 @router.get("/tender-analysis/{analysis_id}/results")
 async def get_tender_analysis_results(
     analysis_id: PyObjectId,
@@ -630,7 +635,9 @@ async def get_tender_analysis_results(
     limit: int = 10,
     org_id: Optional[str] = None,
     include_historical: bool = False,
-    include_criteria_for_filtering: bool = False,  # NEW parameter
+    include_criteria_for_filtering: bool = False,
+    include_filtered: bool = False,  # NEW parameter
+    include_external: bool = False,  # NEW parameter for external tenders
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -643,10 +650,12 @@ async def get_tender_analysis_results(
         org_id: Optional organization ID for filtering
         include_historical: Include historical results (past deadlines)
         include_criteria_for_filtering: Include minimal criteria data for client-side filtering
+        include_filtered: Include filtered out tenders in the results
+        include_external: Include external tenders in the results
         current_user: Current authenticated user
     """
     try:
-        logger.info(f"Fetching results for analysis {analysis_id} by user {current_user.id}, include_historical={include_historical}")
+        logger.info(f"Fetching results for analysis {analysis_id} by user {current_user.id}, include_historical={include_historical}, include_filtered={include_filtered}, include_external={include_external}")
         
         # First, directly find the analysis document to check permissions
         analysis = await db.tender_analysis.find_one({"_id": analysis_id})
@@ -670,216 +679,18 @@ async def get_tender_analysis_results(
                 detail="You don't have access to this analysis"
             )
         
-        # User has access, proceed with fetching results
-        skip = (page - 1) * limit
-        current_date = datetime.utcnow()
+        # Fetch results with the updated logic - now all from one collection
+        results, total = await _fetch_tender_results_paginated(
+            analysis_id=analysis_id,
+            include_historical=include_historical,
+            include_criteria_for_filtering=include_criteria_for_filtering,
+            include_filtered=include_filtered,
+            include_external=include_external,
+            page=page,
+            limit=limit
+        )
         
-        if include_historical:
-            # Simple query without deadline filtering for historical results
-            pipeline = [
-                # Match documents for this analysis
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id
-                    }
-                },
-                # Apply projection to exclude heavy fields
-                {
-                    "$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)
-                },
-                # Sort by creation date
-                {"$sort": {"created_at": -1}},
-                # Apply pagination
-                {"$skip": skip},
-                {"$limit": limit}
-            ]
-            
-            # Get total count without deadline filtering
-            total = await db.tender_analysis_results.count_documents(
-                {"tender_analysis_id": analysis_id}
-            )
-        else:
-            # Use aggregation pipeline to filter by future submission deadlines
-            pipeline = [
-                # Match documents for this analysis
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id,
-                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
-                    }
-                },
-                # Add a field to parse the submission deadline
-                {
-                    "$addFields": {
-                        "parsed_deadline": {
-                            "$switch": {
-                                "branches": [
-                                    # Handle format: "2025-06-10 11:00"
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d %H:%M",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    # Handle format: "10/06/2025 08:00:00"
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%d/%m/%Y %H:%M:%S",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    # Handle format: "2025-06-10" (date only)
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d",
-                                                "onError": None
-                                            }
-                                        }
-                                    }
-                                ],
-                                "default": None
-                            }
-                        }
-                    }
-                },
-                # Filter to only include future deadlines or unparseable dates (to be safe)
-                {
-                    "$match": {
-                        "$or": [
-                            {"parsed_deadline": {"$gt": current_date}},
-                            {"parsed_deadline": None}  # Keep tenders with unparseable dates
-                        ]
-                    }
-                },
-                # Remove the temporary parsed_deadline field and apply projection
-                {
-                    "$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)
-                },
-                # Sort by creation date
-                {"$sort": {"created_at": -1}},
-                # Apply pagination
-                {"$skip": skip},
-                {"$limit": limit}
-            ]
-
-            # Get total count of future deadlines for this analysis
-            count_pipeline = [
-                {
-                    "$match": {
-                        "tender_analysis_id": analysis_id,
-                        "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
-                    }
-                },
-                {
-                    "$addFields": {
-                        "parsed_deadline": {
-                            "$switch": {
-                                "branches": [
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d %H:%M",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%d/%m/%Y %H:%M:%S",
-                                                "onError": None
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "case": {
-                                            "$regexMatch": {
-                                                "input": "$tender_metadata.submission_deadline",
-                                                "regex": r"^\d{4}-\d{2}-\d{2}$"
-                                            }
-                                        },
-                                        "then": {
-                                            "$dateFromString": {
-                                                "dateString": "$tender_metadata.submission_deadline",
-                                                "format": "%Y-%m-%d",
-                                                "onError": None
-                                            }
-                                        }
-                                    }
-                                ],
-                                "default": None
-                            }
-                        }
-                    }
-                },
-                {
-                    "$match": {
-                        "$or": [
-                            {"parsed_deadline": {"$gt": current_date}},
-                            {"parsed_deadline": None}
-                        ]
-                    }
-                },
-                {"$count": "total"}
-            ]
-
-            count_result = await db.tender_analysis_results.aggregate(count_pipeline).to_list(None)
-            total = count_result[0]["total"] if count_result else 0
-
-        # Execute the aggregation pipeline
-        raw_results = await db.tender_analysis_results.aggregate(pipeline).to_list(None)
-        logger.info(f"Found {len(raw_results)} {'historical' if include_historical else 'future'} results for page {page}")
-
-        # Convert ObjectId instances to strings
-        def _stringify_ids(doc):
-            for k in ("_id", "tender_analysis_id", "user_id"):
-                if k in doc and isinstance(doc[k], ObjectId):
-                    doc[k] = str(doc[k])
-            return doc
-
-        results = [_stringify_ids(r) for r in raw_results]
-
-        logger.info(f"Returning {len(results)} {'historical' if include_historical else 'future'} results (total: {total})")
+        logger.info(f"Returning {len(results)} results (total: {total})")
         payload = {"results": results, "total": total}
         return Response(
             content=json.dumps(payload, default=str, ensure_ascii=False),
@@ -895,6 +706,233 @@ async def get_tender_analysis_results(
             status_code=500,
             detail=f"Error getting tender analysis results: {str(e)}"
         )
+
+
+async def _fetch_tender_results_paginated(
+    analysis_id: PyObjectId, 
+    include_historical: bool, 
+    include_criteria_for_filtering: bool,
+    include_filtered: bool,
+    include_external: bool,
+    page: int,
+    limit: int
+) -> tuple[list, int]:
+    """
+    Fetch tender analysis results with pagination support
+    Now handles main, filtered, and external results from the same collection
+    """
+    current_date = datetime.utcnow()
+    
+    # Calculate skip for pagination
+    skip = (page - 1) * limit
+    
+    # Build base match condition
+    match_condition = {"tender_analysis_id": analysis_id}
+    
+    # Add status filtering based on include_filtered and include_external parameters
+    status_conditions = []
+    
+    # Always include main results (legacy records without status or active status)
+    status_conditions.extend([
+        {"status": {"$exists": False}},  # Legacy results without status field
+        {"status": {"$nin": ["filtered", "external"]}}  # Active/main results
+    ])
+    
+    # Conditionally include filtered results
+    if include_filtered:
+        status_conditions.append({"status": "filtered"})
+    
+    # Conditionally include external results (excluding those with external_compare_status = "overlap")
+    if include_external:
+        status_conditions.append({
+            "status": "external",
+            "$or": [
+                {"external_compare_status": {"$nin": ["overlap_oferent", "overlap_bizpol"]}},
+                {"external_compare_status": {"$exists": False}}
+            ]
+        })
+    
+    # Apply the status filtering
+    match_condition["$or"] = status_conditions
+    
+    if include_historical:
+        # Simple query without deadline filtering for historical results
+        pipeline = [
+            {"$match": match_condition},
+            {"$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)},
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count
+        total = await db.tender_analysis_results.count_documents(match_condition)
+    else:
+        # Filter by future submission deadlines while preserving status filtering
+        deadline_match = {
+            **match_condition,
+            "tender_metadata.submission_deadline": {"$exists": True, "$ne": None, "$ne": ""}
+        }
+        
+        pipeline = [
+            {"$match": deadline_match},
+            {
+                "$addFields": {
+                    "parsed_deadline": {
+                        "$switch": {
+                            "branches": [
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%Y-%m-%d %H:%M",
+                                            "onError": None
+                                        }
+                                    }
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%d/%m/%Y %H:%M:%S",
+                                            "onError": None
+                                        }
+                                    }
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{4}-\d{2}-\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%Y-%m-%d",
+                                            "onError": None
+                                        }
+                                    }
+                                }
+                            ],
+                            "default": None
+                        }
+                    }
+                }
+            },
+            {
+                "$match": {
+                    "$or": [
+                        {"parsed_deadline": {"$gt": current_date}},
+                        {"parsed_deadline": None}
+                    ]
+                }
+            },
+            {"$project": _get_table_projection_with_criteria() if include_criteria_for_filtering else _get_projection_for_results(include_criteria_for_filtering)},
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+
+        # Get total count of future deadlines for this analysis with status filtering
+        count_pipeline = [
+            {"$match": deadline_match},
+            {
+                "$addFields": {
+                    "parsed_deadline": {
+                        "$switch": {
+                            "branches": [
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%Y-%m-%d %H:%M",
+                                            "onError": None
+                                        }
+                                    }
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%d/%m/%Y %H:%M:%S",
+                                            "onError": None
+                                        }
+                                    }
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": "$tender_metadata.submission_deadline",
+                                            "regex": r"^\d{4}-\d{2}-\d{2}$"
+                                        }
+                                    },
+                                    "then": {
+                                        "$dateFromString": {
+                                            "dateString": "$tender_metadata.submission_deadline",
+                                            "format": "%Y-%m-%d",
+                                            "onError": None
+                                        }
+                                    }
+                                }
+                            ],
+                            "default": None
+                        }
+                    }
+                }
+            },
+            {
+                "$match": {
+                    "$or": [
+                        {"parsed_deadline": {"$gt": current_date}},
+                        {"parsed_deadline": None}
+                    ]
+                }
+            },
+            {"$count": "total"}
+        ]
+
+        count_result = await db.tender_analysis_results.aggregate(count_pipeline).to_list(None)
+        total = count_result[0]["total"] if count_result else 0
+
+    # Execute the aggregation pipeline
+    raw_results = await db.tender_analysis_results.aggregate(pipeline).to_list(None)
+    
+    # Convert ObjectId instances to strings and ensure status field is present
+    def _stringify_ids(doc):
+        for k in ("_id", "tender_analysis_id", "user_id"):
+            if k in doc and isinstance(doc[k], ObjectId):
+                doc[k] = str(doc[k])
+            if doc.get("status", "") == "external":
+                pprint(doc)
+        return doc
+
+    results = [_stringify_ids(r) for r in raw_results]
+    return results, total
 
 @router.get("/tender-analysis/{analysis_id}/results/all")
 async def get_all_tender_analysis_results(
@@ -1435,6 +1473,12 @@ async def update_result_status(
                 detail="Tender analysis result not found"
             )
         
+        # Prevent status change if old status is 'external'
+        if existing.get("status") == "external":
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot change status of a tender result with status 'external'"
+            )
         
         # Update the status and set updated_at timestamp
         await db.tender_analysis_results.update_one(
@@ -2853,7 +2897,7 @@ async def analyze_single_tender(
             "source_type": source_type.value,
             "name": "Test Analysis",
             "organization": "Test",
-            "submission_deadline": "2025-07-07 07:07",
+            "submission_deadline": "2025-08-08 08:08",
             "procedure_type": "",
             "initiation_date": datetime.utcnow().strftime("%Y-%m-%d")
         }
@@ -2890,8 +2934,9 @@ async def analyze_single_tender(
                     "analysis_id": request.analysis_id
                 }
             
-            # 8. Save the result to database (DISABLED FOR NOW)
-            # await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
+            # 8. Save the result to database
+            if request.save_to_db:
+                await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
             
             # 9. Update analysis last_run timestamp
             await db.tender_analysis.update_one(
