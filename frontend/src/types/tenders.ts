@@ -9,6 +9,11 @@ export interface Citation {
   sanitized_filename?: string;
 }
 
+export interface TenderAnalysisResultWithOptimistic extends TenderAnalysisResult {
+  _optimisticOpened?: boolean;
+  _optimisticUnopened?: boolean;
+}
+
 export interface AnalysisCriteria {
   name: string;
   description: string;
@@ -42,7 +47,7 @@ export interface CriteriaAnalysisResult {
 }
 
 export interface TenderAnalysisResult {
-  
+
   _id?: string;
   user_id: string;
   tender_analysis_id: string;
@@ -70,6 +75,8 @@ export interface TenderAnalysisResult {
   order_number: string;
   finished_id?: string;
   external_compare_status?: 'our_unique' | 'overlap_oferent' | 'overlap_bizpol' | 'external_unique';
+  _optimisticOpened?: boolean;
+  _optimisticUnopened?: boolean;
 }
 
 export interface TenderAnalysis {

@@ -184,7 +184,14 @@
     "download_error": "Błąd pobierania",
     "failed_to_fetch": "Nie udało się pobrać pliku",
     "no_citations_found_in_document": "Nie znaleziono cytatów w dokumencie",
-    "could_not_locate": "Nie znaleziono cytatów w dokumencie"
+    "could_not_locate": "Nie znaleziono cytatów w dokumencie",
+    "reask_llm_for_citations": "Ponownie zapytaj LLM",
+    "llm_will_try_to_find_similar_text": "LLM spróbuje znaleźć podobny tekst w dokumencie",
+    "asking_llm_to_find_citations": "Proszę LLM o znalezienie cytatów...",
+    "error": "Błąd",
+    "out_of": "z",
+    "including": "w tym",
+    "and_more": "i więcej"
   },
   "memory": {
     "memory": "Pamięć",

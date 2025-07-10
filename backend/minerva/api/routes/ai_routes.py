@@ -6,7 +6,12 @@ import logging
 import re
 from typing import List
 from xml.dom import ValidationErr
-
+from minerva.core.services.llm_providers.google_gemini import GeminiLLM
+from minerva.core.services.vectorstore.file_content_extract.service import FileExtractionService
+import tempfile
+import aiofiles
+import aiohttp
+from pathlib import Path
 from minerva.core.helpers.deep_search import find_file_id_by_filename, make_citation_list_from_relevant_files, stream_deep_search_and_llm_response, stream_llm_lookup_response_with_animation, stream_llm_response_with_animation
 from minerva.core.utils.conversation_title_generator import generate_and_update_conversation_title
 import json_repair
@@ -31,6 +36,8 @@ from openai import OpenAI
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File, HTTPException
 from bson import ObjectId
 from pydantic import BaseModel
+from minerva.core.models.request.ai import LLMSearchRequest, LLMConfig
+import json_repair
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -38,6 +45,12 @@ load_dotenv()
 
 openai = OpenAI()
 router = APIRouter()
+
+class ReaskCitationsRequest(BaseModel):
+    conversation_id: str
+    message_id: str
+    file_text: str
+    unfound_citations: List[str]
 
 @router.post("/ask-assistant")
 async def ask_ai(
@@ -752,3 +765,202 @@ async def migrate_add_id_to_embedded_messages():
         "updated_conversations": updated_conversations,
         "updated_messages": updated_messages
     }
+
+@router.post("/reask-citations")
+async def reask_citations(
+    request: ReaskCitationsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Re-ask LLM to find equivalent text for unfound citations in a document.
+    Updates the message citations in the database.
+    """
+    try:
+        # Validate that the user owns this conversation
+        conversation = await db['conversations'].find_one({"_id": ObjectId(request.conversation_id)})
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Find the specific message
+        message = None
+        for msg in conversation.get('messages', []):
+            if str(msg.get('id')) == request.message_id:
+                message = msg
+                break
+        
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+        
+        # Create LLM prompt for finding equivalent citations
+        prompt = f"""You are helping to find equivalent text in a document for citations that couldn't be located exactly.
+
+The document text below includes headers, footers, and all content from the PDF:
+{request.file_text}
+
+Citations that couldn't be found exactly (these may appear in headers, footers, or body text):
+{chr(10).join([f"- {citation}" for citation in request.unfound_citations])}
+
+**IMPORTANT INSTRUCTIONS:**
+1. **Find the EXACT text as it appears in the document** - do not rewrite, restructure, or "improve" the text
+2. **Preserve original formatting, spacing, and punctuation** - including line breaks, indentation, and special characters
+3. **Include surrounding context** - if the citation appears with headers, footers, or page numbers, include them
+4. **Look for the closest match** - the citation might be missing some words, have different verb forms, or slight variations
+5. **Do not combine multiple sections** - find the specific section that matches the citation
+6. **Keep the original language and terminology** - do not translate or modernize the text
+
+For each unfound citation, please find the most similar or equivalent text passage in the document. Look for:
+1. **Exact or near-exact matches** - text that might be split across lines or have different formatting
+2. **Header/footer text** - citations might appear in page headers, footers, or repeated elements
+3. **Slight variations** - different verb forms (e.g., "wykonaniu" vs "wykonanie"), missing articles, etc.
+4. **Context-rich matches** - include page numbers, headers, or surrounding text that provides context
+
+**Example of GOOD replacement:**
+Original: "wykonaniu posadzki z płytek"
+Found in document: "BIAŁYSTOK, LUTY 2025 Strona 3\nRemont pomieszczeń szatni\nn) wykonanie posadzki z płytek ceramicznych wraz z niezbędnymi warstwami podłoża;\nSTRONA 4"
+Replacement: "BIAŁYSTOK, LUTY 2025 Strona 3\nRemont pomieszczeń szatni\nn) wykonanie posadzki z płytek ceramicznych wraz z niezbędnymi warstwami podłoża;\nSTRONA 4"
+
+**Example of BAD replacement:**
+Original: "wykonaniu posadzki z płytek"
+Bad replacement: "n) wykonanie posadzki z płytek ceramicznych" (missing context and headers)
+
+Return your response as a JSON object with this exact structure:
+{{
+    "updated_citations": [
+        {{
+            "original": "original citation text",
+            "replacement": "found equivalent text from document EXACTLY as it appears including headers/footers",
+            "confidence": "high|medium|low",
+            "location_type": "body|header|footer|table|other"
+        }}
+    ]
+}}
+
+Only include citations where you found a reasonable match. If no match is found, don't include it in the response.
+"""
+
+        # Configure LLM request for Gemini 2.5
+        llm_config = LLMConfig(
+            provider="google",
+            model="gemini-2.5-flash",
+            temperature=0.1,
+            max_tokens=4000,
+            system_message="You are an expert at finding and matching text passages in documents. Be precise and only suggest replacements you're confident about.",
+            stream=False,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "citation_replacements",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "updated_citations": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "original": {"type": "string"},
+                                        "replacement": {"type": "string"},
+                                        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                                        "location_type": {"type": "string", "enum": ["table", "body", "header", "footer", "other"]},
+                                        "reconstruction_notes": {"type": "string"}
+                                    },
+                                    "required": ["original", "replacement", "confidence", "location_type", "reconstruction_notes"],
+                                    "additionalProperties": False
+                                }
+                            }
+                        },
+                        "required": ["updated_citations"],
+                        "additionalProperties": False
+                    }
+                }
+            }
+        )
+
+        # Create LLM request
+        llm_request = LLMSearchRequest(
+            query=prompt,
+            vector_store=None,
+            llm=llm_config
+        )
+
+        # Call LLM
+        response = await ask_llm_logic(llm_request)
+        
+        if not isinstance(response, LLMSearchResponse):
+            raise HTTPException(status_code=500, detail="Invalid LLM response format")
+
+        # Parse LLM response
+        try:
+            llm_response_data = json_repair.repair_json(response.llm_response, return_objects=True, ensure_ascii=False)
+            updated_citations_data = llm_response_data.get("updated_citations", [])
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to parse LLM response: {str(e)}")
+
+        # Create a mapping of original to replacement citations
+        replacement_map = {}
+        citation_details = {}
+        for item in updated_citations_data:
+            if isinstance(item, dict) and "original" in item and "replacement" in item:
+                original = item["original"]
+                replacement = item["replacement"]
+                confidence = item.get("confidence", "medium")
+                location_type = item.get("location_type", "other")
+                reconstruction_notes = item.get("reconstruction_notes", "")
+                
+                replacement_map[original] = replacement
+                citation_details[original] = {
+                    "confidence": confidence,
+                    "location_type": location_type,
+                    "replacement": replacement,
+                    "reconstruction_notes": reconstruction_notes
+                }
+
+        # Log findings for debugging
+        logger.info(f"Re-ask citations found {len(replacement_map)} replacements:")
+        for original, details in citation_details.items():
+            logger.info(f"  - {original[:50]}... -> {details['replacement'][:50]}... ({details['confidence']} confidence, {details['location_type']}) - {details['reconstruction_notes']}")
+
+        # Update message citations
+        updated_citations = []
+        for citation in message.get('citations', []):
+            citation_content = citation.get('content', '')
+            if citation_content in request.unfound_citations:
+                # Try to find a replacement
+                replacement = replacement_map.get(citation_content, citation_content)
+                updated_citation = citation.copy()
+                updated_citation['content'] = replacement
+                updated_citations.append(updated_citation)
+            else:
+                # Keep original citation unchanged
+                updated_citations.append(citation)
+
+        # Update the message in the database
+        result = await db['conversations'].update_one(
+            {
+                "_id": ObjectId(request.conversation_id),
+                "messages.id": ObjectId(request.message_id)
+            },
+            {
+                "$set": {
+                    "messages.$.citations": updated_citations,
+                    "last_updated": datetime.utcnow()
+                }
+            }
+        )
+
+        if result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update message citations")
+
+        # Return the updated citations with additional details
+        return {
+            "status": "success",
+            "message": f"Updated {len(replacement_map)} citations",
+            "updated_citations": updated_citations,
+            "replacements": replacement_map,
+            "citation_details": citation_details  # Include confidence and location info
+        }
+
+    except Exception as e:
+        logger.error(f"Error in reask-citations: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

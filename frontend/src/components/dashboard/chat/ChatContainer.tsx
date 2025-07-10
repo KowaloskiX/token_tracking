@@ -13,22 +13,35 @@ import { SUPPORTED_EXTENSIONS } from "@/app/constants";
 import { checkOrCreateConversation } from "@/utils/conversationActions";
 import TokenLimitDialog from "../popup/TokenLimitPopup";
 import { useTranslations } from 'next-intl';
+import { Message } from "@/types";
+
+interface PreviewFile {
+    _id: string;
+    name: string;
+    type: string;
+    url: string;
+    blob_url?: string;
+    citations?: string[];
+    // NEW: Add conversation context
+    conversationId?: string;
+    messageId?: string;
+}
 
 const EmptyChat = () => {
-  const t = useTranslations('dashboard.chat');
-  
-  return (
-    <div className="flex-1 flex items-center text-center justify-center text-neutral-400">
-      {t('start_conversation')}
-    </div>
-  );
+    const t = useTranslations('dashboard.chat');
+
+    return (
+        <div className="flex-1 flex items-center text-center justify-center text-neutral-400">
+            {t('start_conversation')}
+        </div>
+    );
 };
 
 const LoadingSpinner = ({ text }: { text: string }) => (
-  <div className="flex flex-col items-center justify-center gap-3">
-    <div className="w-8 h-8 border-4 border-neutral-100 border-t-black rounded-full animate-spin"></div>
-    <p className="text-neutral-400">{text}</p>
-  </div>
+    <div className="flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-4 border-neutral-100 border-t-black rounded-full animate-spin"></div>
+        <p className="text-neutral-400">{text}</p>
+    </div>
 );
 
 const InputContainer = styled.div`
@@ -112,16 +125,16 @@ const ChatContainer = () => {
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const inputContainerRef = useRef<HTMLDivElement | null>(null);
-    
-    const { 
-      user, 
-      currentAssistant, 
-      currentConversation, 
-      setCurrentConversation,
-      conversationLoading,
-      setConversationLoading
+
+    const {
+        user,
+        currentAssistant,
+        currentConversation,
+        setCurrentConversation,
+        conversationLoading,
+        setConversationLoading
     } = useDashboard();
-    
+
     const router = useRouter();
     const [isInitializing, setIsInitializing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -148,20 +161,28 @@ const ChatContainer = () => {
         conversationId: currentConversation?._id || '',
     });
 
+    const handleMessagesUpdate = useCallback((updatedMessages: Message[]) => {
+        setMessages(updatedMessages);
+
+        // Optionally, you could also update the conversation in the database here
+        // or rely on the backend endpoint to handle it
+        console.log('[ChatContainer] Messages updated:', updatedMessages.length);
+    }, [setMessages]);
+
     useEffect(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = '40px';
-        
-        if (inputValue.trim()) {
-          const scrollHeight = textareaRef.current.scrollHeight;
-          const newHeight = Math.min(scrollHeight, 120);
-          textareaRef.current.style.height = `${newHeight}px`;
-          setTextareaHeight(newHeight);
-        } else {
-          textareaRef.current.style.height = '40px';
-          setTextareaHeight(40);
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '40px';
+
+            if (inputValue.trim()) {
+                const scrollHeight = textareaRef.current.scrollHeight;
+                const newHeight = Math.min(scrollHeight, 120);
+                textareaRef.current.style.height = `${newHeight}px`;
+                setTextareaHeight(newHeight);
+            } else {
+                textareaRef.current.style.height = '40px';
+                setTextareaHeight(40);
+            }
         }
-      }
     }, [inputValue]);
 
     const isFileSupported = (file: File) => {
@@ -174,7 +195,7 @@ const ChatContainer = () => {
         const files = Array.from(event.target.files || []);
         const supportedFiles = files.filter(file => isFileSupported(file));
         const unsupportedFiles = files.filter(file => !isFileSupported(file));
-        
+
         if (unsupportedFiles.length > 0) {
             const extensions = Object.keys(SUPPORTED_EXTENSIONS).join(', ');
             setError(`Unsupported file type(s). Supported extensions: ${extensions}`);
@@ -193,11 +214,11 @@ const ChatContainer = () => {
         };
 
         updateHeight();
-        
+
         const resizeObserver = new ResizeObserver(() => {
             window.requestAnimationFrame(updateHeight);
         });
-        
+
         if (inputContainerRef.current) {
             resizeObserver.observe(inputContainerRef.current);
         }
@@ -226,17 +247,17 @@ const ChatContainer = () => {
                 setConversationLoading(false);
                 return;
             }
-            
+
             setIsInitializing(true);
             setConversationLoading(true);
             setError(null);
-            
+
             try {
                 const newConversation = await checkOrCreateConversation(
                     user._id,
                     currentAssistant._id
                 );
-                
+
                 if (isActive && currentAssistant._id === newConversation.assistant_id) {
                     setCurrentConversation(newConversation);
                     setMessages([]);
@@ -290,14 +311,14 @@ const ChatContainer = () => {
 
     const handleSendMessage = async () => {
         const trimmedMessage = inputValue.trim();
-        
+
         if (!trimmedMessage || !currentAssistant || !currentConversation) {
             return;
         }
-        
+
         const message = trimmedMessage;
         const filesToSend = [...selectedFiles];
-        
+
         setInputValue('');
         setSelectedFiles([]);
         if (fileInputRef.current) {
@@ -352,8 +373,8 @@ const ChatContainer = () => {
         return (
             <div className="flex-1 h-full w-full flex flex-col items-center justify-center gap-4">
                 <p className="text-red-500">{error}</p>
-                <Button 
-                    variant="outline" 
+                <Button
+                    variant="outline"
                     onClick={() => window.location.reload()}
                 >
                     {tCommon('try_again')}
@@ -367,7 +388,7 @@ const ChatContainer = () => {
             <TokenLimitDialog setTokenLimitError={setTokenLimitError} tokenLimitError={tokenLimitError} />
             <div className="flex-1 w-full h-full flex flex-col items-center">
                 <div className="w-full max-w-3xl h-full flex-1 flex flex-col px-6 relative">
-                    <div 
+                    <div
                         className="flex-1 flex flex-col overflow-y-auto h-[100svh]"
                         ref={chatContainerRef}
                         onScroll={handleScroll}
@@ -379,9 +400,11 @@ const ChatContainer = () => {
                         ) : messages.length === 0 ? (
                             <EmptyChat />
                         ) : (
-                            <ChatMessages 
-                                messages={messages} 
-                                loading={isLoading} 
+                            <ChatMessages
+                                messages={messages}
+                                loading={isLoading}
+                                conversationId={currentConversation?._id}
+                                onMessagesUpdate={handleMessagesUpdate}
                             />
                         )}
                     </div>
@@ -426,8 +449,8 @@ const ChatContainer = () => {
                                 disabled={isLoading}
                                 style={{ height: `${textareaHeight}px` }}
                             />
-                            <Button 
-                                size="icon" 
+                            <Button
+                                size="icon"
                                 className="w-10 h-10 rounded-md"
                                 onClick={handleSendMessage}
                                 disabled={isLoading || !inputValue.trim()}

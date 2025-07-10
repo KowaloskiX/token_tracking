@@ -63,7 +63,7 @@ export const useTenderTableData = ({
       const token = localStorage.getItem("token") || "";
       const historicalParam = includeHistorical ? "&include_historical=true" : "";
       const criteriaParam = "&include_criteria_for_filtering=true"; // This triggers the new projection
-            // NEW: includeFiltered param
+      // NEW: includeFiltered param
       const filteredParam = includeFiltered ? "&include_filtered=true" : "";
       // NEW: includeExternal param (only if showIncludeExternal)
       const externalParam = showIncludeExternal && includeExternal ? "&include_external=true" : "";
@@ -146,7 +146,6 @@ export const useTenderTableData = ({
     };
   }, [selectedAnalysis?._id, setAllResults, includeHistorical, includeFiltered, includeExternal]);
 
-  // Merge data with context updates
   const mergedData = useMemo(() => {
     return allResults ? allResults.map((localTender) => {
       const updatedTender = results.find((r) => r._id === localTender._id);
@@ -154,12 +153,18 @@ export const useTenderTableData = ({
         return {
           ...localTender,
           status: updatedTender.status,
-          opened_at: updatedTender.opened_at !== undefined ? updatedTender.opened_at : localTender.opened_at,
+          // IMPROVED: Don't override optimistic opened_at updates
+          opened_at: (localTender._optimisticOpened && localTender.opened_at)
+            ? localTender.opened_at // Keep optimistic value
+            : (updatedTender.opened_at !== undefined
+              ? updatedTender.opened_at
+              : localTender.opened_at),
         };
       }
       return localTender;
     }) : [];
   }, [allResults, results]);
+
 
   // Calculate days remaining helper
   const calculateDaysRemaining = (deadlineStr: string): number => {
@@ -258,7 +263,7 @@ export const useTenderTableData = ({
         (filters.status.external && status === 'external') || // NEW: Check for external status
         (filters.status.inBoard && isInBoard);
 
-      const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard  || filters.status.filtered || filters.status.external;
+      const anyStatusFilterSelected = filters.status.inactive || filters.status.active || filters.status.archived || filters.status.inBoard || filters.status.filtered || filters.status.external;
 
       if (anyStatusFilterSelected && !statusMatches) {
         return false;
@@ -469,9 +474,9 @@ export const useTenderTableData = ({
           case 'submission_deadline': {
             // Complex deadline sorting logic (keeping your existing logic)
             const getDeadlineStatus = (deadlineStr: string): { status: 'future' | 'past' | 'invalid', days: number } => {
-            if (!deadlineStr || typeof deadlineStr !== 'string' || deadlineStr.includes('NaN')) {
-              return { status: 'invalid', days: Infinity };
-            }
+              if (!deadlineStr || typeof deadlineStr !== 'string' || deadlineStr.includes('NaN')) {
+                return { status: 'invalid', days: Infinity };
+              }
 
 
               const days = calculateDaysRemaining(deadlineStr);

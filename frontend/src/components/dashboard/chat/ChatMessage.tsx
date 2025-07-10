@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import { Message } from "@/types";
 import { useDashboard } from '@/context/DashboardContext';
@@ -19,17 +19,20 @@ interface Citation {
 }
 
 interface FileData {
-    _id: string;
-    filename: string;
-    type: string;
-    url?: string;
-    blob_url?: string;
+  _id: string;
+  filename: string;
+  type: string;
+  url?: string;
+  blob_url?: string;
 }
 
 interface ChatMessageProps {
   message: Message;
   isThinking?: boolean;
   isFullCite?: boolean;
+  // New props for re-ask functionality
+  conversationId?: string;
+  onMessageUpdate?: (messageId: string, updatedCitations: any[]) => void;
 }
 
 interface CodeProps extends React.HTMLAttributes<HTMLElement> {
@@ -44,27 +47,61 @@ interface PreviewFile {
   url: string;
   blob_url?: string;
   citations?: string[];
+  // NEW: Add conversation context
+  conversationId?: string;
+  messageId?: string;
 }
 
 interface GroupedCitationDisplayData {
-    fileData: FileData;
-    citationContents: string[];
+  fileData: FileData;
+  citationContents: string[];
 }
 
-const ChatMessage = ({ message, isThinking }: ChatMessageProps) => {
+const ChatMessage = ({
+  message,
+  isThinking,
+  conversationId,
+  onMessageUpdate
+}: ChatMessageProps) => {
   const { user } = useDashboard();
   const isAssistant = message.role === 'assistant';
   const isSystem = message.role === 'system';
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : 'U';
-  
+
   // Translation hooks
   const t = useTranslations('dashboard.chat');
   const tTenders = useTranslations('dashboard.tenders');
-  
+
   const [citationFilesData, setCitationFilesData] = useState<FileData[]>([]);
   const [isLoadingCitationFiles, setIsLoadingCitationFiles] = useState(false);
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  const handleCitationsUpdated = useCallback((newCitations: string[]) => {
+    if (!onMessageUpdate || !message.id) return;
+
+    // Convert string citations back to Citation objects
+    // We need to match them with existing citations by content
+    const updatedCitations = (message.citations || []).map(citation => {
+      const oldContent = citation.content || '';
+      const newContent = newCitations.find(newCit =>
+        // Try to find the best match - could be exact or the original unfound citation
+        newCit === oldContent ||
+        (message.citations || []).some(c => c.content === oldContent)
+      );
+
+      if (newContent && newContent !== oldContent) {
+        return {
+          ...citation,
+          content: newContent
+        };
+      }
+      return citation;
+    });
+
+    // Update the message citations
+    onMessageUpdate(String(message.id), updatedCitations);
+  }, [message.id, message.citations, onMessageUpdate]);
 
   useEffect(() => {
     const uniqueFileIds = Array.from(
@@ -136,33 +173,40 @@ const ChatMessage = ({ message, isThinking }: ChatMessageProps) => {
     const previewUrl = groupData.fileData.blob_url || groupData.fileData.url;
 
     if (previewUrl) {
-        setPreviewFile({
-            _id: groupData.fileData._id,
-            name: groupData.fileData.filename || 'Unnamed File',
-            type: fileType,
-            url: previewUrl,
-            blob_url: groupData.fileData.blob_url,
-            citations: groupData.citationContents.length > 0 ? groupData.citationContents : undefined,
-        });
+      setPreviewFile({
+        _id: groupData.fileData._id,
+        name: groupData.fileData.filename || 'Unnamed File',
+        type: fileType,
+        url: previewUrl,
+        blob_url: groupData.fileData.blob_url,
+        citations: groupData.citationContents.length > 0 ? groupData.citationContents : undefined,
+        // NEW: Add conversation and message context
+        conversationId: conversationId,
+        messageId: String(message.id),
+      });
     } else {
-        console.error("Cannot preview: File data from folder context is missing blob_url or url.", groupData.fileData);
-        setPreviewFile({
-            _id: groupData.fileData._id,
-            name: groupData.fileData.filename || 'Preview Unavailable (Missing URL)',
-            type: fileType,
-            url: '',
-            blob_url: undefined,
-            citations: groupData.citationContents.length > 0 ? groupData.citationContents : undefined,
-        });
+      console.error("Cannot preview: File data from folder context is missing blob_url or url.", groupData.fileData);
+      setPreviewFile({
+        _id: groupData.fileData._id,
+        name: groupData.fileData.filename || 'Preview Unavailable (Missing URL)',
+        type: fileType,
+        url: '',
+        blob_url: undefined,
+        citations: groupData.citationContents.length > 0 ? groupData.citationContents : undefined,
+        // NEW: Add conversation and message context
+        conversationId: conversationId,
+        messageId: String(message.id),
+      });
     }
 
     setTimeout(() => {
-         setIsLoadingPreview(false);
+      setIsLoadingPreview(false);
     }, 50);
   };
 
+
   const getFileType = (extension: string): string => {
-    switch(extension.toLowerCase()) {
+    switch (extension.toLowerCase()) {
       case 'pdf': return 'pdf';
       case 'docx': return 'docx';
       case 'doc': return 'doc';
@@ -387,6 +431,9 @@ const ChatMessage = ({ message, isThinking }: ChatMessageProps) => {
           file={previewFile}
           onClose={handleClosePreview}
           loading={isLoadingPreview}
+          conversationId={previewFile.conversationId}
+          messageId={previewFile.messageId}
+          onCitationsUpdated={handleCitationsUpdated}
         />
       )}
     </div>
