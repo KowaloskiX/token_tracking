@@ -287,7 +287,8 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         className="flex-1 rounded-md border shadow-sm overflow-hidden relative min-h-0"
         ref={tableContainerRef}
       >
-        {/* Scroll gradient overlays */}
+        {/* Scroll gradient overlays - DISABLED */}
+        {/* 
         {leftGradient > 0 && (
           <div
             className="absolute top-0 left-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
@@ -330,6 +331,7 @@ export const TenderTable: React.FC<TenderTableProps> = ({
             }}
           />
         )}
+        */}
 
         {/* Scrollable table container */}
         <div 
