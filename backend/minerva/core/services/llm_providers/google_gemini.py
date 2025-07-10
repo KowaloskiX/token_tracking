@@ -96,11 +96,21 @@ def _ensure_client() -> genai.Client:
 def _is_rate_limit_error(error: Exception) -> bool:
     """Check if the error is a rate limit error that should trigger API key rotation."""
     error_str = str(error).lower()
-    rate_limit_indicators = [
+    
+    # Check for specific exception types that indicate connection issues we should retry
+    try:
+        import httpx
+        if isinstance(error, (httpx.ConnectError, httpx.ReadError, httpx.TimeoutException)):
+            logger.debug(f"Connection error detected (will retry with next API key): {type(error).__name__}")
+            return True
+    except ImportError:
+        pass
+    
+    gemini_rate_limit_indicators = [
         "quota", "resource_exhausted", "rate limit", "429", 
         "too many requests", "quota exceeded"
     ]
-    matched_indicators = [indicator for indicator in rate_limit_indicators if indicator in error_str]
+    matched_indicators = [indicator for indicator in gemini_rate_limit_indicators if indicator in error_str]
     
     if matched_indicators:
         logger.debug(f"Rate limit error detected - matched indicators: {matched_indicators}")
@@ -228,7 +238,12 @@ class GeminiLLM:
                 last_exception = e
                 
                 # Log the specific error details for debugging
-                logger.error(f"Gemini API call failed on attempt {attempt + 1}/{max_attempts} with API key {_current_api_key_index + 1}: {type(e).__name__}: {str(e)}", exc_info=True)
+                # Some exceptions (e.g. httpx.ReadError) may have an empty str(). Ensure we log something useful
+                _err_msg = str(e) if str(e) else repr(e)
+                logger.error(
+                    f"Gemini API call failed on attempt {attempt + 1}/{max_attempts} with API key {_current_api_key_index + 1}: {type(e).__name__}: {_err_msg}",
+                    exc_info=True,
+                )
                 
                 # Check if this is a rate limit error that should trigger rotation
                 if _is_rate_limit_error(e) and attempt < max_attempts - 1:
@@ -248,7 +263,9 @@ class GeminiLLM:
                 else:
                     # Not a rate limit error, or we've exhausted all attempts
                     if not _is_rate_limit_error(e):
-                        logger.error(f"Gemini API call failed with non-rate-limit error: {type(e).__name__}: {str(e)}")
+                        logger.error(
+                            f"Gemini API call failed with non-rate-limit error: {type(e).__name__}: {_err_msg}"
+                        )
                     else:
                         logger.error(f"Exhausted all {max_attempts} API key attempts, last error: {type(e).__name__}: {str(e)}")
                     break

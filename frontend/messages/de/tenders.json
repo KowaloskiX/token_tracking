@@ -414,13 +414,16 @@
       "urlHelper": "Fügen Sie den Link zur Ausschreibungsseite von einer beliebigen unterstützten Plattform ein",
       "urlRequired": "Link zur Ausschreibung ist erforderlich",
       "invalidUrl": "Der angegebene Link ist ungültig",
+      "alreadyAnalyzing": "Diese Ausschreibung wird bereits analysiert",
       "analyze": "Analysieren",
       "analyzing": "Analysiere...",
+      "submitting": "Hinzufügen...",
       "loading": "Lade...",
       "processing": "Ausschreibung wird verarbeitet...",
       "analysisError": "Ein Fehler ist bei der Analyse der Ausschreibung aufgetreten",
       "success": "Ausschreibung wurde erfolgreich analysiert",
-      "failed": "Die Analyse der Ausschreibung ist fehlgeschlagen"
+      "failed": "Die Analyse der Ausschreibung ist fehlgeschlagen",
+      "analyzingInBackground": "{count, plural, one {Analysiere # Ausschreibung im Hintergrund...} other {Analysiere # Ausschreibungen im Hintergrund...}}"
     }
   },
   "errors": {

@@ -33,6 +33,7 @@ from minerva.tasks.sources.ezamawiajacy.extract_tenders import EzamawiajacyTende
 from minerva.core.services.vectorstore.pinecone.query import QueryConfig, QueryTool
 from minerva.tasks.sources.orlenconnect.extract_tenders import OrlenConnectTenderExtractor
 from minerva.tasks.sources.pge.extract_tenders import PGETenderExtractor
+from minerva.tasks.sources.eb2b.extract_tenders import Eb2bTenderExtractor
 from minerva.tasks.sources.ted.tender_countries import IrelandTedTenderExtractor, ItalyTedTenderExtractor, TedTenderExtractor
 from minerva.tasks.sources.ezamowienia.extract_historical_tenders import HistoricalTenderExtractor, HistoricalTender
 from minerva.tasks.sources.tender_source_manager import TenderSourceManager
@@ -92,7 +93,7 @@ async def fetch_and_embed_tenders_by_date(request: ExtractionRequest) -> Dict:
             elasticsearch_index="tenders"
         )
         
-        example_extractor = PlatformaZakupowaTenderExtractor()
+        example_extractor = Eb2bTenderExtractor()
         # Create the service with the new configuration
         tender_service = TenderInsertService(
             config=tender_insert_config,

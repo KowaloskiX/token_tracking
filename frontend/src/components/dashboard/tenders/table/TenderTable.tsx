@@ -160,12 +160,39 @@ export const TenderTable: React.FC<TenderTableProps> = ({
     };
 
     scrollableElement.addEventListener('scroll', handleScroll);
+    
+    // Call immediately to set initial state
     handleScroll();
 
     return () => {
       scrollableElement.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [currentResults]); // Add currentResults as dependency
+
+  // Also add another useEffect to recalculate when table width changes
+  useEffect(() => {
+    const scrollableElement = scrollableRef.current;
+    if (!scrollableElement) return;
+
+    // Recalculate scroll state when table dimensions change
+    const {
+      scrollLeft,
+      scrollTop,
+      scrollWidth,
+      scrollHeight,
+      clientWidth,
+      clientHeight,
+    } = scrollableElement;
+
+    setScrollState({
+      scrollLeft,
+      scrollTop,
+      scrollWidth,
+      scrollHeight,
+      clientWidth,
+      clientHeight,
+    });
+  }, [tableWidth, totalTableWidth]); // Recalculate when dimensions change
 
   const handleSort = (columnId: string, direction: 'asc' | 'desc' | null) => {
     setSortConfig(columnId, direction);
@@ -212,10 +239,10 @@ export const TenderTable: React.FC<TenderTableProps> = ({
       bottomGradient = scrollTop < maxScrollTop ? Math.min((maxScrollTop - scrollTop) / 50, 1) : 0;
     }
     
-    return { leftGradient, rightGradient, topGradient, bottomGradient };
+    return { leftGradient, rightGradient, topGradient, bottomGradient, horizontalScrollable, verticalScrollable };
   };
 
-  const { leftGradient, rightGradient, topGradient, bottomGradient } = calculateScrollGradients();
+  const { leftGradient, rightGradient, topGradient, bottomGradient, horizontalScrollable, verticalScrollable } = calculateScrollGradients();
 
   return (
     <div className="w-full max-w-full relative flex flex-col h-full">
@@ -263,37 +290,43 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         {/* Scroll gradient overlays */}
         {leftGradient > 0 && (
           <div
-            className="absolute top-0 left-0 bottom-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
+            className="absolute top-0 left-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
             style={{
               background: `linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
               opacity: leftGradient,
+              bottom: horizontalScrollable ? '10px' : '0',
             }}
           />
         )}
         {rightGradient > 0 && (
           <div
-            className="absolute top-0 right-0 bottom-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
+            className="absolute top-0 w-20 z-10 pointer-events-none transition-opacity duration-300"
             style={{
               background: `linear-gradient(to left, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
               opacity: rightGradient,
+              right: verticalScrollable ? '10px' : '0',
+              bottom: horizontalScrollable ? '10px' : '0',
             }}
           />
         )}
         {topGradient > 0 && (
           <div
-            className="absolute top-0 left-0 right-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
+            className="absolute top-0 left-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
             style={{
               background: `linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
               opacity: topGradient,
+              right: verticalScrollable ? '10px' : '0',
             }}
           />
         )}
         {bottomGradient > 0 && (
           <div
-            className="absolute bottom-0 left-0 right-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
+            className="absolute left-0 h-20 z-10 pointer-events-none transition-opacity duration-300"
             style={{
               background: `linear-gradient(to top, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 30%, hsl(var(--background) / 0.6) 50%, hsl(var(--background) / 0.3) 70%, transparent 100%)`,
               opacity: bottomGradient,
+              bottom: horizontalScrollable ? '10px' : '0',
+              right: verticalScrollable ? '10px' : '0',
             }}
           />
         )}
@@ -301,68 +334,73 @@ export const TenderTable: React.FC<TenderTableProps> = ({
         {/* Scrollable table container */}
         <div 
           ref={scrollableRef}
-          className={`
-            h-full scrollbar-table relative overflow-auto
-            ${isDrawerVisible ? 'transition-all duration-200 ease-in-out' : ''}
-          `}
+          className="h-full scrollbar-table flex-1"
+          style={{
+            overflowY: 'auto',
+            overflowX: 'auto'
+          }}
         >
-          <Table 
-            className="min-w-max table-fixed" 
+          <div 
+            className="table-container-inner"
             style={{ 
-              minWidth: needsHorizontalScroll ? `${totalTableWidth}px` : '100%',
-              width: needsHorizontalScroll ? `${totalTableWidth}px` : '100%'
+              width: totalTableWidth > tableWidth ? `${totalTableWidth}px` : '100%',
+              minWidth: '100%',
+              overflow: 'clip',
+              display: 'block'
             }}
           >
-            <ResizableTableHeader
-              columns={visibleColumns}
-              sortConfig={columnState.sortConfig}
-              onSort={handleSort}
-              onColumnResize={handleColumnResize}
-              onOpenTableLayout={openTableLayout}
-              isResizeDisabled={false}
-            />
-            <TableBody>
-              {isLoading ? (
-                <TenderTableLoading
-                  tableWidth={tableWidth}
-                  totalFetched={totalFetched}
-                  totalTendersCount={totalTendersCount}
-                  columnCount={visibleColumns.length + 1}
-                />
-              ) : currentResults.length === 0 ? (
-                <TenderTableEmpty
-                  tableWidth={tableWidth}
-                  allResultsLength={allResultsLength}
-                  selectedAnalysis={selectedAnalysis}
-                  columnCount={visibleColumns.length + 1}
-                />
-              ) : (
-                currentResults.map((result: TenderAnalysisResult) => {
-                  // Check if this is a pending analysis
-                  const isPending = (result as any).isPending;
-                  
-                  return (
-                    <DynamicTableRow
-                      key={result._id}
-                      result={result}
-                      selectedResult={selectedResult}
-                      columns={visibleColumns}
-                      isUpdatedAfterOpened={isUpdatedAfterOpened}
-                      calculateDaysRemaining={calculateDaysRemaining}
-                      getTenderBoards={getTenderBoards}
-                      boardsLoading={boardsLoading}
-                      onRowClick={onRowClick}
-                      onStatusChange={onStatusChange}
-                      onUnopened={onUnopened}
-                      onDelete={onDelete}
-                      onAddToKanban={onAddToKanban}
-                      isPending={isPending} // Pass pending state
-                    />
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+            <Table className="table-fixed w-full">
+              <ResizableTableHeader
+                columns={visibleColumns}
+                sortConfig={columnState.sortConfig}
+                onSort={handleSort}
+                onColumnResize={handleColumnResize}
+                onOpenTableLayout={openTableLayout}
+                isResizeDisabled={false}
+              />
+              <TableBody>
+                {isLoading ? (
+                  <TenderTableLoading
+                    tableWidth={tableWidth}
+                    totalFetched={totalFetched}
+                    totalTendersCount={totalTendersCount}
+                    columnCount={visibleColumns.length + 1}
+                  />
+                ) : currentResults.length === 0 ? (
+                  <TenderTableEmpty
+                    tableWidth={tableWidth}
+                    allResultsLength={allResultsLength}
+                    selectedAnalysis={selectedAnalysis}
+                    columnCount={visibleColumns.length + 1}
+                  />
+                ) : (
+                  currentResults.map((result: TenderAnalysisResult) => {
+                    // Check if this is a pending analysis
+                    const isPending = (result as any).isPending;
+                    
+                    return (
+                      <DynamicTableRow
+                        key={result._id}
+                        result={result}
+                        selectedResult={selectedResult}
+                        columns={visibleColumns}
+                        isUpdatedAfterOpened={isUpdatedAfterOpened}
+                        calculateDaysRemaining={calculateDaysRemaining}
+                        getTenderBoards={getTenderBoards}
+                        boardsLoading={boardsLoading}
+                        onRowClick={onRowClick}
+                        onStatusChange={onStatusChange}
+                        onUnopened={onUnopened}
+                        onDelete={onDelete}
+                        onAddToKanban={onAddToKanban}
+                        isPending={isPending} // Pass pending state
+                      />
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
         {/* Horizontal scroll indicator */}

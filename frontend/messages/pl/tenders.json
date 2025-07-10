@@ -414,13 +414,16 @@
       "urlHelper": "Wklej link do strony przetargu z dowolnej obsługiwanej platformy",
       "urlRequired": "Link do przetargu jest wymagany",
       "invalidUrl": "Podany link jest nieprawidłowy",
+      "alreadyAnalyzing": "Ten przetarg jest już analizowany",
       "analyze": "Analizuj",
       "analyzing": "Analizowanie...",
+      "submitting": "Dodawanie...",
       "loading": "Ładowanie...",
       "processing": "Przetwarzanie przetargu...",
       "analysisError": "Wystąpił błąd podczas analizy przetargu",
       "success": "Przetarg został pomyślnie przeanalizowany",
-      "failed": "Analiza przetargu nie powiodła się"
+      "failed": "Analiza przetargu nie powiodła się",
+      "analyzingInBackground": "{count, plural, one {Analizowanie # przetargu w tle...} few {Analizowanie # przetargów w tle...} other {Analizowanie # przetargów w tle...}}"
     }
   },
   "errors": {

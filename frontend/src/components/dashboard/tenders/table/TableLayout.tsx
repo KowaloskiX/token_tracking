@@ -251,7 +251,7 @@ export const TableLayout: React.FC<TableLayoutProps> = ({
                 order: prev.length,
                 visible: true,
                 width: 160,
-                minWidth: 120,
+                minWidth: 60,
                 maxWidth: 400,
                 sortable: true,
                 resizable: true,

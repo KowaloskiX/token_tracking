@@ -1560,7 +1560,7 @@ class RAGManager:
                 {batch}
                 </TENDERS_LIST>
                 """
-                print(f'description prompt: \n{prompt}')
+                # print(f'description prompt: \n{prompt}')
                 
                 # Use model configuration helper
                 filter_model = "o4-mini"
@@ -1653,7 +1653,7 @@ class RAGManager:
             {tenders_list_to_analyze}
             </TENDERS_LIST>
             """
-            print(f'description prompt: \n{prompt}')
+            # print(f'description prompt: \n{prompt}')
             # Use model configuration helper
             filter_model = "o4-mini"
             filter_provider, filter_max_tokens = get_model_config(filter_model)

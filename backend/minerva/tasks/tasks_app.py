@@ -8,6 +8,7 @@ from minerva.tasks.scraping_runner import main as scraping_main
 from minerva.tasks.monitoring_runner import main as monitoring_main
 from minerva.tasks.cleanup_runner import main as cleanup_main
 from minerva.tasks.historical_runner import main as historical_main
+from minerva.tasks.external_scraping_runner import main as external_scraping_main
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
@@ -102,6 +103,17 @@ def configure_scheduler(loop):
             lambda: run_coroutine(cleanup_main(worker_index, total_cleanup_workers, get_last_week_date())),
             trigger=CronTrigger(hour=12, minute=0, day_of_week='mon-fri', timezone="Europe/Warsaw"),
             name=f"cleanup_worker_{worker_index}",
+            replace_existing=True
+        )
+    elif worker_type == "external" and worker_index == 0:
+        async def external_scraping_job(target_date):
+            import sys as _sys
+            _sys.argv = ["external_scraping_runner.py", target_date]
+            await external_scraping_main()
+        scheduler.add_job(
+            lambda: run_coroutine(external_scraping_job(get_today())),
+            trigger=CronTrigger(hour=19, minute=15, day_of_week='mon-fri', timezone="Europe/Warsaw"),
+            name="external_scraping_worker_0",
             replace_existing=True
         )
 

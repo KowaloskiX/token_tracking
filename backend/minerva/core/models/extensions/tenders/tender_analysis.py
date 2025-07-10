@@ -139,8 +139,8 @@ class TenderAnalysis(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     active: bool = Field(default=True)
-    assigned_users: List[str] = Field(default_factory=list)  # Add this field
-    email_recipients: List[str] = Field(default_factory=list)  # NEW: Users who receive email notifications
+    assigned_users: List[str] = Field(default_factory=list)
+    email_recipients: List[str] = Field(default_factory=list)
     include_external_sources: Optional[bool] = Field(default=False)  # NEW: Include external sources in analysis
     
     # NEW: Table layout configurations per user

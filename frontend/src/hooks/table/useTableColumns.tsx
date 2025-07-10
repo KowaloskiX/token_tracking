@@ -121,7 +121,7 @@ export const useTableColumns = ({
   }, [responsiveColumns]);
 
   const totalTableWidth = useMemo(() => {
-    return visibleColumns.reduce((total, col) => total + col.width, 0);
+    return visibleColumns.reduce((total, col) => total + col.width, 0) + 60;
   }, [visibleColumns]);
 
   // Reconstruct full columns from simplified backend data + defaults + criteria
@@ -140,7 +140,7 @@ export const useTableColumns = ({
             key: `criteria_analysis.${criteria.name}`,
             label: criteria.name,
             width: simpleCol.width,
-            minWidth: 120,
+            minWidth: 60,
             maxWidth: 400,
             visible: simpleCol.visible,
             sortable: true,
@@ -410,7 +410,7 @@ export const useTableColumns = ({
         key: `criteria_analysis.${criteriaName}`,
         label: criteriaName,
         width: 160,
-        minWidth: 120,
+        minWidth: 60,
         maxWidth: 400,
         visible: true,
         sortable: true,

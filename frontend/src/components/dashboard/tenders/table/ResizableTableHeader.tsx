@@ -213,8 +213,6 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
         <TableHeader className="bg-card border-b sticky top-0">
             <TableRow ref={headerRef}>
                 {columns.map((column, index) => {
-                    const isLastColumn = index === columns.length - 1;
-
                     // Determine if this column is sorted using the same identifier logic as handleSort
                     const sortIdentifier = isCriteriaColumn(column)
                         ? (column as CriteriaColumnConfig).criteriaName
@@ -237,14 +235,14 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 maxWidth: `${column.maxWidth}px`
                             }}
                             onClick={(e) => {
-                                // Don't sort if clicking on the resize handle area (and resizing is not disabled)
+                                // Update this condition to remove isLastColumn check
                                 if (!isResizeDisabled) {
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const clickX = e.clientX - rect.left;
                                     const cellWidth = rect.width;
 
                                     // If clicking in the rightmost 6px of the cell (resize handle area), don't sort
-                                    if (clickX > cellWidth - 6 && column.resizable && !isLastColumn) {
+                                    if (clickX > cellWidth - 6 && column.resizable) {
                                         return;
                                     }
                                 }
@@ -270,8 +268,8 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                                         <p className="text-xs text-amber-600 mt-1">Resize disabled while sidebar is open</p>
                                                     )}
                                                 </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
+                                                </Tooltip>
+                                            </TooltipProvider>
                                     ) : (
                                         <span className="truncate">
                                             {getColumnLabel(column)}
@@ -291,7 +289,8 @@ export const ResizableTableHeader: React.FC<ResizableTableHeaderProps> = ({
                                 )}
                             </div>
 
-                            {column.resizable && !isLastColumn && (
+                            {/* Show resize handle for ALL resizable columns, not just non-last ones */}
+                            {column.resizable && (
                                 <div
                                     className={cn(
                                         "absolute top-0 right-0 w-1.5 h-full z-10",

@@ -12,8 +12,6 @@ import { convertToPdf } from "@/utils/convertDocxToPdf";
 import JSZip from 'jszip';
 import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
-import { reaskCitationsForFile } from '@/utils/reaskCitations';
-import { RefreshCw, Sparkles } from "lucide-react";
 
 declare global {
   interface Window {
@@ -96,14 +94,15 @@ interface FilePreviewProps {
     type: string;
     url: string;
     blob_url?: string;
-    citations?: string[];
+    citations?: string[]; // Array of citation strings (content) or undefined
   };
   onClose: () => void;
-  loading?: boolean;
-  // New props for re-ask functionality
-  conversationId?: string;
-  messageId?: string;
-  onCitationsUpdated?: (newCitations: string[]) => void;
+  loading?: boolean; // Optional loading state from parent
+}
+
+// Helper function to escape regex special characters
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Helper to split citation into fragments (sentences or microfragments)
@@ -161,6 +160,24 @@ function splitCitationToFragments(citation: string): string[] {
   // Final filter for safety
   return frags.filter(f => f.length > 3); // Ensure fragments have some substance
 }
+
+// Helper to create a loose regex that tolerates punctuation / hyphens between words
+const buildLooseRegex = (text: string) => buildGapRegex(text);
+
+const normalizeCitationText = (text: string): string => {
+  return text
+    // Normalize different types of quotes
+    .replace(/["""'']/g, '"')
+    // Normalize different types of dashes and hyphens
+    .replace(/[‐‑‒–—―]/g, "-")
+    // Normalize whitespace
+    .replace(/\s+/g, ' ')
+    // Remove common PDF artifacts
+    .replace(/\u00A0/g, ' ') // non-breaking space
+    .replace(/\uFEFF/g, '') // byte order mark
+    .trim()
+    .toLowerCase();
+};
 
 async function highlightSearchQuery(
   searchQuery: string,
@@ -242,14 +259,7 @@ async function highlightCitationFragments(
   });
 }
 
-export function FilePreview({
-  file,
-  onClose,
-  loading: propLoading = false,
-  conversationId,
-  messageId,
-  onCitationsUpdated
-}: FilePreviewProps) {
+export function FilePreview({ file, onClose, loading: propLoading = false }: FilePreviewProps) {
   const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
   const [fileUrl, setFileUrl] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
@@ -265,10 +275,6 @@ export function FilePreview({
   const [textMode, setTextMode] = useState<"search" | "citation">("citation");
   const [textActiveIndex, setTextActiveIndex] = useState<number>(-1);
   const [textMatchCount, setTextMatchCount] = useState<number>(0);
-
-  const [isReaskingCitations, setIsReaskingCitations] = useState<boolean>(false);
-  const [reaskError, setReaskError] = useState<string | null>(null);
-  const [reaskSuccess, setReaskSuccess] = useState<string | null>(null);
 
   const isLoading = propLoading || internalIsLoading;
 
@@ -301,120 +307,6 @@ export function FilePreview({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(800);
   const EXCLUDE_SELECTORS = [".citation-overlay"]; // Example if you add popups
-
-  const handleReaskCitations = async () => {
-    if (!conversationId || !messageId || notFoundCitations.length === 0 || !rawText) {
-      console.warn('Cannot re-ask citations: missing required data');
-      return;
-    }
-
-    setIsReaskingCitations(true);
-    setReaskError(null);
-    setReaskSuccess(null);
-
-    try {
-      console.log(`[Re-ask Citations] Starting re-analysis for ${notFoundCitations.length} citations`);
-      console.log(`[Re-ask Citations] Document text length: ${rawText.length} characters`);
-      console.log(`[Re-ask Citations] Sample of document text (first 200 chars): "${rawText.substring(0, 200)}"`);
-      console.log(`[Re-ask Citations] Sample of document text (last 200 chars): "${rawText.substring(rawText.length - 200)}"`);
-
-      // For large numbers of citations, process in batches to avoid token limits
-      const BATCH_SIZE = 15; // Adjust based on your needs
-      let totalReplacements = 0;
-      const allReplacements: Record<string, string> = {};
-      const allCitationDetails: Record<string, any> = {};
-
-      for (let i = 0; i < notFoundCitations.length; i += BATCH_SIZE) {
-        const batch = notFoundCitations.slice(i, i + BATCH_SIZE);
-        console.log(`[Re-ask Citations] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(notFoundCitations.length / BATCH_SIZE)} with ${batch.length} citations`);
-
-        const response = await reaskCitationsForFile({
-          conversation_id: conversationId,
-          message_id: messageId,
-          file_text: rawText,
-          unfound_citations: batch,
-        });
-
-        // Merge responses from all batches
-        Object.assign(allReplacements, response.replacements);
-        Object.assign(allCitationDetails, response.citation_details || {});
-        totalReplacements += Object.keys(response.replacements).length;
-
-        console.log(`[Re-ask Citations] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed: ${Object.keys(response.replacements).length} replacements`);
-      }
-
-      console.log(`[Re-ask Citations] Success: ${totalReplacements} replacements found`);
-      console.log(`[Re-ask Citations] Citation details:`, allCitationDetails);
-
-      // Log location breakdown
-      const locationBreakdown = Object.values(allCitationDetails).reduce((acc: any, detail: any) => {
-        const location = detail.location_type || 'unknown';
-        acc[location] = (acc[location] || 0) + 1;
-        return acc;
-      }, {});
-      console.log(`[Re-ask Citations] Found citations in:`, locationBreakdown);
-
-      // Update the local file citations
-      const newCitations = [...(file.citations || [])];
-
-      // Replace unfound citations with updated ones
-      notFoundCitations.forEach((unfoundCitation) => {
-        const replacement = allReplacements[unfoundCitation];
-        if (replacement && replacement !== unfoundCitation) {
-          const citationIndex = newCitations.indexOf(unfoundCitation);
-          if (citationIndex !== -1) {
-            newCitations[citationIndex] = replacement;
-          }
-        }
-      });
-
-      // Update parent component with new citations
-      if (onCitationsUpdated) {
-        onCitationsUpdated(newCitations);
-      }
-
-      // Clear the not found citations and trigger re-highlighting
-      setNotFoundCitations([]);
-      setCitationProcessingCompleted(false);
-
-      // Force a re-highlight with updated citations
-      setForceUpdateCounter(prev => prev + 1);
-
-      const replacementCount = Object.keys(allReplacements).length;
-
-      // Create detailed success message
-      let successMessage = `Successfully updated ${replacementCount} citation(s) out of ${notFoundCitations.length}`;
-      if (Object.keys(locationBreakdown).length > 0) {
-        const locationSummary = Object.entries(locationBreakdown)
-          .map(([location, count]) => `${count} in ${location}`)
-          .join(', ');
-        successMessage += ` (${locationSummary})`;
-      }
-
-      // Add reconstruction notes for severe corrections
-      const reconstructionNotes = Object.values(allCitationDetails)
-        .map(detail => detail.reconstruction_notes)
-        .filter(note => note && note.length > 0);
-
-      if (reconstructionNotes.length > 0) {
-        successMessage += `. Reconstructed ${reconstructionNotes.length} severely corrupted citation(s)`;
-      }
-
-      setReaskSuccess(successMessage);
-
-      // Clear success message after 10 seconds (longer for detailed message)
-      setTimeout(() => setReaskSuccess(null), 10000);
-
-    } catch (error) {
-      console.error('[Re-ask Citations] Error:', error);
-      setReaskError(error instanceof Error ? error.message : 'Failed to re-ask LLM for citations');
-
-      // Clear error message after 10 seconds
-      setTimeout(() => setReaskError(null), 10000);
-    } finally {
-      setIsReaskingCitations(false);
-    }
-  };
 
   // Apply custom styles
   useEffect(() => {
@@ -1591,17 +1483,17 @@ export function FilePreview({
           <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-30">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
             <span className="text-sm text-gray-600 mb-2">{getLoadingMessage()}</span>
-
+            
             {/* Progress bar for rendering pages or processing citations */}
             {getLoadingProgress() > 0 && (
               <div className="w-48 bg-gray-200 rounded-full h-2 mb-1 overflow-hidden">
-                <div
-                  className="bg-primary h-full transition-all duration-300 ease-in-out"
+                <div 
+                  className="bg-primary h-full transition-all duration-300 ease-in-out" 
                   style={{ width: `${getLoadingProgress()}%` }}
                 ></div>
               </div>
             )}
-
+            
             {/* Detailed status for pages or citations */}
             {loadingPhase === 'rendering' && numPages > 0 && (
               <span className="text-xs text-gray-500">{pagesRendered} {t('pages_from')} {numPages}</span>
@@ -1645,8 +1537,8 @@ export function FilePreview({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={file.citations && file.citations.length > 0 && !searchQuery
-                ? t('citations_highlighted')
+              placeholder={file.citations && file.citations.length > 0 && !searchQuery 
+                ? t('citations_highlighted') 
                 : t('type_phrase_to_search')
               }
               disabled={isProcessingHighlights}
@@ -1662,9 +1554,9 @@ export function FilePreview({
                 `${currentIndex + 1} / ${displayCount} ${(isCitationMode || isTextCitationMode) ? t('citation') : t('fragment')}${displayCount !== 1 ? (tCommon('language') === 'pl' ? 'ów' : 's') : ''}`
               ) : (isSearchMode || isTextSearchMode) ? (
                 t('no_matches')
-              ) : file.citations && file.citations.length > 0 &&
-                citationProcessingCompleted &&
-                citationList.length === 0 ? (
+              ) : file.citations && file.citations.length > 0 && 
+                  citationProcessingCompleted && 
+                  citationList.length === 0 ? (
                 t('no_citations_found_in_document')
               ) : (
                 ""
@@ -1701,68 +1593,21 @@ export function FilePreview({
             </div>
           )}
 
-          {!searchQuery.trim() && file.citations && file.citations.length > 0 && citationProcessingCompleted && notFoundCitations.length > 0 && (
+          {!searchQuery.trim() && file.citations && file.citations.length > 0 && citationProcessingCompleted && citationList.length === 0 && (
             <div className="w-full text-xs bg-amber-50 border border-secondary-200 p-2 mt-2 rounded text-primary-800">
               <span>
-                {t('could_not_locate')} {notFoundCitations.length} {t('citation')}
-                {notFoundCitations.length !== 1 ? (tCommon('language') === 'pl' ? 'ów' : 's') : ''}
-                {citationList.length > 0 && (
-                  <span className="text-amber-600"> ({t('out_of')} {file.citations.length})</span>
-                )}.
-                {notFoundCitations.length <= 3 ? (
-                  <> : &quot;{notFoundCitations.slice(0, 3).map(c => c.substring(0, 40) + (c.length > 40 ? '...' : '')).join('&quot;, &quot;')}&quot;</>
+                {notFoundCitations.length > 0 ? (
+                  <>
+                    {t('could_not_locate')} {notFoundCitations.length} {t('citation')}
+                    {notFoundCitations.length !== 1 ? (tCommon('language') === 'pl' ? 'ów' : 's') : ''}.
+                    {notFoundCitations.length <= 3 ? (
+                      <> : &quot;{notFoundCitations.slice(0, 3).map(c => c.substring(0, 40) + (c.length > 40 ? '...' : '')).join('&quot;, &quot;')}&quot;</>
+                    ) : null}
+                  </>
                 ) : (
-                  <> {t('including')}: &quot;{notFoundCitations.slice(0, 2).map(c => c.substring(0, 30) + (c.length > 30 ? '...' : '')).join('&quot;, &quot;')}&quot; {t('and_more')}</>
-                )}
-
-                {/* NEW: Re-ask LLM button */}
-                {conversationId && messageId && !isReaskingCitations && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleReaskCitations}
-                      disabled={isReaskingCitations || !rawText}
-                      className="h-7 text-xs bg-white hover:bg-gray-50 border-amber-300 text-amber-800 hover:text-amber-900"
-                    >
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      {t('reask_llm_for_citations')}
-                    </Button>
-                    <span className="text-amber-700 text-[11px]">
-                      {t('llm_will_try_to_find_similar_text')}
-                    </span>
-                  </div>
-                )}
-
-                {/* Loading state for re-ask */}
-                {isReaskingCitations && (
-                  <div className="mt-2 flex items-center gap-2 text-amber-700">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    <span className="text-[11px]">{t('asking_llm_to_find_citations')}</span>
-                  </div>
-                )}
-
-                {/* Error state */}
-                {reaskError && (
-                  <div className="mt-2 text-red-700 text-[11px] bg-red-50 border border-red-200 rounded p-1">
-                    {t('error')}: {reaskError}
-                  </div>
-                )}
-
-                {/* Success state */}
-                {reaskSuccess && (
-                  <div className="mt-2 text-green-700 text-[11px] bg-green-50 border border-green-200 rounded p-1">
-                    ✓ {reaskSuccess}
-                  </div>
+                  t('citations_exist_but_not_found')
                 )}
               </span>
-            </div>
-          )}
-
-          {/* SEPARATE: Show when NO citations were found at all */}
-          {!searchQuery.trim() && file.citations && file.citations.length > 0 && citationProcessingCompleted && citationList.length === 0 && notFoundCitations.length === 0 && (
-            <div className="w-full text-xs bg-amber-50 border border-secondary-200 p-2 mt-2 rounded text-primary-800">
-              <span>{t('citations_exist_but_not_found')}</span>
             </div>
           )}
         </div>
@@ -1799,7 +1644,7 @@ export function FilePreview({
                     onRenderSuccess={onPageRenderSuccess}
                     className="mb-4 shadow-lg"
                     error={<div className="p-4 border border-red-200 bg-red-50 rounded mb-4 text-red-500 text-sm">{t('error_rendering_page')} {idx + 1}</div>}
-                    loading={<Skeleton className="w-full h-[11in]" style={{ width: containerWidth, height: containerWidth * 11 / 8.5 }} />}
+                    loading={<Skeleton className="w-full h-[11in]" style={{width: containerWidth, height: containerWidth * 11/8.5}} />}
                   />
                 ))}
               </Document>
@@ -1816,7 +1661,7 @@ export function FilePreview({
                   </p>
                 </div>
               )}
-              <TextFileRenderer
+              <TextFileRenderer 
                 text={rawText}
                 citations={file.citations || []}
                 searchQuery={searchQuery}
@@ -1839,7 +1684,7 @@ export function FilePreview({
                 </Button>
               </div>
             </div>
-          ) : null}
+          ) : null }
         </div>
       </div>
     </div>

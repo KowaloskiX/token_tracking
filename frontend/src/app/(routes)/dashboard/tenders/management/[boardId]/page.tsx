@@ -251,7 +251,7 @@ export default function BoardManagementPage() {
         </div>
       ) : selectedBoard ? (
         <div className="w-full relative flex-1 min-h-0">
-          <div className="absolute inset-0 overflow-y-auto">
+          <div className="absolute inset-0 overflow-y-auto scrollbar-table">
             <div className="min-w-max pb-4 h-full">
               <KanbanLayout 
                 board={selectedBoard} 

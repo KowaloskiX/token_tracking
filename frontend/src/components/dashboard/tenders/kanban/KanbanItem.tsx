@@ -95,18 +95,14 @@ export function KanbanItem({
       <div className="hover:bg-opacity-20 transition-colors rounded-md">
         <div className="p-3">
           <div className="flex items-center gap-3">
-            {/* Position number - Left side, centered vertically */}
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <span className="text-sm font-semibold text-primary min-w-[1.5rem] text-center">
-                {itemPosition}
-              </span>
-            </div>
-
             {/* Main content */}
             <div className="flex-1 min-w-0">
-              {/* Top section with source icon, ID and Menu */}
+              {/* Top section with position number, source icon, ID and Menu */}
               <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-primary min-w-[1.5rem] text-center">
+                    {itemPosition}
+                  </span>
                   {tender?.source && (
                     <TooltipProvider>
                       <Tooltip>

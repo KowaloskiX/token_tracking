@@ -291,7 +291,7 @@ async def run_tender_search(request: TenderSearchRequest, current_user: User = D
             raise HTTPException(status_code=404, detail="Tender analysis configuration not found")
 
         filter_conditions = [
-            {"field": "initiation_date", "op": "eq", "value": "2025-07-07"}
+            {"field": "initiation_date", "op": "eq", "value": "2025-07-09"}
         ]
         if analysis_doc.get("sources"):
             filter_conditions.append({
@@ -2889,11 +2889,17 @@ async def analyze_single_tender(
                 )
         
         logger.info(f"Detected source type: {source_type.value}")
+
+        # Rewrite ezamowienia.gov.pl URL if necessary
+        tender_url = request.tender_url
+        if source_type.value == "ezamowienia" and "/tenders/" in tender_url:
+            tender_url = tender_url.replace("/tenders/", "/search/list/")
+            logger.info(f"Rewritten ezamowienia.gov.pl tender_url: {tender_url}")
         
         # 4. Create basic metadata structure
         # For single tender analysis, we'll create minimal metadata
         original_metadata = {
-            "details_url": request.tender_url,
+            "details_url": tender_url,
             "source_type": source_type.value,
             "name": "Test Analysis",
             "organization": "Test",
@@ -2936,7 +2942,7 @@ async def analyze_single_tender(
             
             # 8. Save the result to database
             if request.save_to_db:
-                await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
+                insert_result = await db.tender_analysis_results.insert_one(tender_result.dict(by_alias=True))
             
             # 9. Update analysis last_run timestamp
             await db.tender_analysis.update_one(
@@ -2949,7 +2955,13 @@ async def analyze_single_tender(
             
             # 10. Assign order number
             await assign_order_numbers(analysis_oid, current_user)
-            
+
+            # --- MINIMAL FIX: fetch updated result with order_number ---
+            updated_result = None
+            if request.save_to_db:
+                updated_result = await db.tender_analysis_results.find_one({"_id": insert_result.inserted_id})
+            # ----------------------------------------------------------
+
             logger.info(f"Successfully analyzed single tender: {tender_result.id}")
             
             def convert_objectids(obj):
@@ -2964,7 +2976,7 @@ async def analyze_single_tender(
             return {
                 "status": "success",
                 "message": "Tender analyzed successfully",
-                "result": convert_objectids(tender_result.dict(by_alias=True)),
+                "result": convert_objectids(updated_result or tender_result.dict(by_alias=True)),
                 "tender_url": request.tender_url,
                 "analysis_id": request.analysis_id,
             }

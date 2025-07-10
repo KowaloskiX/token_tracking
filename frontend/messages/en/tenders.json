@@ -414,13 +414,16 @@
       "urlHelper": "Paste the link to the tender page from any supported platform",
       "urlRequired": "Tender link is required",
       "invalidUrl": "The provided link is invalid",
+      "alreadyAnalyzing": "This tender is already being analyzed",
       "analyze": "Analyze",
       "analyzing": "Analyzing...",
+      "submitting": "Adding...",
       "loading": "Loading...",
       "processing": "Processing tender...",
       "analysisError": "An error occurred while analyzing the tender",
       "success": "Tender was successfully analyzed",
-      "failed": "Tender analysis failed"
+      "failed": "Tender analysis failed",
+      "analyzingInBackground": "{count, plural, one {Analyzing # tender in background...} other {Analyzing # tenders in background...}}"
     }
   },
   "errors": {

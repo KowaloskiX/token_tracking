@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, ExternalLink } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { useTendersTranslations, useCommonTranslations } from '@/hooks/useTranslations';
 import { TenderAnalysisResult } from '@/types/tenders';
 
@@ -22,7 +22,7 @@ interface SingleTenderDialogProps {
   onAnalysisStart?: (pendingTender: TenderAnalysisResult) => void;
   onAnalysisComplete?: (completedTender: TenderAnalysisResult, pendingTenderId?: string) => void;
   onAnalysisError?: (pendingTenderId: string) => void;
-  onRefreshData?: () => void; // ✅ NEW: Add refresh callback
+  onRefreshData?: () => void;
 }
 
 interface SingleTenderAnalysisRequest {
@@ -31,6 +31,9 @@ interface SingleTenderAnalysisRequest {
   save_to_db: boolean;
 }
 
+// ✅ NEW: Track active analyses by URL to prevent duplicates
+const activeAnalyses = new Set<string>();
+
 export function SingleTenderDialog({
   open,
   onOpenChange,
@@ -38,10 +41,10 @@ export function SingleTenderDialog({
   onAnalysisStart,
   onAnalysisComplete,
   onAnalysisError,
-  onRefreshData // ✅ NEW: Accept refresh callback
+  onRefreshData
 }: SingleTenderDialogProps) {
   const [tenderUrl, setTenderUrl] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // ✅ CHANGED: Renamed from isAnalyzing
   const [error, setError] = useState<string | null>(null);
   
   const t = useTendersTranslations();
@@ -67,8 +70,8 @@ export function SingleTenderDialog({
       source: "unknown",
       tender_score: 0,
       tender_metadata: {
-        name: "", // ✅ CHANGED: Empty for skeleton
-        organization: "", // ✅ CHANGED: Empty for skeleton
+        name: "",
+        organization: "",
         submission_deadline: "",
         procedure_type: ""
       },
@@ -82,28 +85,51 @@ export function SingleTenderDialog({
       created_at: new Date().toISOString(),
       opened_at: "",
       order_number: "000",
-      isPending: true // ✅ This triggers skeleton rendering
+      isPending: true
     } as TenderAnalysisResult & { isPending: boolean };
   };
 
   const handleAnalyze = async () => {
-    if (!tenderUrl.trim()) {
+    const trimmedUrl = tenderUrl.trim();
+    
+    if (!trimmedUrl) {
       setError(t('tenders.singleAnalysis.urlRequired'));
       return;
     }
 
-    if (!validateUrl(tenderUrl.trim())) {
+    if (!validateUrl(trimmedUrl)) {
       setError(t('tenders.singleAnalysis.invalidUrl'));
       return;
     }
 
-    setIsAnalyzing(true);
+    // ✅ NEW: Check if this URL is already being analyzed
+    if (activeAnalyses.has(trimmedUrl)) {
+      setError(t('tenders.singleAnalysis.alreadyAnalyzing') || 'This tender is already being analyzed');
+      return;
+    }
+
+    setIsSubmitting(true);
     setError(null);
 
+    // ✅ NEW: Add URL to active analyses
+    activeAnalyses.add(trimmedUrl);
+
     // Create pending tender and add to list immediately
-    const pendingTender = generatePendingTender(tenderUrl.trim());
+    const pendingTender = generatePendingTender(trimmedUrl);
     onAnalysisStart?.(pendingTender);
 
+    // ✅ IMPORTANT: Reset form and close dialog immediately
+    setTenderUrl('');
+    setError(null);
+    setIsSubmitting(false); // ✅ RESET: Allow immediate next submission
+    onOpenChange(false);
+
+    // ✅ START: Background analysis (no await - fire and forget)
+    analyzeInBackground(trimmedUrl, pendingTender);
+  };
+
+  // ✅ NEW: Separate background analysis function
+  const analyzeInBackground = async (url: string, pendingTender: TenderAnalysisResult) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -111,12 +137,12 @@ export function SingleTenderDialog({
       }
 
       const requestBody: SingleTenderAnalysisRequest = {
-        tender_url: tenderUrl.trim(),
+        tender_url: url,
         analysis_id: analysisId,
         save_to_db: true
       };
 
-      console.log('Starting single tender analysis:', requestBody);
+      console.log('Starting background tender analysis:', requestBody);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/analyze-single-tender`, {
         method: 'POST',
@@ -133,7 +159,7 @@ export function SingleTenderDialog({
         throw new Error(result.detail || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      console.log('Single tender analysis result:', result);
+      console.log('Background tender analysis completed:', result);
 
       if (result.status === 'success' && result.result) {
         const completedTender: TenderAnalysisResult = {
@@ -142,44 +168,38 @@ export function SingleTenderDialog({
           isPending: undefined
         };
 
-        // ✅ UPDATED: Replace pending tender first
+        // Replace pending tender with completed one
         onAnalysisComplete?.(completedTender, pendingTender._id);
         
-        // ✅ NEW: Trigger data refresh after a short delay to ensure DB persistence
-        setTimeout(() => {
-          console.log('Refreshing data to ensure persistence...');
-          onRefreshData?.();
-        }, 1000);
-        
-        // Close dialog and reset form
-        onOpenChange(false);
-        setTenderUrl('');
-        setError(null);
+        // Trigger data refresh after completion
+        // setTimeout(() => {
+        //   console.log('Refreshing data after background analysis...');
+        //   onRefreshData?.();
+        // }, 1000);
       } else {
         throw new Error(result.message || 'Analysis failed');
       }
 
     } catch (err) {
-      console.error('Error analyzing single tender:', err);
-      setError(err instanceof Error ? err.message : t('tenders.singleAnalysis.analysisError'));
+      console.error('Background tender analysis failed:', err);
       
       // Remove pending tender from list on error
       onAnalysisError?.(pendingTender._id!);
+      
+      // ✅ TODO: Show toast notification for error since dialog is closed
+      // You might want to implement a toast system here
+      
     } finally {
-      setIsAnalyzing(false);
+      // ✅ CLEANUP: Remove URL from active analyses
+      activeAnalyses.delete(url);
     }
   };
 
   const handleClose = () => {
-    // ✅ FIXED: Allow closing even during analysis
     onOpenChange(false);
     setTenderUrl('');
     setError(null);
-    
-    // If analysis is running, we still close but let it complete in background
-    if (isAnalyzing) {
-      console.log('Dialog closed during analysis - analysis continues in background');
-    }
+    setIsSubmitting(false); // ✅ RESET: Clear any pending submission state
   };
 
   return (
@@ -201,7 +221,7 @@ export function SingleTenderDialog({
               placeholder={t('tenders.singleAnalysis.urlPlaceholder')}
               value={tenderUrl}
               onChange={(e) => setTenderUrl(e.target.value)}
-              disabled={isAnalyzing}
+              disabled={isSubmitting} // ✅ CHANGED: Only disable during submission
               className="w-full"
             />
             <p className="text-sm text-muted-foreground">
@@ -215,10 +235,11 @@ export function SingleTenderDialog({
             </div>
           )}
 
-          {isAnalyzing && (
+          {/* ✅ UPDATED: Show active analyses count with translation */}
+          {activeAnalyses.size > 0 && (
             <div className="p-3 text-sm text-primary bg-secondary border border-secondary-border rounded-md flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t('tenders.singleAnalysis.analyzing')}
+              {t('tenders.singleAnalysis.analyzingInBackground', { count: activeAnalyses.size })}
             </div>
           )}
         </div>
@@ -233,19 +254,16 @@ export function SingleTenderDialog({
           </Button>
           <Button
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !tenderUrl.trim()}
-            className="min-w-[120px]"
+            disabled={isSubmitting || !tenderUrl.trim()} // ✅ CHANGED: Only disable during submission
+            className="min-w-[100px]"
           >
-            {isAnalyzing ? (
+            {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                {t('tenders.singleAnalysis.analyzing')}
+                {t('tenders.singleAnalysis.submitting') || 'Adding...'}
               </>
             ) : (
-              <>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                {t('tenders.singleAnalysis.analyze')}
-              </>
+              t('tenders.singleAnalysis.analyze')
             )}
           </Button>
         </DialogFooter>

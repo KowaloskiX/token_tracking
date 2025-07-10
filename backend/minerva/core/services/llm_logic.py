@@ -57,6 +57,15 @@ def _is_provider_error(error: Exception, provider: str) -> bool:
     """Check if the error indicates a provider failure that should trigger fallback."""
     error_str = str(error).lower()
     
+    # Check for specific exception types that indicate connection/transport issues
+    try:
+        import httpx
+        if isinstance(error, (httpx.ConnectError, httpx.ReadError, httpx.TimeoutException)):
+            logger.info(f"Provider error detected for {provider} - network/connection error: {type(error).__name__}")
+            return True
+    except ImportError:
+        pass
+    
     # Common error keywords that suggest provider issues
     fallback_keywords = [
         "quota", "resource_exhausted", "exceeded your current quota",
@@ -164,8 +173,13 @@ async def _try_llm_with_universal_fallback(
             return response
             
     except Exception as error:
-        # Log the specific error details for debugging
-        logger.error(f"Primary provider {primary_provider}:{primary_model} failed with error: {error}", exc_info=True)
+        # Log the specific error details for debugging. Some exceptions (e.g. httpx.ReadError)
+        # have an empty str() which makes troubleshooting hard.  Fall back to repr(error)
+        error_msg = str(error) if str(error) else repr(error)
+        logger.error(
+            f"Primary provider {primary_provider}:{primary_model} failed with error: {type(error).__name__}: {error_msg}",
+            exc_info=True,
+        )
         
         # Special handling for Gemini rate limit errors - try API key rotation first
         if primary_provider == "google" and _is_gemini_rate_limit_error(error):

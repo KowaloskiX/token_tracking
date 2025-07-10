@@ -87,16 +87,3 @@ class LLMSearchResponse(BaseModel):
     
     class Config:
         arbitrary_types_allowed = True
-
-class ReaskCitationsRequest(BaseModel):
-    conversation_id: str
-    message_id: str
-    file_text: str
-    unfound_citations: List[str]
-
-class ReaskCitationsResponse(BaseModel):
-    status: str
-    message: str
-    updated_citations: List[dict]
-    replacements: Dict[str, str]
-    citation_details: Optional[Dict[str, Dict[str, str]]] = None
