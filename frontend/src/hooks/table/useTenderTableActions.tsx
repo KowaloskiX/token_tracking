@@ -50,26 +50,41 @@ export const useTenderTableActions = ({
   }, []);
 
   const handleRowClick = useCallback(async (result: TenderAnalysisResult, event?: React.MouseEvent) => {
-    const now = Date.now();
-    const timeSinceLastClick = now - lastClickTimeRef.current;
-
-    if (timeSinceLastClick < 300) {
-      return;
-    }
-    lastClickTimeRef.current = now;
-
-    if (operationInProgressRef.current.has(result._id!)) {
-      return;
-    }
-
+    // Handle Ctrl+Click for new tab
     if (event?.ctrlKey || event?.metaKey) {
       const url = `${window.location.origin}/dashboard/tender/${result._id}`;
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    operationInProgressRef.current.add(result._id!);
+    // STEP 1: ALWAYS mark as read instantly (no conditions, no exceptions)
+    const openedAt = new Date().toISOString();
 
+    // INSTANT UI UPDATE - always do this, no matter what
+    setAllResults(prev =>
+      prev.map(item =>
+        item._id === result._id
+          ? { ...item, opened_at: openedAt }
+          : item
+      )
+    );
+
+    // Background API call (fire and forget)
+    markAsOpened(result._id!).catch(err => {
+      console.error('[TendersList] Background API call failed:', err);
+    });
+
+    // STEP 2: Handle sidebar and selection (with minimal debouncing only for sidebar)
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTimeRef.current;
+
+    // Only debounce sidebar opening, not read status
+    if (timeSinceLastClick < 100) {
+      return; // Already marked as read above, just skip sidebar update
+    }
+    lastClickTimeRef.current = now;
+
+    // STEP 3: Update sidebar and selection
     try {
       const tenderBoards = getTenderBoards(result._id!);
       const boardStatus = tenderBoards.length
@@ -85,7 +100,7 @@ export const useTenderTableActions = ({
       setSidebarVisible(true);
       drawerRef.current?.setVisibility(true);
 
-      // Update URL immediately
+      // Update URL
       startTransition(() => {
         setTimeout(() => {
           const params = new URLSearchParams(window.location.search);
@@ -95,64 +110,10 @@ export const useTenderTableActions = ({
         }, 0);
       });
 
-      const hasUpdate = isUpdatedAfterOpened(result);
-
-      // IMPROVED: Optimistic update with better state management
-      if ((!result.opened_at || hasUpdate) && justMarkedAsUnreadRef.current !== result._id) {
-        const openedAt = new Date().toISOString();
-
-        // Optimistic update - update immediately
-        setAllResults(prev =>
-          prev.map(item =>
-            item._id === result._id
-              ? {
-                ...item,
-                opened_at: openedAt,
-                _optimisticOpened: true // Flag to track optimistic updates
-              }
-              : item
-          )
-        );
-
-        // Background API call with error handling and rollback
-        markAsOpened(result._id!)
-          .then(() => {
-            // Success - remove optimistic flag
-            setAllResults(prev =>
-              prev.map(item =>
-                item._id === result._id
-                  ? { ...item, _optimisticOpened: undefined }
-                  : item
-              )
-            );
-          })
-          .catch(err => {
-            console.error('[TendersList] Failed to mark as opened:', err);
-
-            // ROLLBACK: Revert optimistic update on error
-            setAllResults(prev =>
-              prev.map(item =>
-                item._id === result._id
-                  ? {
-                    ...item,
-                    opened_at: result.opened_at, // Revert to original value
-                    _optimisticOpened: undefined
-                  }
-                  : item
-              )
-            );
-
-            // Optionally show user notification about the error
-            // You could add a toast notification here
-          });
-      }
-
-      // Fetch detailed data in background (unchanged)
-      const promises: Promise<any>[] = [];
-
+      // STEP 4: Background fetch for detailed data (if needed)
       if (!result.criteria_analysis || !Array.isArray(result.criteria_analysis) || result.criteria_analysis.length === 0) {
-        promises.push(
-          fetchTenderResultById(result._id!).then(fullResult => {
+        fetchTenderResultById(result._id!)
+          .then(fullResult => {
             if (fullResult) {
               setAllResults(prev =>
                 prev.map(item =>
@@ -160,37 +121,31 @@ export const useTenderTableActions = ({
                     ? {
                       ...item,
                       ...fullResult,
-                      // Preserve optimistic opened_at if it exists and is newer
-                      opened_at: (item._optimisticOpened && item.opened_at)
-                        ? item.opened_at
-                        : fullResult.opened_at
+                      // Preserve the opened_at we set above (never overwrite with older data)
+                      opened_at: item.opened_at || fullResult.opened_at
                     }
                     : item
                 )
               );
 
+              // Update selected result with fresh data
               const updatedFullResult = {
                 ...fullResult,
                 opened_at: result.opened_at || fullResult.opened_at
               };
               setSelectedResult(updatedFullResult);
             }
-          }).catch(err => {
-            console.error("[TendersList] Error fetching data in background:", err);
           })
-        );
+          .catch(err => {
+            console.error("[TendersList] Background fetch failed:", err);
+          });
       }
 
-      if (promises.length > 0) {
-        await Promise.allSettled(promises);
-      }
-
-    } finally {
-      operationInProgressRef.current.delete(result._id!);
+    } catch (err) {
+      console.error('[TendersList] Error in sidebar handling:', err);
     }
   }, [
     currentPage,
-    selectedAnalysis?._id,
     getTenderBoards,
     setCurrentTenderBoardStatus,
     setSelectedResult,
@@ -203,80 +158,35 @@ export const useTenderTableActions = ({
   ]);
 
   const handleUnopened = async (result: TenderAnalysisResult) => {
-    if (operationInProgressRef.current.has(result._id!)) {
+    if (!result.opened_at || result.opened_at === "") {
+      // Already unread, just close drawer
+      closeDrawer();
       return;
     }
 
-    if (result.opened_at && result.opened_at !== "") {
-      operationInProgressRef.current.add(result._id!);
+    // STEP 1: INSTANTLY mark as unread
+    setAllResults(prev =>
+      prev.map(item =>
+        item._id === result._id
+          ? { ...item, opened_at: "" }
+          : item
+      )
+    );
 
-      try {
-        justMarkedAsUnreadRef.current = result._id!;
-        setSidebarVisible(false);
-        setSelectedResult(null);
-        drawerRef.current?.setVisibility(false);
+    // STEP 2: Close drawer and clear selection
+    setSidebarVisible(false);
+    setSelectedResult(null);
+    drawerRef.current?.setVisibility(false);
 
-        const params = new URLSearchParams(window.location.search);
-        params.delete("tenderId");
-        router.replace(`?${params.toString()}`, { scroll: false });
+    const params = new URLSearchParams(window.location.search);
+    params.delete("tenderId");
+    router.replace(`?${params.toString()}`, { scroll: false });
 
-        // Store original opened_at for potential rollback
-        const originalOpenedAt = result.opened_at;
-
-        // OPTIMISTIC UPDATE: Mark as unopened immediately
-        setAllResults(prev =>
-          prev.map(item =>
-            item._id === result._id
-              ? {
-                ...item,
-                opened_at: "",
-                _optimisticUnopened: true
-              }
-              : item
-          )
-        );
-
-        // Background API call with error handling
-        markAsUnopened(result._id!)
-          .then(() => {
-            // Success - remove optimistic flag
-            setAllResults(prev =>
-              prev.map(item =>
-                item._id === result._id
-                  ? { ...item, _optimisticUnopened: undefined }
-                  : item
-              )
-            );
-          })
-          .catch(err => {
-            console.error('Failed to mark as unopened:', err);
-
-            // ROLLBACK: Revert optimistic update on error
-            setAllResults(prev =>
-              prev.map(item =>
-                item._id === result._id
-                  ? {
-                    ...item,
-                    opened_at: originalOpenedAt, // Restore original value
-                    _optimisticUnopened: undefined
-                  }
-                  : item
-              )
-            );
-          });
-
-        setTimeout(() => {
-          justMarkedAsUnreadRef.current = null;
-        }, 1000);
-
-      } catch (err) {
-        console.error('Failed to mark as unopened:', err);
-      } finally {
-        operationInProgressRef.current.delete(result._id!);
-      }
-    } else {
-      closeDrawer();
-    }
+    // STEP 3: Background API call (fire and forget)
+    markAsUnopened(result._id!)
+      .catch(err => {
+        console.error('Background API call failed for mark as unread:', err);
+      });
   };
 
   const handleDelete = async (event: React.MouseEvent, resultId: any) => {

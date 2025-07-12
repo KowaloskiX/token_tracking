@@ -54,13 +54,42 @@ const customStyles = `
   .pdf-highlight.active-search {
     background-color: rgb(214, 210, 136) !important;
   }
+    .pdf-footer { display:none !important; }
 `;
 
 export function buildGapRegex(phrase: string): RegExp {
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const words = phrase.trim().split(/\s+/).map(esc);
+
+  /* ── 1.  deal with leading enumerators ──────────────────────────────
+     Accept things like:
+       "8)", "8.", "8-", "§ 8.", "(8)", "8 )"
+     If the citation is *only* the enumerator, we allow the
+     trailing punctuation but require a word-boundary after it so we
+     don’t light up every naked “8” in the file.                         */
+  const enumMatch = phrase.match(/^\s*[(§]?\s*(\d+)\s*[).-–—]?\s*(.*)$/u);
+  if (enumMatch) {
+    const [, num, rest] = enumMatch;
+
+    // Only the number+punctuation?  e.g. "8)" or "8."
+    if (!rest.trim()) {
+      return new RegExp(`\\b${esc(num)}[).-–—]?\\b`, "giu");
+    }
+
+    // Normalise to “num + single-space + rest” so later tokenisation works
+    phrase = `${num} ${rest}`;
+  }
+
+  /* ── 2. the original gap-regex (unchanged) ────────────────────────── */
+  const tokens = phrase.match(/[\p{L}\p{N}]+/gu) || [];
   const GAP = "[\\s\\p{P}\\p{S}\\d]*";
-  return new RegExp(words.join(GAP), "giu");
+  return new RegExp(tokens.map(esc).join(GAP), "giu");
+}
+
+export function buildVeryLooseRegex(phrase: string, maxChunk = 600): RegExp {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tokens = phrase.match(/[\p{L}\p{N}]+/gu) || [];
+  const ANY   = `[\\s\\S]{0,${maxChunk}}?`;        // up to N chars of *anything*
+  return new RegExp(tokens.map(esc).join(ANY), "giu");
 }
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -227,36 +256,29 @@ async function highlightCitationFragments(
 
   if (!citation?.trim()) return [];
 
-  console.log(`[Citation] Processing: "${citation.substring(0, 80)}..."`);
+  // 0️⃣ prepare a *fresh* Mark.js instance
+  const mark = new Mark(containerElement);
+  const collected: HTMLElement[] = [];
 
-  // Create a FRESH Mark.js instance for each citation to avoid state issues
-  const freshMarkInstance = new Mark(containerElement);
-  const regex = buildGapRegex(citation.trim());
-  console.log(`[Citation] Using regex:`, regex);
-
-  const collectedElements: HTMLElement[] = [];
-
-  return new Promise((resolve) => {
-    // Add a small delay to let any previous Mark.js operations complete
-    setTimeout(() => {
-      freshMarkInstance.markRegExp(regex, {
-        className: "pdf-highlight",
-        exclude: excludeSelectors,
-        acrossElements: true,
-        each: (el: Element) => {
-          collectedElements.push(el as HTMLElement);
-        },
-        done: () => {
-          console.log(`[Citation] Found ${collectedElements.length} elements`);
-          resolve(collectedElements);
-        },
-        noMatch: () => {
-          console.log(`[Citation] No match found`);
-          resolve(collectedElements);
-        },
-      });
-    }, 25); // Small delay between citations
+  /** inner helper to run markRegExp and collect hits */
+  const runMark = (regex: RegExp) => new Promise<HTMLElement[]>((resolve) => {
+    mark.markRegExp(regex, {
+      className: "pdf-highlight",
+      exclude: excludeSelectors,
+      acrossElements: true,
+      each: el => collected.push(el as HTMLElement),
+      done: () => resolve([...collected]),
+      noMatch: () => resolve([]),
+    });
   });
+
+  /* 1️⃣ first shot – your existing *strict* gap regex */
+  const strictHits = await runMark(buildGapRegex(citation.trim()));
+  if (strictHits.length) return strictHits;   //  ✅ success
+
+  /* 2️⃣ fallback – try the ultra-loose version */
+  const looseHits  = await runMark(buildVeryLooseRegex(citation.trim()));
+  return looseHits;                           //  ⬅️ may be [] if still no luck
 }
 
 export function FilePreview({ file, onClose, loading: propLoading = false }: FilePreviewProps) {
@@ -306,7 +328,21 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
   // Container & layout
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(800);
-  const EXCLUDE_SELECTORS = [".citation-overlay"]; // Example if you add popups
+const EXCLUDE_SELECTORS = [".citation-overlay", ".pdf-footer"];
+
+  function detectNumericFooters(root: HTMLElement) {
+  const spans = root.querySelectorAll<HTMLSpanElement>('[class*="textLayer"] span');
+  spans.forEach(span => {
+    const t = span.textContent?.trim() || "";
+    if (
+      /^[IVXLCDM]{1,4}$/i.test(t)                // roman numeral
+      || /^\d{1,4}$/.test(t)                     // bare number
+      || /^strona\s+\d+/i.test(t)                // “Strona 3”
+    ) {
+      span.classList.add('pdf-footer');          // mark & (optionally) hide
+    }
+  });
+}
 
   // Apply custom styles
   useEffect(() => {
@@ -521,6 +557,12 @@ export function FilePreview({ file, onClose, loading: propLoading = false }: Fil
       return newCount;
     });
   };
+
+  useEffect(() => {
+  if (pagesRendered === numPages && containerRef.current) {
+    detectNumericFooters(containerRef.current);
+  }
+}, [pagesRendered, numPages]);
 
   // Suppress specific console errors (if needed)
   useEffect(() => { /* ... as before ... */

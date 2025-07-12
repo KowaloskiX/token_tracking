@@ -146,24 +146,23 @@ export const useTenderTableData = ({
     };
   }, [selectedAnalysis?._id, setAllResults, includeHistorical, includeFiltered, includeExternal]);
 
-  const mergedData = useMemo(() => {
-    return allResults ? allResults.map((localTender) => {
-      const updatedTender = results.find((r) => r._id === localTender._id);
-      if (updatedTender) {
-        return {
-          ...localTender,
-          status: updatedTender.status,
-          // IMPROVED: Don't override optimistic opened_at updates
-          opened_at: (localTender._optimisticOpened && localTender.opened_at)
-            ? localTender.opened_at // Keep optimistic value
-            : (updatedTender.opened_at !== undefined
-              ? updatedTender.opened_at
-              : localTender.opened_at),
-        };
-      }
-      return localTender;
-    }) : [];
-  }, [allResults, results]);
+const mergedData = useMemo(() => {
+  if (!allResults) return [];
+  
+  return allResults.map((localTender) => {
+    const updatedTender = results.find((r) => r._id === localTender._id);
+    if (updatedTender) {
+      return {
+        ...localTender,
+        // Only merge status from context (this is what we want to sync)
+        status: updatedTender.status,
+        // NEVER override opened_at from context - local state is always correct for this
+        // opened_at: localTender.opened_at, // This is implicitly preserved by spreading localTender first
+      };
+    }
+    return localTender;
+  });
+}, [allResults, results]);
 
 
   // Calculate days remaining helper
